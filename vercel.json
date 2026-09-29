@@ -17,13 +17,7 @@
     }
   },
   "routes": [
-    {
-      "src": "/hrms/(.*)",
-      "dest": "hrms"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "pos"
-    }
+    { "src": "/hrms/(.*)", "dest": "/hrms/$1" },
+    { "src": "/(.*)", "dest": "/$1" }
   ]
 }
