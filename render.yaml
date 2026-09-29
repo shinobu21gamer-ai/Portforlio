@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: minimart-pos
+    runtime: node
+    plan: free
+    region: oregon
+    rootDir: .
+    buildCommand: |
+      npm ci --omit=dev
+      npm --prefix frontend ci && npm --prefix frontend run build
+      npm --prefix frontend-hrms ci && npm --prefix frontend-hrms run build
+    startCommand: node src/server.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: AUTO_SETUP
+        value: "true"
+      - key: DB_DIALECT
+        value: sqlite
+      - key: DB_STORAGE
+        value: ./database.sqlite
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+    healthCheckPath: /health
+    autoDeploy: true

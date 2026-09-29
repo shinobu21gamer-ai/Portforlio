@@ -1,0 +1,51 @@
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import posApi from '../api/posClient';
+import DataTable from '../components/DataTable';
+import useDebounce from '../hooks/useDebounce';
+
+const columns = [
+  { key: 'name', label: 'Name', sortable: true },
+  { key: 'slug', label: 'Slug', sortable: true },
+  { key: 'description', label: 'Description', sortable: false },
+  { key: 'status', label: 'Status', sortable: false },
+];
+
+export default function InvCategories() {
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounce(search);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['inv-categories', page, debouncedSearch],
+    queryFn: () => posApi.get('/categories', { params: { page, limit: 15, search: debouncedSearch || undefined } }).then(r => r.data.data),
+  });
+
+  const categories = data?.categories || [];
+  const pagination = data?.pagination;
+
+  return (
+    <>
+      <header className="pos-header">
+        <div><h1>Categories</h1><div className="sub">{pagination?.totalItems || 0} categories</div></div>
+      </header>
+      <div className="search-bar">
+        <div className="flex-1 pos-rel">
+          <input className="input-block" placeholder="Search categories..." value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} style={{ width: '100%', paddingRight: search ? 28 : undefined }} />
+          {search && <button onClick={() => { setSearch(''); setPage(1); }} className="search-clear" style={{ right: 6 }}>&times;</button>}
+        </div>
+      </div>
+      <DataTable columns={columns} data={categories} pagination={pagination} onPageChange={setPage} isLoading={isLoading} emptyMessage="No categories found"
+        renderRow={(c, _idx, visHeaders) => {
+          const cellMap = {
+            name: <td><strong>{c.name}</strong></td>,
+            slug: <td className="mono">{c.slug}</td>,
+            description: <td className="w-250 truncate">{c.description || '—'}</td>,
+            status: <td><span className={`badge ${c.isActive ? 'success' : 'error'}`}>{c.isActive ? 'Active' : 'Inactive'}</span></td>,
+          };
+          return <tr key={c.id}>{visHeaders.map(c => cellMap[c.key])}</tr>;
+        }}
+      />
+    </>
+  );
+}

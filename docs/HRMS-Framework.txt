@@ -1,0 +1,1379 @@
+================================================================================
+     HUMAN RESOURCE MANAGEMENT SYSTEM (HRMS) - PROFESSIONAL FRAMEWORK
+     MiniMart POS - Integrated HR Module
+================================================================================
+
+     Document Version: 1.0
+     System: MiniMart HRMS
+     Database: SQLite
+     Last Updated: July 2026
+
+================================================================================
+TABLE OF CONTENTS
+================================================================================
+
+  1. System Overview
+  2. Role-Based Access Control
+  3. Module Breakdowns
+     3.1  Employees
+     3.2  Departments and Positions
+     3.3  Attendance
+     3.4  Schedules and Shift Assignments
+     3.5  Job Postings and Hiring Pipeline
+     3.6  Interviews
+     3.7  Contracts
+     3.8  Leaves
+     3.9  Payroll
+  4. Cross-Module Interactions
+  5. Complete Status Transitions
+  6. Payroll Computation Formulas
+  7. Decision Matrix Summary
+
+
+================================================================================
+1. SYSTEM OVERVIEW
+================================================================================
+
+The HRMS is a web-based Human Resource Management System integrated into the
+MiniMart POS platform. It manages the complete employee lifecycle from hiring
+to payroll, with two distinct user roles that have different permission levels.
+
+SYSTEM ARCHITECTURE:
+  Frontend:  React + Vite (Port 3001)
+  Backend:   Express.js + Sequelize ORM (Port 5000)
+  Database:  SQLite (single file: database.sqlite)
+  Auth:      JWT tokens with bcrypt password hashing
+
+WHAT THE SYSTEM DOES:
+  - Manages employee records (personal info, department, position, salary)
+  - Tracks daily attendance with automatic late/overtime detection
+  - Handles shift scheduling (templates + permanent + date-specific assignments)
+  - Processes job postings with a multi-stage hiring pipeline
+  - Manages employee contracts (probationary, regular, contract-based)
+  - Handles leave requests with two-stage approval
+  - Computes Philippine payroll (SSS, PhilHealth, Pag-IBIG, BIR tax)
+  - Provides admin dashboard with pending approval notifications
+
+KEY DESIGN DECISIONS:
+  - Two-role system: Admin (approve-only) and HR (full CRUD)
+  - Soft delete on all records (data preserved for audit trail)
+  - Automatic status transitions (hire creates employee + contract)
+  - Philippine labor law compliance (SSS 2024, PhilHealth 5%, Pag-IBIG 2%)
+
+
+================================================================================
+2. ROLE-BASED ACCESS CONTROL
+================================================================================
+
+The system has two roles with distinct permission levels:
+
++-------------------+-------------------+-------------------+
+| MODULE            | ADMIN             | HR                |
++-------------------+-------------------+-------------------+
+| Dashboard         | View + Approvals  | View Only         |
+| Employees         | View + Approve    | Full CRUD         |
+| Departments       | View Only         | Full CRUD         |
+| Positions         | View Only         | Full CRUD         |
+| Attendance        | View + Export     | Full CRUD + Export |
+| Schedules         | View Only         | Full CRUD         |
+| Job Postings      | View + Approve    | Full CRUD + Close |
+| Applications      | View Only         | Full Pipeline     |
+| Interviews        | View Only         | Full CRUD + Result|
+| Contracts         | View + Approve    | Full CRUD         |
+|                   | + Reject/Terminate|                   |
+| Leaves            | View + Approve    | Full CRUD         |
+|                   | + Reject          | + HR Review       |
+| Payroll           | View + Pay        | Full CRUD + Export|
+| Resume Files      | View              | View              |
++-------------------+-------------------+-------------------+
+
+WHAT THIS MEANS:
+  Admin = Business owner who reviews and approves HR decisions
+          Cannot create, edit, or delete records
+          Can approve/reject employees, jobs, contracts, leaves
+          Can pay processed payroll
+          Can terminate contracts
+          Can close job postings
+
+  HR    = Human resources staff who manage day-to-day operations
+          Can create, read, update, delete all records
+          Cannot approve employees (must go through Admin)
+          Cannot pay payroll (must go through Admin)
+          Cannot terminate contracts (must go through Admin)
+          Handles the full hiring pipeline (interviews, scheduling)
+          Generates and processes payroll
+
+DESIGN REASONING:
+  This separation ensures checks and balances. HR handles operations
+  while Admin retains financial and employment decision authority.
+  Prevents a single role from both creating and approving records.
+
+
+================================================================================
+3. MODULE BREAKDOWNS
+================================================================================
+
+
+--------------------------------------------------------------------------------
+3.1 EMPLOYEES
+--------------------------------------------------------------------------------
+
+PURPOSE:
+  Central record for all human resources. Every employee has a unique
+  employee number, personal details, department, position, salary, and
+  employment type. Employee status controls system access.
+
+DATA FLOW:
+
+  HR Creates Employee
+       |
+       v
+  [Input: Name, Email, Phone, Dept, Position, Salary, Type]
+       |
+       v
+  <Email already exists?>
+  /           \
+Yes            No
+ |              |
+ v              v
+[Error:       [Auto-generate EMP-XXXX number]
+ Duplicate]   [Set status = "pending"]
+  |              |
+  v              v
+(END)        [Employee Created]
+                 |
+                 v
+             <Admin Approves?>
+             /           \
+           Yes            No
+            |              |
+            v              v
+     [status = "active"]  [status = "inactive"]
+     [approvedAt = now]   (Rejected)
+            |                 |
+            v                 v
+          (END)             (END)
+
+  HR Edits Employee
+       |
+       v
+  [Open Edit Modal - Load current values]
+       |
+       v
+  [Edit: Name, Email, Phone, Address, Gender, Birth Date]
+  [Edit: Dept, Position, Salary, Schedule, Employment Type]
+       |
+       v
+  <Validation passes?>
+  /           \
+Yes            No
+ |              |
+ v              v
+[Save]       [Show errors]
+  |              |
+  v              v
+<Salary changed?>  (END)
+/           \
+Yes            No
+ |              |
+ v              v
+[Sync salary  [Update employee
+ to active     only]
+ contract]
+  |              |
+  v              v
+(END)        (END)
+
+  HR Deletes Employee
+       |
+       v
+  [Confirm Dialog: "Delete this employee?"]
+       |
+       v
+  <Confirmed?>
+  /           \
+Yes            No
+ |              |
+ v              v
+[Soft-delete  (END)
+ employee
+ (paranoid)]
+
+  Admin Approves Employee
+       |
+       v
+  [Click Approve]
+       |
+       v
+  [status --> "active"]
+  [approvedAt = now]
+       |
+       v
+  (END)
+
+  Admin Rejects Employee
+       |
+       v
+  [Click Reject]
+       |
+       v
+  [status --> "inactive"]
+       |
+       v
+  (END)
+
+  View Employee Detail Profile (/employees/:id)
+       |
+       v
+  [Tab: Overview - Basic info, Dept, Position, Schedule]
+  [Tab: Attendance - Records, hours, OT]
+  [Tab: Leaves - Request history, status]
+  [Tab: Payslips - Earnings, deductions, net pay]
+  [Tab: Contracts - Active, expired, terminated]
+
+STATUS TRANSITIONS:
+  pending --> active    (Admin approves)
+  pending --> inactive  (Admin rejects)
+  active  --> inactive  (Contract terminated)
+
+WHY THIS DESIGN:
+  - New employees start as "pending" to prevent unauthorized system access
+  - Only Admin can activate employees (checks and balances)
+  - Salary changes auto-sync to the active contract (consistency)
+  - Soft delete preserves historical data for payroll and attendance
+  - Detail profile provides 360-degree view of the employee
+
+
+--------------------------------------------------------------------------------
+3.2 DEPARTMENTS AND POSITIONS
+--------------------------------------------------------------------------------
+
+PURPOSE:
+  Organizational structure. Departments group employees (e.g., Operations,
+  Sales, Warehouse). Positions define roles within departments (e.g.,
+  Cashier, Supervisor). Both are required when creating employees.
+
+DATA FLOW:
+
+  HR Creates Department
+       |
+       v
+  [Input: Name, Description]
+       |
+       v
+  <Name already exists?>
+  /           \
+Yes            No
+ |              |
+ v              v
+[Error:      [Create Department]
+ Duplicate]    |
+  |             v
+  v           (END)
+(END)
+
+  HR Edits Department
+       |
+       v
+  [Open Edit Modal - Load current name + description]
+       |
+       v
+  [Update Fields]
+       |
+       v
+  [Save changes]
+       |
+       v
+  (END)
+
+  HR Deletes Department
+       |
+       v
+  [Confirm Dialog]
+       |
+       v
+  <Has employees assigned?>
+  /           \
+Yes            No
+ |              |
+ v              v
+[Error:      [Soft-delete
+ Cannot       Department]
+ delete -     |
+ has employees] v
+  |           (END)
+  v
+(END)
+
+  Positions follow identical CRUD flow under each Department
+
+STATUS TRANSITIONS:
+  (No status field - departments and positions are always active)
+
+WHY THIS DESIGN:
+  - Cannot delete departments with employees (prevents orphaned records)
+  - Positions belong to departments (hierarchical structure)
+  - Both are required for employee creation (data integrity)
+  - Admin views but HR manages (role separation)
+
+
+--------------------------------------------------------------------------------
+3.3 ATTENDANCE
+--------------------------------------------------------------------------------
+
+PURPOSE:
+  Tracks employee clock-in/clock-out times, calculates work hours,
+  detects tardiness, and computes overtime. Feeds into payroll
+  computation for absent deductions and overtime pay.
+
+DATA FLOW:
+
+  Employee Clocks In
+       |
+       v
+  <Already clocked in today?>
+  /           \
+Yes            No
+ |              |
+ v              v
+[Error]     [Get assigned schedule]
+              |
+              v
+          <Has schedule?>
+          /           \
+        Yes            No
+         |              |
+         v              v
+     [Check if late    [Default: late
+      vs schedule       if after 9 AM]
+      start time +      |
+      5 min grace]      v
+         |           [Create record:
+         v            clockIn = now]
+     [Create record:    |
+      status =          v
+      late/present]   (END)
+         |
+         v
+       (END)
+
+  Employee Clocks Out
+       |
+       v
+  <Clocked in today?>
+  /           \
+Yes            No
+ |              |
+ v              v
+[Calculate     [Error]
+ total hours]
+     |
+     v
+ <Total hours < 4h?>
+ /           \
+Yes            No
+ |              |
+ v              v
+[status -->   [Keep status
+ half-day]     as-is]
+     |              |
+     v              v
+[Calculate overtime vs schedule]
+     |
+     v
+ [Update: clockOut, totalHours, overtime, status]
+     |
+     v
+  (END)
+
+  HR Manual Entry (any past date allowed)
+       |
+       v
+  [Select Employee + Date + Clock In/Out + Status]
+       |
+       v
+  <Record exists for that date?>
+  /           \
+Yes            No
+ |              |
+ v              v
+[Error]     [Create attendance record]
+              |
+              v
+            (END)
+
+  HR Bulk Clock In/Out
+       |
+       v
+  [Select multiple employees]
+       |
+       v
+  [Process each in parallel (Promise.allSettled)]
+       |
+       v
+  [Return results: success + failures per employee]
+       |
+       v
+  (END)
+
+  HR Exports CSV
+       |
+       v
+  [Select date range]
+       |
+       v
+  [Generate CSV: Date, Emp No, Name, Dept, Clock In/Out, Status, Hours, OT]
+       |
+       v
+  [Download file]
+       |
+       v
+  (END)
+
+STATUS VALUES:
+  present   - Clocked in on time, worked full shift
+  late      - Clocked in after scheduled start + 5 min grace
+  half-day  - Total hours worked < 4 hours
+  absent    - No clock-in record for scheduled work day
+  on-leave  - Auto-created when leave is approved
+
+WHY THIS DESIGN:
+  - 5-minute grace period prevents false late marking
+  - Half-day threshold at 4 hours (Philippine labor standard)
+  - Overtime calculated beyond scheduled shift hours
+  - Manual entry allows HR to correct missed clock-ins
+  - Bulk operations handle multiple employees efficiently
+  - CSV export for external reporting and compliance
+
+
+--------------------------------------------------------------------------------
+3.4 SCHEDULES AND SHIFT ASSIGNMENTS
+--------------------------------------------------------------------------------
+
+PURPOSE:
+  Defines work shift templates (e.g., Morning 8AM-5PM) and assigns
+  them to employees. Schedules drive attendance late/overtime detection.
+
+DATA FLOW:
+
+  HR Creates Schedule Template
+       |
+       v
+  [Input: Name, Start Time, End Time]
+       |
+       v
+  <Template name already exists?>
+  /           \
+Yes            No
+ |              |
+ v              v
+[Error:     [Create Template]
+ Duplicate]   |
+  |            v
+  v          (END)
+(END)
+
+  HR Assigns Shift
+       |
+       v
+  <Permanent or Date-Specific?>
+  /           \
+Permanent      Date-Specific
+  |              |
+  v              v
+[Update         [Input: Employee, Date, Shift]
+ employee          |
+ scheduleId]     <Already assigned?>
+  |              /           \
+  v            Yes            No
+(END)          |              |
+             [Error]     [Create ShiftAssignment]
+                            |
+                            v
+                          (END)
+
+  HR Deletes Schedule Template
+       |
+       v
+  <In use by any shift assignment?>
+  /           \
+Yes            No
+ |              |
+ v              v
+[Error:      [Confirm Dialog]
+ Cannot       |
+ delete]      v
+  |         <Confirmed?>
+  v         /           \
+(END)     Yes            No
+            |              |
+            v              v
+         [Soft-delete   (END)
+          Template]
+
+  HR Removes Shift Assignment
+       |
+       v
+  <Is permanent assignment?>
+  /           \
+Yes            No
+ |              |
+ v              v
+[Remove       [Delete
+ scheduleId    ShiftAssignment
+ from emp]     record]
+  |              |
+  v              v
+(END)        (END)
+
+WHY THIS DESIGN:
+  - Templates are reusable across employees
+  - Permanent assignments set default schedule
+  - Date-specific overrides handle exceptions (holidays, special shifts)
+  - Cannot delete templates in use (prevents broken attendance logic)
+  - Schedule data feeds directly into attendance late/overtime detection
+
+
+--------------------------------------------------------------------------------
+3.5 JOB POSTINGS AND HIRING PIPELINE
+--------------------------------------------------------------------------------
+
+PURPOSE:
+  Manages the complete hiring process from job creation to employee
+  onboarding. Includes a multi-stage application pipeline with
+  automatic employee and contract creation on hire.
+
+DATA FLOW:
+
+  HR Creates Job Posting
+       |
+       v
+  [Input: Title, Dept, Position, Salary Range, Openings, Description]
+       |
+       v
+  [Saved with status = "pending"]
+       |
+       v
+  <Admin Approves?>
+  /           \
+Yes            No
+ |              |
+ v              v
+[status -->    [status -->
+ "open"]        "rejected"]
+ [approvedAt    (Rejected)
+  = now]          |
+  |               v
+  v             (END)
+(END)
+
+  Applicant Applies (Public - No Auth Required)
+       |
+       v
+  [Input: Name, Email, Phone, Resume (PDF/DOC/JPEG/PNG), Cover Letter]
+       |
+       v
+  <Job status = "open"?>
+  /           \
+Yes            No
+ |              |
+ v              v
+[Check         [Error: Job not open]
+ duplicate]
+     |
+     v
+ <Already applied?>
+ /           \
+Yes            No
+ |              |
+ v              v
+[Error:      [Create Application
+ Duplicate]   status = "pending"]
+                |
+                v
+              (END)
+
+  Application Status Pipeline:
+  |
+  v
+  [pending] ---> HR clicks "Review" ---> [reviewed]
+       |                                      |
+       v                                      v
+  [rejected] <--- fail              "Schedule Interview"
+                                           |
+                                           v
+                                    [initial-interview]
+                                           |
+                                           v
+                                    "Schedule Final Interview"
+                                           |
+                                           v
+                                    [final-interview]
+                                      /         \
+                                  fail          pass
+                                    |             |
+                                    v             v
+                              [rejected]    [accepted]
+                                                |
+                                                v
+                                          "Hire" button
+                                                |
+                                                v
+                                    [hired] --> Auto-Create:
+                                       |        - Employee (pending)
+                                       |        - Contract (probationary)
+                                       v        - Decrement job openings
+                                    (END)       - If openings=0, job = "filled"
+
+VALID STATUS TRANSITIONS:
+  pending            --> reviewed, rejected
+  reviewed           --> initial-interview, rejected
+  initial-interview  --> final-interview, rejected
+  final-interview    --> accepted, rejected
+  accepted           --> hired, rejected
+  rejected           --> (terminal, no transitions)
+  hired              --> (terminal, no transitions)
+
+WHY THIS DESIGN:
+  - Strict pipeline prevents skipping stages (quality control)
+  - Fail at any stage = rejected (no second chances)
+  - Hire auto-creates Employee + Contract (eliminates manual data entry)
+  - Job openings auto-decrement (prevents over-hiring)
+  - Job auto-closes at 0 openings (stops accepting applications)
+  - Resume files stored securely and accessible to HR/Admin
+  - Duplicate application check prevents spam
+
+
+--------------------------------------------------------------------------------
+3.6 INTERVIEWS
+--------------------------------------------------------------------------------
+
+PURPOSE:
+  Schedules and tracks interviews for job applicants. Supports
+  initial and final interview stages with pass/fail results
+  that automatically cascade to application status.
+
+DATA FLOW:
+
+  HR Schedules Interview
+       |
+       v
+  <Application in schedulable state?>
+  (reviewed, initial-interview, or final-interview)
+  /           \
+Yes            No
+ |              |
+ v              v
+[Create       [Error]
+ Interview]
+ [type: initial/final]
+ [scheduledDate, scheduledTime]
+     |
+     v
+[Update application status:
+ initial --> initial-interview
+ final   --> final-interview]
+     |
+     v
+  (END)
+
+  HR Sets Interview Result
+       |
+       v
+  <Result = pass?>
+  /           \
+Yes            No
+ |              |
+ v              v
+<Interview   [Reject application
+ type?>       (status --> rejected)]
+ /     \
+initial final
+ |       |
+ v       v
+[app --> [app -->
+ final-   accepted]
+ interview]
+  |       |
+  v       v
+(END)   (END)
+
+  HR Edits Interview
+       |
+       v
+  [Open Edit Modal - Load current date, time, feedback]
+       |
+       v
+  [Update: Date, Time, Feedback]
+       |
+       v
+  [Save changes]
+       |
+       v
+  (END)
+
+  HR Deletes Interview
+       |
+       v
+  <Interview has result set?>
+  /           \
+Yes            No
+ |              |
+ v              v
+[Error:       [Confirm Dialog]
+ Cannot        |
+ delete]       v
+  |         <Confirmed?>
+  v         /           \
+(END)     Yes            No
+            |              |
+            v              v
+         [Soft-delete   (END)
+          Interview]
+
+STATUS VALUES:
+  pending  - Interview scheduled, not yet conducted
+  pass     - Applicant passed (auto-advances application)
+  fail     - Applicant failed (auto-rejects application)
+  cancelled- Interview was cancelled
+
+WHY THIS DESIGN:
+  - Interviews linked to applications (traceability)
+  - Pass on initial = advance to final interview
+  - Pass on final = advance to accepted (ready for hire)
+  - Fail at any stage = application rejected (automatic)
+  - Cannot delete interview with result (data integrity)
+  - Feedback stored for record-keeping
+
+
+--------------------------------------------------------------------------------
+3.7 CONTRACTS
+--------------------------------------------------------------------------------
+
+PURPOSE:
+  Manages employment contracts (probationary, regular, contract-based).
+  Tracks contract status, approval, and termination. Admin must approve
+  all contracts before they take effect.
+
+DATA FLOW:
+
+  HR Creates Contract
+       |
+       v
+  [Select Employee, Type, Start/End Date, Salary, Terms, Notes]
+       |
+       v
+  [Saved: status = "active", approvedAt = null]
+       |
+       v
+  [Pending Admin Approval]
+       |
+       v
+  <Admin Action?>
+  /       |       \
+Approve  Reject   (wait)
+  |       |
+  v       v
+[approvedAt [status -->
+ = now]      "rejected"]
+  |         [remarks = reason]
+  v           |
+(END)       (END)
+
+  HR Edits Contract
+       |
+       v
+  [Open Edit Modal - Load current values]
+       |
+       v
+  [Edit: Type, Start Date, End Date, Salary, Terms, Notes]
+       |
+       v
+  [Save changes]
+       |
+       v
+  <Salary changed?>
+  /           \
+Yes            No
+ |              |
+ v              v
+[Sync salary  [Update
+ to employee   contract
+ + touch       only]
+ updatedAt]
+  |              |
+  v              v
+(END)        (END)
+
+  HR Deletes Contract
+       |
+       v
+  [Confirm Dialog]
+       |
+       v
+  [Soft-delete Contract]
+       |
+       v
+  (END)
+
+  Admin Rejects Contract
+       |
+       v
+  <Status = "active" AND no approvedAt?>
+  /           \
+Yes            No
+ |              |
+ v              v
+[Open Reject  [Error]
+ Modal]
+     |
+     v
+  [Input: Rejection reason (required)]
+     |
+     v
+  [status --> "rejected"]
+  [notes = "Rejection reason: {remarks}"]
+     |
+     v
+  (END)
+
+  Admin Terminates Contract
+       |
+       v
+  <Status = "active"?>
+  /           \
+Yes            No
+ |              |
+ v              v
+[Confirm:     [Error]
+ "Terminate?
+ Employee
+ will be set
+ to inactive"]
+     |
+     v
+  [status --> "terminated"]
+     |
+     v
+  [Set employee status --> "inactive"]
+     |
+     v
+  (END)
+
+  View Contract Details
+       |
+       v
+  [Shows: Employee name, Emp No, Dept, Position]
+  [Shows: Contract type, Status, Start/End Date]
+  [Shows: Salary, Approved status, Last Updated]
+  [Shows: Terms, Notes]
+
+STATUS TRANSITIONS:
+  active  --> approved    (Admin approves)
+  active  --> rejected    (Admin rejects with remarks)
+  active  --> terminated  (Admin terminates)
+  active  --> expired     (End date passed)
+  active  --> completed   (Contract fulfilled)
+
+CONTRACT TYPES:
+  regular      - Permanent employment
+  probationary - Trial period (usually 6 months)
+  contract     - Fixed-term employment
+  deployment   - Staff deployment to client
+  project      - Project-based employment
+
+WHY THIS DESIGN:
+  - Dual approval: HR creates, Admin decides (checks and balances)
+  - Reject requires remarks (audit trail)
+  - Termination cascades to employee (sets inactive)
+  - Salary syncs from employee (one-way, employee is source of truth)
+  - Contract updatedAt touched on employee edit (fresh data display)
+
+
+--------------------------------------------------------------------------------
+3.8 LEAVES
+--------------------------------------------------------------------------------
+
+PURPOSE:
+  Manages employee leave requests with a two-stage approval process.
+  HR reviews first, then Admin makes final decision. Approved leaves
+  automatically create "on-leave" attendance records.
+
+DATA FLOW:
+
+  HR Creates Leave Request
+       |
+       v
+  [Select Employee, Leave Type, Start Date, End Date, Reason]
+       |
+       v
+  <End date >= Start date?>
+  /           \
+Yes            No
+ |              |
+ v              v
+[Auto-calculate  [Error]
+ days = end -
+ start + 1]
+ [status = "pending"]
+     |
+     v
+  (END)
+
+  HR Reviews (Stage 1)
+       |
+       v
+  <Status = "pending"?>
+  /           \
+Yes            No
+ |              |
+ v              v
+[Input:       [Error: Only
+ Remarks]      pending]
+     |
+     v
+  [status --> "hr-reviewed"]
+  [reviewedBy, reviewedAt, remarks]
+     |
+     v
+  (END)
+
+  Admin Approves (Stage 2)
+       |
+       v
+  <Status = "hr-reviewed"?>
+  /           \
+Yes            No
+ |              |
+ v              v
+[status -->    [Error]
+ "admin-approved"]
+ [approvedBy, approvedAt]
+     |
+     v
+  [Auto-create Attendance Records]
+     |
+     v
+  [For each day in leave range:]
+     |
+     v
+  <Is weekend (Sat/Sun)?>
+  /           \
+Yes            No
+ |              |
+ v              v
+[Skip]     <Record exists?>
+           /           \
+         Yes            No
+          |              |
+          v              v
+        [Skip]     [Create attendance:
+                     status = "on-leave"]
+                      |
+                      v
+                    (END)
+
+  Admin Rejects (Stage 2)
+       |
+       v
+  <Status = "hr-reviewed"?>
+  /           \
+Yes            No
+ |              |
+ v              v
+[Input:       [Error]
+ Rejection
+ Reason]
+     |
+     v
+  [status --> "rejected"]
+  [remarks = rejection reason]
+     |
+     v
+  [Remove any on-leave attendance records for those dates]
+     |
+     v
+  (END)
+
+  HR Deletes Leave Request
+       |
+       v
+  <Status = "pending" or "hr-reviewed"?>
+  /           \
+Yes            No
+ |              |
+ v              v
+[Confirm      [Error: Cannot
+ Dialog]       delete approved
+               or rejected]
+  |              |
+  v              v
+<Confirmed?>  (END)
+/           \
+Yes            No
+ |              |
+ v              v
+[Soft-delete (END)
+ Leave]
+
+LEAVE TYPES:
+  sick       - Medical leave
+  vacation   - Annual leave
+  personal   - Personal matters
+  maternity  - Maternity leave
+  paternity  - Paternity leave
+  bereavement- Family bereavement
+  other      - Other reasons
+
+STATUS TRANSITIONS:
+  pending      --> hr-reviewed    (HR reviews)
+  hr-reviewed  --> admin-approved (Admin approves)
+  hr-reviewed  --> rejected       (Admin rejects)
+
+WHY THIS DESIGN:
+  - Two-stage approval ensures HR pre-screens before Admin decides
+  - Approval auto-creates "on-leave" attendance (skips weekends)
+  - Rejection removes previously created attendance (cleanup)
+  - Admin sees both "pending" and "hr-reviewed" leaves
+  - Days auto-calculated from date range (no manual entry)
+  - Cannot delete approved/rejected leaves (audit trail)
+
+
+--------------------------------------------------------------------------------
+3.9 PAYROLL
+--------------------------------------------------------------------------------
+
+PURPOSE:
+  Computes monthly payroll for all active employees with Philippine
+  government deductions (SSS, PhilHealth, Pag-IBIG, BIR tax).
+  Three-stage lifecycle: draft, processed, paid.
+
+DATA FLOW:
+
+  HR Previews Payroll
+       |
+       v
+  [Select Month + Year]
+       |
+       v
+  [Calculate for each active employee:]
+       |
+       +---> Basic Salary (from employee record)
+       +---> Days Worked (from attendance records)
+       +---> Absent Deduction = (absent/workingDays) * salary
+       +---> Overtime Pay = OT hours * hourlyRate * 1.25
+       +---> Bonus (from frontend input)
+       +---> SSS (2024 bracket table)
+       +---> PhilHealth = 5% of salary, split 50/50
+       +---> Pag-IBIG = 2% of salary, max P200
+       +---> BIR Tax (2023 monthly tax table)
+       +---> Gross = Basic + OT + Bonus
+       +---> Net = Gross - SSS - PhilHealth - PagIBIG - Tax - Absent
+       |
+       v
+  [Preview Table Displayed]
+       |
+       v
+  <User clicks Generate?>
+  /           \
+Yes            No
+ |              |
+ v              v
+[Proceed]    (END)
+
+  HR Generates Payroll
+       |
+       v
+  <Payroll for this period exists?>
+  /           \
+Yes            No
+ |              |
+ v              v
+[Error:      <Any active
+ Already      employees?]
+ exists]      /       \
+              No       Yes
+               |        |
+               v        v
+            [Error:   [Create Payroll: status = "draft"]
+             No active  |
+             employees] [Create Payslip per employee]
+               |        [Within transaction - rollback on error]
+               v        |
+            (END)       v
+                     (END)
+
+  HR Processes Payroll
+       |
+       v
+  <Status = "draft"?>
+  /           \
+Yes            No
+ |              |
+ v              v
+[status -->   [Error: Only
+ "processed"]  draft payrolls]
+     |
+     v
+  (END)
+
+  Admin Pays Payroll
+       |
+       v
+  <Status = "processed"?>
+  /           \
+Yes            No
+ |              |
+ v              v
+[status -->    [Error: Must be
+ "paid"]        processed first]
+ [payslip status --> "paid"]
+ [paidDate = today]
+     |
+     v
+  (END)
+
+  HR Exports CSV
+       |
+       v
+  [Select Payroll period]
+       |
+       v
+  [Generate CSV: Emp No, Name, Dept, Days, Basic, OT, Bonus,
+                 SSS, PhilHealth, PagIBIG, Tax, Net]
+       |
+       v
+  [Download file]
+       |
+       v
+  (END)
+
+STATUS TRANSITIONS:
+  draft     --> processed  (HR processes)
+  processed --> paid       (Admin pays)
+
+PAYSLIP STATUS:
+  draft  - Payroll not yet finalized
+  paid   - Employee has been paid
+
+WHY THIS DESIGN:
+  - Preview before generation prevents accidental payroll creation
+  - Three-stage lifecycle ensures proper review before payment
+  - Only HR generates/processes; only Admin pays (financial control)
+  - Transaction ensures atomicity (all payslips or none)
+  - Philippine deductions auto-calculated (compliance)
+  - Absent deduction proportional to working days missed
+  - Overtime at 1.25x hourly rate (Philippine labor code)
+  - CSV export for external accounting systems
+
+
+================================================================================
+4. CROSS-MODULE INTERACTIONS
+================================================================================
+
+These are automatic actions that happen when certain events occur
+in the system. They connect multiple modules together.
+
+INTERACTION 1: HIRE AUTO-CREATION
+  When: Application status set to "hired"
+  What happens:
+    1. Employee record created (status = "pending")
+    2. Contract record created (type = "probationary")
+    3. Job openings decremented by 1
+    4. If openings = 0, job status = "filled"
+  Why: Eliminates manual data entry, ensures consistency
+
+INTERACTION 2: EMPLOYEE-CONTRACT SALARY SYNC
+  When: HR edits employee salary
+  What happens:
+    1. Active contract salary updated to match
+    2. Contract's updatedAt timestamp touched
+  Why: Employee salary is the source of truth
+  Direction: Employee --> Contract (one-way only)
+
+INTERACTION 3: LEAVE APPROVAL AUTO-ATTENDANCE
+  When: Admin approves a leave request
+  What happens:
+    1. For each day in leave range (weekdays only):
+       - Skip if weekend (Saturday/Sunday)
+       - Skip if attendance record already exists
+       - Create attendance record with status = "on-leave"
+  Why: Keeps attendance records accurate for payroll
+
+INTERACTION 4: LEAVE REJECTION CLEANUP
+  When: Admin rejects a leave request
+  What happens:
+    1. For each day in leave range:
+       - Remove any "on-leave" attendance records
+  Why: Cleans up records if leave was previously approved
+
+INTERACTION 5: CONTRACT TERMINATION CASCADE
+  When: Admin terminates a contract
+  What happens:
+    1. Contract status = "terminated"
+    2. Employee status = "inactive"
+  Why: Terminated contract means employee is no longer active
+
+INTERACTION 6: INTERVIEW RESULT CASCADE
+  When: HR sets interview result (pass/fail)
+  What happens:
+    If pass + initial interview: application --> "final-interview"
+    If pass + final interview: application --> "accepted"
+    If fail: application --> "rejected"
+  Why: Automates pipeline progression, prevents manual tracking
+
+INTERACTION 7: JOB OPENINGS AUTO-DECREMENT
+  When: Application status set to "hired"
+  What happens:
+    1. Job openings reduced by 1
+    2. If openings = 0, job status = "filled"
+  Why: Prevents over-hiring for a position
+
+
+================================================================================
+5. COMPLETE STATUS TRANSITIONS
+================================================================================
+
+EMPLOYEE:
+  pending --> active      (Admin approves)
+  pending --> inactive    (Admin rejects)
+  active  --> inactive    (Contract terminated)
+  active  --> on-leave    (Leave approved, auto-set)
+
+JOB POSTING:
+  pending --> open        (Admin approves)
+  pending --> rejected    (Admin rejects)
+  open    --> closed      (HR/Admin closes)
+  open    --> filled      (All openings filled)
+  closed  --> (terminal)
+  filled  --> (terminal)
+  rejected--> (terminal)
+
+APPLICATION:
+  pending           --> reviewed
+  reviewed          --> initial-interview
+  initial-interview --> final-interview
+  final-interview   --> accepted
+  accepted          --> hired
+  [any stage]       --> rejected (on fail)
+  hired             --> (terminal)
+  rejected          --> (terminal)
+
+INTERVIEW:
+  pending   --> pass     (auto-advances application)
+  pending   --> fail     (auto-rejects application)
+  pending   --> cancelled
+  pass      --> (terminal)
+  fail      --> (terminal)
+
+CONTRACT:
+  active    --> approved    (Admin approves)
+  active    --> rejected    (Admin rejects)
+  active    --> terminated  (Admin terminates)
+  active    --> expired     (End date passed)
+  active    --> completed   (Contract fulfilled)
+  rejected  --> (terminal)
+  terminated--> (terminal)
+
+LEAVE:
+  pending      --> hr-reviewed    (HR reviews)
+  hr-reviewed  --> admin-approved (Admin approves)
+  hr-reviewed  --> rejected       (Admin rejects)
+  admin-approved--> (terminal)
+  rejected     --> (terminal)
+
+PAYROLL:
+  draft     --> processed  (HR processes)
+  processed --> paid       (Admin pays)
+  paid      --> (terminal)
+
+ATTENDANCE:
+  present   (clocked in on time)
+  late      (clocked in after grace period)
+  half-day  (worked < 4 hours)
+  absent    (no clock-in)
+  on-leave  (auto-created from approved leave)
+
+
+================================================================================
+6. PAYROLL COMPUTATION FORMULAS
+================================================================================
+
+The system computes Philippine-standard deductions:
+
+SSS CONTRIBUTION (2024 Table):
+  Based on monthly salary bracket:
+  - P0 - P3,250:        Employee P135,    Employer P225
+  - P3,250 - P3,750:    Employee P157.50, Employer P262.50
+  - P3,750 - P4,250:    Employee P180,    Employer P300
+  - ... (46 brackets)
+  - P24,750+:           Employee P1,125,  Employer P1,875
+
+PHILHEALTH CONTRIBUTION:
+  Formula: Monthly Salary x 5% = Total Contribution
+  Employee Share: Total / 2 (50% split)
+
+PAG-IBIG CONTRIBUTION:
+  Formula: Monthly Salary x 2%
+  Maximum Employee Contribution: P200
+
+BIR WITHHOLDING TAX (2023 Monthly Tax Table):
+  Taxable Income = Gross - SSS - PhilHealth - PagIBIG
+  - P0 - P20,833:           P0 tax
+  - P20,833 - P33,333:      15% of excess over P20,833
+  - P33,333 - P66,667:      P1,875 + 20% of excess over P33,333
+  - P66,667 - P100,000:     P8,541.67 + 25% of excess over P66,667
+  - P100,000 - P200,000:    P16,875 + 30% of excess over P100,000
+  - P200,000 - P500,000:    P46,875 + 32% of excess over P200,000
+  - P500,000+:              P142,875 + 35% of excess over P500,000
+
+OVERTIME COMPUTATION:
+  Hourly Rate = Monthly Salary / 26 working days / 8 hours
+  Overtime Pay = OT Hours x Hourly Rate x 1.25
+
+ABSENT DEDUCTION:
+  Absent Deduction = (Absent Days / Total Working Days) x Monthly Salary
+
+GROSS PAY:
+  Gross = Basic Salary + Overtime Pay + Bonus
+
+NET PAY:
+  Net = Gross - SSS - PhilHealth - PagIBIG - Tax - Absent Deduction
+
+
+================================================================================
+7. DECISION MATRIX SUMMARY
+================================================================================
+
+Every decision point in the system and its outcome:
+
++--------------------------+---------+---------------------------+
+| DECISION                 | YES     | NO                        |
++--------------------------+---------+---------------------------+
+| Email exists?            | Error   | Create record             |
+| Admin approves employee? | Active  | Inactive                  |
+| Admin approves job?      | Open    | Rejected                  |
+| Job is open?             | Apply   | Error                     |
+| Already applied?         | Error   | Create application        |
+| Interview pass?          | Advance | Reject application        |
+| Admin approves contract? | Approved| Rejected                  |
+| Admin terminates?        | Term'd  | Error                     |
+| HR reviews leave?        | Reviewed| Error                     |
+| Admin approves leave?    | Approved| Rejected                  |
+| Is weekend?              | Skip    | Create attendance         |
+| Total hours < 4h?        | Half-day| Keep status               |
+| Already clocked in?      | Error   | Create record             |
+| Payroll exists?          | Error   | Create payroll            |
+| Has employees?           | Error   | Delete department         |
+| In use by assignment?    | Error   | Delete template           |
+| Clocked in today?        | Calculate| Error                    |
+| Admin pays payroll?      | Paid    | Error                     |
+| Confirmed delete?        | Delete  | Cancel                    |
+| Duplicate email?         | Error   | Save                      |
+| Has result set?          | Error   | Delete interview          |
++--------------------------+---------+---------------------------+
+
+
+================================================================================
+END OF HRMS FRAMEWORK DOCUMENT
+================================================================================

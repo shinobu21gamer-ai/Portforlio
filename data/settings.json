@@ -1,0 +1,12 @@
+{
+  "storeName": "MiniMart POS",
+  "address": "",
+  "phone": "",
+  "email": "",
+  "taxRate": 12,
+  "lowStockThreshold": 10,
+  "currency": "PHP",
+  "receiptFooter": "Thank you for your purchase!",
+  "gcashNumber": "09171234567",
+  "mayaNumber": "09171234567"
+}

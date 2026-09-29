@@ -1,0 +1,364 @@
+/* ════════════════════════════════════════════════════════════════════
+   Input Component Styles
+   ════════════════════════════════════════════════════════════════════ */
+
+.input-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: 100%;
+}
+
+.input-wrapper--full {
+  width: 100%;
+}
+
+.input__label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  color: var(--fg-primary);
+}
+
+.input__required {
+  color: var(--danger);
+  font-size: var(--text-base);
+  line-height: 1;
+}
+
+.input__field-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  background: var(--bg-secondary);
+  border: 1.5px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  transition: all var(--duration-fast) var(--ease-out);
+}
+
+.input__field-wrapper:focus-within {
+  border-color: var(--border-focus);
+  box-shadow: var(--shadow-focus);
+}
+
+.input-wrapper--error .input__field-wrapper {
+  border-color: var(--border-error);
+}
+
+.input-wrapper--error .input__field-wrapper:focus-within {
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.15);
+  border-color: var(--border-error);
+}
+
+.input-wrapper--disabled .input__field-wrapper {
+  background: var(--bg-tertiary);
+  border-color: var(--border-primary);
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.input-wrapper--readonly .input__field-wrapper {
+  background: var(--bg-tertiary);
+}
+
+.input {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  padding: var(--space-3) var(--space-4);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  font-weight: var(--font-normal);
+  color: var(--fg-primary);
+  background: transparent;
+  border: none;
+  outline: none;
+  border-radius: var(--radius-md);
+  transition: none;
+}
+
+.input::placeholder {
+  color: var(--fg-tertiary);
+  font-weight: var(--font-normal);
+}
+
+.input:disabled {
+  cursor: not-allowed;
+  color: var(--fg-tertiary);
+}
+
+.input:read-only {
+  cursor: default;
+}
+
+.input--has-left {
+  padding-left: var(--space-10);
+}
+
+.input--has-right {
+  padding-right: var(--space-10);
+}
+
+.input__icon {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--fg-tertiary);
+  pointer-events: none;
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+}
+
+.input__icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.input__icon--left {
+  left: var(--space-3);
+}
+
+.input__icon--right {
+  right: var(--space-3);
+}
+
+.input__addon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 var(--space-3);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  color: var(--fg-secondary);
+  background: var(--bg-tertiary);
+  border: none;
+  pointer-events: none;
+  flex-shrink: 0;
+  height: 100%;
+  min-width: 40px;
+}
+
+.input__addon--left {
+  border-radius: var(--radius-md) 0 0 var(--radius-md);
+  border-right: 1px solid var(--border-primary);
+  margin-right: var(--space-2);
+}
+
+.input__addon--right {
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  border-left: 1px solid var(--border-primary);
+  margin-left: var(--space-2);
+}
+
+.input__error {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  color: var(--danger);
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.input__error::before {
+  content: '';
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ef4444' stroke-width='2.5'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cline x1='12' y1='8' x2='12' y2='12'/%3E%3Cline x1='12' y1='16' x2='12.01' y2='16'/%3E%3C/svg%3E") center/contain no-repeat;
+}
+
+.input__hint {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--fg-tertiary);
+}
+
+/* ─── Sizes ───────────────────────────────────────────────────────── */
+.input-wrapper--sm .input {
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
+}
+
+.input-wrapper--sm .input__addon {
+  padding: 0 var(--space-2);
+  min-width: 32px;
+}
+
+.input-wrapper--sm .input__icon {
+  width: 16px;
+  height: 16px;
+}
+
+.input-wrapper--sm .input--has-left {
+  padding-left: var(--space-8);
+}
+
+.input-wrapper--sm .input--has-right {
+  padding-right: var(--space-8);
+}
+
+.input-wrapper--lg .input {
+  padding: var(--space-4) var(--space-5);
+  font-size: var(--text-lg);
+}
+
+.input-wrapper--lg .input__addon {
+  padding: 0 var(--space-4);
+  min-width: 48px;
+}
+
+.input-wrapper--lg .input__icon {
+  width: 24px;
+  height: 24px;
+}
+
+.input-wrapper--lg .input--has-left {
+  padding-left: var(--space-12);
+}
+
+.input-wrapper--lg .input--has-right {
+  padding-right: var(--space-12);
+}
+
+/* ─── Textarea ────────────────────────────────────────────────────── */
+.textarea-wrapper .input__field-wrapper {
+  align-items: flex-start;
+}
+
+.textarea {
+  min-height: 100px;
+  resize: vertical;
+  line-height: var(--leading-normal);
+}
+
+/* ─── Select ──────────────────────────────────────────────────────── */
+.select-wrapper .input {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right var(--space-3) center;
+  background-size: 16px;
+  padding-right: var(--space-10);
+}
+
+[data-theme="dark"] .select-wrapper .input {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+}
+
+.select-wrapper .input:disabled {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+}
+
+/* ─── Search Input Variant ────────────────────────────────────────── */
+.search-input-wrapper .input__field-wrapper {
+  background: var(--bg-tertiary);
+  border-color: var(--border-primary);
+}
+
+.search-input-wrapper .input__field-wrapper:focus-within {
+  background: var(--bg-secondary);
+  border-color: var(--border-focus);
+}
+
+.search-input-wrapper .input__icon {
+  color: var(--fg-tertiary);
+}
+
+/* ─── Floating Label Variant ──────────────────────────────────────── */
+.float-input-wrapper {
+  position: relative;
+}
+
+.float-input-wrapper .input__field-wrapper {
+  background: var(--bg-secondary);
+}
+
+.float-input-wrapper label {
+  position: absolute;
+  left: var(--space-4);
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: var(--text-base);
+  color: var(--fg-tertiary);
+  pointer-events: none;
+  transition: all var(--duration-normal) var(--ease-out);
+  background: var(--bg-secondary);
+  padding: 0 var(--space-1);
+  z-index: 1;
+}
+
+.float-input-wrapper .input__field-wrapper:focus-within label,
+.float-input-wrapper .input:not(:placeholder-shown) + label,
+.float-input-wrapper.float-active label {
+  top: 0;
+  left: var(--space-3);
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+  color: var(--primary);
+  transform: translateY(-50%);
+}
+
+.float-input-wrapper .input {
+  padding: var(--space-4) var(--space-4) var(--space-2);
+}
+
+/* ─── Password Toggle ─────────────────────────────────────────────── */
+.password-toggle {
+  position: absolute;
+  right: var(--space-3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--fg-tertiary);
+  cursor: pointer;
+  transition: color var(--duration-fast);
+  flex-shrink: 0;
+}
+
+.password-toggle:hover:not(:disabled) {
+  color: var(--fg-primary);
+}
+
+.password-toggle:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+  color: var(--primary);
+}
+
+.password-toggle svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* ─── Input Group ─────────────────────────────────────────────────── */
+.input-group {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.input-group .input-wrapper {
+  flex: 1;
+}
+
+.input-group .input-wrapper:first-child .input__field-wrapper {
+  border-radius: var(--radius-md) 0 0 var(--radius-md);
+}
+
+.input-group .input-wrapper:last-child .input__field-wrapper {
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+}
+
+.input-group .input-wrapper:not(:first-child):not(:last-child) .input__field-wrapper {
+  border-radius: 0;
+}

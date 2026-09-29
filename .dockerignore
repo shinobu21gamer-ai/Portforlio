@@ -1,0 +1,27 @@
+node_modules
+dist
+build
+coverage
+.env
+.env.local
+*.sqlite
+logs/*
+data/*
+uploads/resumes/*
+uploads/products/*
+uploads/*
+!.gitkeep
+.github
+.eslintrc.js
+jest.config.js
+*.md
+docs/
+frontend-hrms/
+database/
+.DS_Store
+Thumbs.db
+
+# Keep frontend source for building, exclude its build artifacts
+!frontend/
+frontend/dist
+frontend/node_modules

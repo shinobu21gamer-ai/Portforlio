@@ -1,0 +1,154 @@
+{
+  "info": {
+    "name": "MiniMart POS API",
+    "description": "Complete REST API collection for MiniMart Point of Sale System",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }]
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:5000/api/v1" },
+    { "key": "token", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Authentication",
+      "item": [
+        { "name": "Login", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\"email\": \"admin@minimart.com\", \"password\": \"admin123\"}" }, "url": { "raw": "{{base_url}}/auth/login", "host": ["{{base_url}}"], "path": ["auth", "login"] } } },
+        { "name": "Register", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\"firstName\": \"New\", \"lastName\": \"User\", \"email\": \"newuser@email.com\", \"password\": \"password123\", \"phone\": \"09171234567\"}" }, "url": { "raw": "{{base_url}}/auth/register", "host": ["{{base_url}}"], "path": ["auth", "register"] } } },
+        { "name": "Get Profile", "request": { "method": "GET", "url": { "raw": "{{base_url}}/auth/profile", "host": ["{{base_url}}"], "path": ["auth", "profile"] } } },
+        { "name": "Update Profile", "request": { "method": "PUT", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\"firstName\": \"Updated\", \"phone\": \"09180000000\"}" }, "url": { "raw": "{{base_url}}/auth/profile", "host": ["{{base_url}}"], "path": ["auth", "profile"] } } },
+        { "name": "Change Password", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\"currentPassword\": \"admin123\", \"newPassword\": \"newpass123\"}" }, "url": { "raw": "{{base_url}}/auth/change-password", "host": ["{{base_url}}"], "path": ["auth", "change-password"] } } },
+        { "name": "Forgot Password", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\"email\": \"admin@minimart.com\"}" }, "url": { "raw": "{{base_url}}/auth/forgot-password", "host": ["{{base_url}}"], "path": ["auth", "forgot-password"] } } },
+        { "name": "Refresh Token", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\"refreshToken\": \"your_refresh_token\"}" }, "url": { "raw": "{{base_url}}/auth/refresh-token", "host": ["{{base_url}}"], "path": ["auth", "refresh-token"] } } }
+      ]
+    },
+    {
+      "name": "Dashboard",
+      "item": [
+        { "name": "Get Dashboard", "request": { "method": "GET", "url": { "raw": "{{base_url}}/dashboard", "host": ["{{base_url}}"], "path": ["dashboard"] } } }
+      ]
+    },
+    {
+      "name": "Users",
+      "item": [
+        { "name": "List Users", "request": { "method": "GET", "url": { "raw": "{{base_url}}/users?page=1&limit=10", "host": ["{{base_url}}"], "path": ["users"], "query": [{ "key": "page", "value": "1" }, { "key": "limit", "value": "10" }] } } },
+        { "name": "Create User", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\"firstName\": \"Staff\", \"lastName\": \"One\", \"email\": \"staff1@minimart.com\", \"password\": \"staff123\", \"phone\": \"09170000004\", \"roleId\": 3}" }, "url": { "raw": "{{base_url}}/users", "host": ["{{base_url}}"], "path": ["users"] } } },
+        { "name": "Get User", "request": { "method": "GET", "url": { "raw": "{{base_url}}/users/1", "host": ["{{base_url}}"], "path": ["users", "1"] } } },
+        { "name": "Update User", "request": { "method": "PUT", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\"firstName\": \"Updated Staff\"}" }, "url": { "raw": "{{base_url}}/users/1", "host": ["{{base_url}}"], "path": ["users", "1"] } } },
+        { "name": "Delete User", "request": { "method": "DELETE", "url": { "raw": "{{base_url}}/users/1", "host": ["{{base_url}}"], "path": ["users", "1"] } } }
+      ]
+    },
+    {
+      "name": "Categories",
+      "item": [
+        { "name": "List Categories", "request": { "method": "GET", "url": { "raw": "{{base_url}}/categories?page=1&limit=20", "host": ["{{base_url}}"], "path": ["categories"], "query": [{ "key": "page", "value": "1" }, { "key": "limit", "value": "20" }] } } },
+        { "name": "Category Tree", "request": { "method": "GET", "url": { "raw": "{{base_url}}/categories/tree", "host": ["{{base_url}}"], "path": ["categories", "tree"] } } },
+        { "name": "Create Category", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\"name\": \"New Category\", \"description\": \"Category description\"}" }, "url": { "raw": "{{base_url}}/categories", "host": ["{{base_url}}"], "path": ["categories"] } } },
+        { "name": "Get Category", "request": { "method": "GET", "url": { "raw": "{{base_url}}/categories/1", "host": ["{{base_url}}"], "path": ["categories", "1"] } } },
+        { "name": "Update Category", "request": { "method": "PUT", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\"name\": \"Updated Category\"}" }, "url": { "raw": "{{base_url}}/categories/1", "host": ["{{base_url}}"], "path": ["categories", "1"] } } },
+        { "name": "Delete Category", "request": { "method": "DELETE", "url": { "raw": "{{base_url}}/categories/1", "host": ["{{base_url}}"], "path": ["categories", "1"] } } }
+      ]
+    },
+    {
+      "name": "Products",
+      "item": [
+        { "name": "List Products", "request": { "method": "GET", "url": { "raw": "{{base_url}}/products?page=1&limit=20&search=&categoryId=", "host": ["{{base_url}}"], "path": ["products"], "query": [{ "key": "page", "value": "1" }, { "key": "limit", "value": "20" }, { "key": "search", "value": "" }, { "key": "categoryId", "value": "" }] } } },
+        { "name": "Get by Barcode", "request": { "method": "GET", "url": { "raw": "{{base_url}}/products/barcode/4801234567890", "host": ["{{base_url}}"], "path": ["products", "barcode", "4801234567890"] } } },
+        { "name": "Low Stock", "request": { "method": "GET", "url": { "raw": "{{base_url}}/products/low-stock", "host": ["{{base_url}}"], "path": ["products", "low-stock"] } } },
+        { "name": "Expiring Products", "request": { "method": "GET", "url": { "raw": "{{base_url}}/products/expiring?days=30", "host": ["{{base_url}}"], "path": ["products", "expiring"], "query": [{ "key": "days", "value": "30" }] } } },
+        { "name": "Best Sellers", "request": { "method": "GET", "url": { "raw": "{{base_url}}/products/best-sellers?limit=10", "host": ["{{base_url}}"], "path": ["products", "best-sellers"], "query": [{ "key": "limit", "value": "10" }] } } },
+        { "name": "Create Product", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\"name\": \"New Product\", \"categoryId\": 1, \"buyingPrice\": 50, \"sellingPrice\": 80, \"stockQuantity\": 100, \"minStockLevel\": 10, \"unit\": \"pcs\"}" }, "url": { "raw": "{{base_url}}/products", "host": ["{{base_url}}"], "path": ["products"] } } },
+        { "name": "Get Product", "request": { "method": "GET", "url": { "raw": "{{base_url}}/products/1", "host": ["{{base_url}}"], "path": ["products", "1"] } } },
+        { "name": "Update Product", "request": { "method": "PUT", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\"sellingPrice\": 90}" }, "url": { "raw": "{{base_url}}/products/1", "host": ["{{base_url}}"], "path": ["products", "1"] } } },
+        { "name": "Delete Product", "request": { "method": "DELETE", "url": { "raw": "{{base_url}}/products/1", "host": ["{{base_url}}"], "path": ["products", "1"] } } }
+      ]
+    },
+    {
+      "name": "Suppliers",
+      "item": [
+        { "name": "List Suppliers", "request": { "method": "GET", "url": { "raw": "{{base_url}}/suppliers?page=1&limit=20", "host": ["{{base_url}}"], "path": ["suppliers"], "query": [{ "key": "page", "value": "1" }, { "key": "limit", "value": "20" }] } } },
+        { "name": "Outstanding Balances", "request": { "method": "GET", "url": { "raw": "{{base_url}}/suppliers/outstanding-balances", "host": ["{{base_url}}"], "path": ["suppliers", "outstanding-balances"] } } },
+        { "name": "Create Supplier", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\"name\": \"New Supplier\", \"contactPerson\": \"John Doe\", \"email\": \"john@supplier.com\", \"phone\": \"0287654325\", \"city\": \"Manila\", \"paymentTerms\": \"Net 30\"}" }, "url": { "raw": "{{base_url}}/suppliers", "host": ["{{base_url}}"], "path": ["suppliers"] } } },
+        { "name": "Get Supplier", "request": { "method": "GET", "url": { "raw": "{{base_url}}/suppliers/1", "host": ["{{base_url}}"], "path": ["suppliers", "1"] } } },
+        { "name": "Update Supplier", "request": { "method": "PUT", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\"name\": \"Updated Supplier\"}" }, "url": { "raw": "{{base_url}}/suppliers/1", "host": ["{{base_url}}"], "path": ["suppliers", "1"] } } },
+        { "name": "Delete Supplier", "request": { "method": "DELETE", "url": { "raw": "{{base_url}}/suppliers/1", "host": ["{{base_url}}"], "path": ["suppliers", "1"] } } }
+      ]
+    },
+    {
+      "name": "Customers",
+      "item": [
+        { "name": "List Customers", "request": { "method": "GET", "url": { "raw": "{{base_url}}/customers?page=1&limit=20", "host": ["{{base_url}}"], "path": ["customers"], "query": [{ "key": "page", "value": "1" }, { "key": "limit", "value": "20" }] } } },
+        { "name": "Create Customer", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\"firstName\": \"New\", \"lastName\": \"Customer\", \"email\": \"customer@email.com\", \"phone\": \"09180000001\", \"city\": \"Manila\"}" }, "url": { "raw": "{{base_url}}/customers", "host": ["{{base_url}}"], "path": ["customers"] } } },
+        { "name": "Get Customer", "request": { "method": "GET", "url": { "raw": "{{base_url}}/customers/1", "host": ["{{base_url}}"], "path": ["customers", "1"] } } },
+        { "name": "Update Customer", "request": { "method": "PUT", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\"loyaltyPoints\": 500}" }, "url": { "raw": "{{base_url}}/customers/1", "host": ["{{base_url}}"], "path": ["customers", "1"] } } },
+        { "name": "Delete Customer", "request": { "method": "DELETE", "url": { "raw": "{{base_url}}/customers/1", "host": ["{{base_url}}"], "path": ["customers", "1"] } } }
+      ]
+    },
+    {
+      "name": "Sales",
+      "item": [
+        { "name": "Create Sale", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\"items\": [{\"productId\": 1, \"quantity\": 2}, {\"productId\": 2, \"quantity\": 3}], \"paymentMethod\": \"cash\", \"cashAmount\": 500, \"customerId\": 1}" }, "url": { "raw": "{{base_url}}/sales", "host": ["{{base_url}}"], "path": ["sales"] } } },
+        { "name": "List Sales", "request": { "method": "GET", "url": { "raw": "{{base_url}}/sales?page=1&limit=20", "host": ["{{base_url}}"], "path": ["sales"], "query": [{ "key": "page", "value": "1" }, { "key": "limit", "value": "20" }] } } },
+        { "name": "Get by Invoice", "request": { "method": "GET", "url": { "raw": "{{base_url}}/sales/invoice/INV-250624-000001", "host": ["{{base_url}}"], "path": ["sales", "invoice", "INV-250624-000001"] } } },
+        { "name": "Cancel Sale", "request": { "method": "POST", "url": { "raw": "{{base_url}}/sales/1/cancel", "host": ["{{base_url}}"], "path": ["sales", "1", "cancel"] } } },
+        { "name": "Sales Report", "request": { "method": "GET", "url": { "raw": "{{base_url}}/sales/report?startDate=2026-01-01&endDate=2026-12-31", "host": ["{{base_url}}"], "path": ["sales", "report"], "query": [{ "key": "startDate", "value": "2026-01-01" }, { "key": "endDate", "value": "2026-12-31" }] } } }
+      ]
+    },
+    {
+      "name": "Purchases",
+      "item": [
+        { "name": "Create Purchase", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\"supplierId\": 1, \"items\": [{\"productId\": 1, \"quantity\": 50, \"unitCost\": 42}], \"notes\": \"Monthly stock order\"}" }, "url": { "raw": "{{base_url}}/purchases", "host": ["{{base_url}}"], "path": ["purchases"] } } },
+        { "name": "List Purchases", "request": { "method": "GET", "url": { "raw": "{{base_url}}/purchases?page=1&limit=20", "host": ["{{base_url}}"], "path": ["purchases"], "query": [{ "key": "page", "value": "1" }, { "key": "limit", "value": "20" }] } } },
+        { "name": "Get Purchase", "request": { "method": "GET", "url": { "raw": "{{base_url}}/purchases/1", "host": ["{{base_url}}"], "path": ["purchases", "1"] } } },
+        { "name": "Receive Purchase", "request": { "method": "PUT", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\"paidAmount\": 2100}" }, "url": { "raw": "{{base_url}}/purchases/1/receive", "host": ["{{base_url}}"], "path": ["purchases", "1", "receive"] } } },
+        { "name": "Cancel Purchase", "request": { "method": "POST", "url": { "raw": "{{base_url}}/purchases/1/cancel", "host": ["{{base_url}}"], "path": ["purchases", "1", "cancel"] } } }
+      ]
+    },
+    {
+      "name": "Inventory",
+      "item": [
+        { "name": "Stock In", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\"productId\": 1, \"quantity\": 50, \"notes\": \"Restock\"}" }, "url": { "raw": "{{base_url}}/inventory/stock-in", "host": ["{{base_url}}"], "path": ["inventory", "stock-in"] } } },
+        { "name": "Stock Out", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\"productId\": 1, \"quantity\": 5, \"notes\": \"Damaged goods\"}" }, "url": { "raw": "{{base_url}}/inventory/stock-out", "host": ["{{base_url}}"], "path": ["inventory", "stock-out"] } } },
+        { "name": "Adjust Stock", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\"productId\": 1, \"newQuantity\": 80, \"reason\": \"Inventory count correction\", \"type\": \"adjustment\"}" }, "url": { "raw": "{{base_url}}/inventory/adjust", "host": ["{{base_url}}"], "path": ["inventory", "adjust"] } } },
+        { "name": "Stock Movements", "request": { "method": "GET", "url": { "raw": "{{base_url}}/inventory/movements?page=1&limit=20", "host": ["{{base_url}}"], "path": ["inventory", "movements"], "query": [{ "key": "page", "value": "1" }, { "key": "limit", "value": "20" }] } } },
+        { "name": "Inventory Logs", "request": { "method": "GET", "url": { "raw": "{{base_url}}/inventory/logs?page=1&limit=20", "host": ["{{base_url}}"], "path": ["inventory", "logs"], "query": [{ "key": "page", "value": "1" }, { "key": "limit", "value": "20" }] } } },
+        { "name": "Check Low Stock", "request": { "method": "GET", "url": { "raw": "{{base_url}}/inventory/check-low-stock", "host": ["{{base_url}}"], "path": ["inventory", "check-low-stock"] } } },
+        { "name": "Check Expiring", "request": { "method": "GET", "url": { "raw": "{{base_url}}/inventory/check-expiring?days=30", "host": ["{{base_url}}"], "path": ["inventory", "check-expiring"], "query": [{ "key": "days", "value": "30" }] } } }
+      ]
+    },
+    {
+      "name": "Expenses",
+      "item": [
+        { "name": "List Expenses", "request": { "method": "GET", "url": { "raw": "{{base_url}}/expenses?page=1&limit=20", "host": ["{{base_url}}"], "path": ["expenses"], "query": [{ "key": "page", "value": "1" }, { "key": "limit", "value": "20" }] } } },
+        { "name": "Create Expense", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\"expenseCategoryId\": 1, \"amount\": 1500, \"description\": \"Electric bill\", \"paymentMethod\": \"cash\"}" }, "url": { "raw": "{{base_url}}/expenses", "host": ["{{base_url}}"], "path": ["expenses"] } } },
+        { "name": "Expense Report", "request": { "method": "GET", "url": { "raw": "{{base_url}}/expenses/report?startDate=2026-01-01&endDate=2026-12-31", "host": ["{{base_url}}"], "path": ["expenses", "report"], "query": [{ "key": "startDate", "value": "2026-01-01" }, { "key": "endDate", "value": "2026-12-31" }] } } }
+      ]
+    },
+    {
+      "name": "Notifications",
+      "item": [
+        { "name": "List Notifications", "request": { "method": "GET", "url": { "raw": "{{base_url}}/notifications?page=1&limit=20", "host": ["{{base_url}}"], "path": ["notifications"], "query": [{ "key": "page", "value": "1" }, { "key": "limit", "value": "20" }] } } },
+        { "name": "Unread Count", "request": { "method": "GET", "url": { "raw": "{{base_url}}/notifications/unread-count", "host": ["{{base_url}}"], "path": ["notifications", "unread-count"] } } },
+        { "name": "Mark All Read", "request": { "method": "PUT", "url": { "raw": "{{base_url}}/notifications/mark-all-read", "host": ["{{base_url}}"], "path": ["notifications", "mark-all-read"] } } },
+        { "name": "Mark Read", "request": { "method": "PUT", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\"ids\": [1, 2, 3]}" }, "url": { "raw": "{{base_url}}/notifications/mark-read", "host": ["{{base_url}}"], "path": ["notifications", "mark-read"] } } }
+      ]
+    },
+    {
+      "name": "Activity Logs",
+      "item": [
+        { "name": "List Activity Logs", "request": { "method": "GET", "url": { "raw": "{{base_url}}/activity-logs?page=1&limit=20", "host": ["{{base_url}}"], "path": ["activity-logs"], "query": [{ "key": "page", "value": "1" }, { "key": "limit", "value": "20" }] } } },
+        { "name": "User Activity", "request": { "method": "GET", "url": { "raw": "{{base_url}}/activity-logs/user/1", "host": ["{{base_url}}"], "path": ["activity-logs", "user", "1"] } } }
+      ]
+    },
+    {
+      "name": "Expense Categories",
+      "item": [
+        { "name": "List Expense Categories", "request": { "method": "GET", "url": { "raw": "{{base_url}}/expense-categories", "host": ["{{base_url}}"], "path": ["expense-categories"] } } },
+        { "name": "Create Expense Category", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\"name\": \"New Category\", \"description\": \"Description\"}" }, "url": { "raw": "{{base_url}}/expense-categories", "host": ["{{base_url}}"], "path": ["expense-categories"] } } }
+      ]
+    }
+  ]
+}
