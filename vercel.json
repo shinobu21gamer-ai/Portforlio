@@ -4,16 +4,16 @@
     "pos": {
       "root": "frontend",
       "framework": "vite",
-      "buildCommand": "npm ci && npm run build",
+      "buildCommand": "npm install && npm run build",
       "outputDirectory": "dist",
-      "installCommand": "npm ci"
+      "installCommand": "npm install"
     },
     "hrms": {
       "root": "frontend-hrms",
       "framework": "vite",
-      "buildCommand": "npm ci && npm run build",
+      "buildCommand": "npm install && npm run build",
       "outputDirectory": "dist",
-      "installCommand": "npm ci"
+      "installCommand": "npm install"
     }
   },
   "routes": [
