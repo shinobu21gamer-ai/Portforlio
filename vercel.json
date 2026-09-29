@@ -1,0 +1,29 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "services": {
+    "pos": {
+      "root": "frontend",
+      "framework": "vite",
+      "buildCommand": "npm ci && npm run build",
+      "outputDirectory": "dist",
+      "installCommand": "npm ci"
+    },
+    "hrms": {
+      "root": "frontend-hrms",
+      "framework": "vite",
+      "buildCommand": "npm ci && npm run build",
+      "outputDirectory": "dist",
+      "installCommand": "npm ci"
+    }
+  },
+  "routes": [
+    {
+      "src": "/hrms/(.*)",
+      "dest": "hrms"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "pos"
+    }
+  ]
+}
