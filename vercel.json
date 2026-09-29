@@ -6,18 +6,20 @@
       "framework": "vite",
       "buildCommand": "npm run build",
       "outputDirectory": "dist",
-      "installCommand": "npm install --include=dev"
+      "installCommand": "npm install --include=dev",
+      "rewrites": [
+        { "source": "/(.*)", "destination": "/index.html" }
+      ]
     },
     "hrms": {
       "root": "frontend-hrms",
       "framework": "vite",
       "buildCommand": "npm run build",
       "outputDirectory": "dist",
-      "installCommand": "npm install --include=dev"
+      "installCommand": "npm install --include=dev",
+      "rewrites": [
+        { "source": "/(.*)", "destination": "/index.html" }
+      ]
     }
-  },
-  "routes": [
-    { "src": "/hrms/(.*)", "dest": "/hrms/$1" },
-    { "src": "/(.*)", "dest": "/$1" }
-  ]
+  }
 }
