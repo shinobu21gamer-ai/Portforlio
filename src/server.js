@@ -193,11 +193,11 @@ if (fs.existsSync(hrmsDist)) {
   logger.warn('HRMS frontend dist not found — skipping /hrms');
 }
 
-// ─── POS Frontend Static Files (served at /pos for iframe) ──────────────
+// ─── POS Frontend Static Files (served at /) ──────────────
 const frontendDist = path.join(__dirname, '..', 'frontend', 'dist');
 if (fs.existsSync(frontendDist)) {
-  app.use('/pos', express.static(frontendDist));
-  app.get('/pos*', (req, res, next) => {
+  app.use(express.static(frontendDist));
+  app.get('*', (req, res, next) => {
     if (req.originalUrl.startsWith('/api') || req.originalUrl.startsWith('/uploads') || req.originalUrl.startsWith('/api-docs') || req.originalUrl.startsWith('/health')) {
       return next();
     }
@@ -208,11 +208,6 @@ if (fs.existsSync(frontendDist)) {
 } else {
   logger.warn('Frontend dist not found — running API-only mode.');
 }
-
-// ─── Root redirect to HRMS (single entry point) ──────────────
-app.get('/', (req, res) => {
-  res.redirect('/hrms/');
-});
 
 // ─── 404 Handler ──────────────────────────────────────────
 app.use((req, res) => {
