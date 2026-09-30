@@ -7,12 +7,12 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
   reporter: [
-    ['html', { open: 'never', outputFolder: 'tests/e2e/test-results/html-report' }],
-    ['json', { outputFile: 'tests/e2e/test-results/results.json' }],
-    ['junit', { outputFile: 'tests/e2e/test-results/results.xml' }],
+    ['html', { open: 'never' }],
+    ['json', { outputFile: 'test-results/e2e-results.json' }],
+    ['junit', { outputFile: 'test-results/e2e-results.xml' }],
   ],
   use: {
-    baseURL: process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:5000',
+    baseURL: 'http://localhost:5000',
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',

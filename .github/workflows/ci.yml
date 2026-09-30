@@ -6,7 +6,7 @@ on:
   pull_request:
     branches: [main, develop]
   schedule:
-    - cron: '0 2 * * *'  # Nightly E2E
+    - cron: '0 2 * * *'
 
 env:
   NODE_ENV: test
@@ -17,9 +17,6 @@ env:
   AUTO_SETUP: 'true'
 
 jobs:
-  # ─────────────────────────────────────────────
-  # LINT & FORMAT
-  # ─────────────────────────────────────────────
   lint:
     name: Lint & Format
     runs-on: ubuntu-latest
@@ -33,9 +30,6 @@ jobs:
       - run: npm run lint
       - run: npm run format:check
 
-  # ─────────────────────────────────────────────
-  # UNIT TESTS (Vitest) - Fast, isolated
-  # ─────────────────────────────────────────────
   unit-test:
     name: Unit Tests (Vitest)
     runs-on: ubuntu-latest
@@ -51,10 +45,8 @@ jobs:
         with:
           files: ./coverage/lcov.info
           fail_ci_if_error: true
+          flags: unit
 
-  # ─────────────────────────────────────────────
-  # INTEGRATION TESTS (Vitest + Test DB)
-  # ─────────────────────────────────────────────
   integration-test:
     name: Integration Tests (Vitest)
     runs-on: ubuntu-latest
@@ -69,10 +61,8 @@ jobs:
       - uses: codecov/codecov-action@v4
         with:
           files: ./coverage-integration/lcov.info
+          flags: integration
 
-  # ─────────────────────────────────────────────
-  # BUILD FRONTENDS
-  # ─────────────────────────────────────────────
   build-frontends:
     name: Build Frontends
     runs-on: ubuntu-latest
@@ -96,9 +86,6 @@ jobs:
           path: frontend-hrms/dist/
           retention-days: 1
 
-  # ─────────────────────────────────────────────
-  # E2E TESTS (Playwright)
-  # ─────────────────────────────────────────────
   e2e-test:
     name: E2E Tests (Playwright)
     runs-on: ubuntu-latest
@@ -119,7 +106,7 @@ jobs:
           name: hrms-dist
           path: frontend-hrms/dist
       - run: npm ci
-      - run: npm run test:e2e:install
+      - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
         env:
           PLAYWRIGHT_BASE_URL: http://localhost:5000
@@ -136,9 +123,6 @@ jobs:
           path: tests/e2e/test-results/traces/
           retention-days: 3
 
-  # ─────────────────────────────────────────────
-  # SECURITY AUDIT
-  # ─────────────────────────────────────────────
   security-audit:
     name: Security Audit
     runs-on: ubuntu-latest
@@ -155,9 +139,6 @@ jobs:
           languages: javascript
       - uses: github/codeql-action/analyze@v3
 
-  # ─────────────────────────────────────────────
-  # DEPLOY STAGING
-  # ─────────────────────────────────────────────
   deploy-staging:
     name: Deploy to Staging (Render)
     runs-on: ubuntu-latest
