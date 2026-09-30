@@ -4,47 +4,167 @@ on:
   push:
     branches: [main, develop]
   pull_request:
-    branches: [main]
+    branches: [main, develop]
+  schedule:
+    - cron: '0 2 * * *'  # Nightly E2E
+
+env:
+  NODE_ENV: test
+  JWT_SECRET: test-jwt-secret-for-ci-only-32chars!!
+  JWT_REFRESH_SECRET: test-refresh-secret-for-ci-only-32chars
+  DB_DIALECT: sqlite
+  DB_STORAGE: ':memory:'
+  AUTO_SETUP: 'true'
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        node-version: [18, 20]
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Use Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ matrix.node-version }}
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run tests
-        run: npm test
-        env:
-          NODE_ENV: test
-          JWT_SECRET: test-jwt-secret-for-ci-only-32chars!!
-          JWT_REFRESH_SECRET: test-refresh-secret-for-ci-only-32chars
-
-      - name: Build POS frontend
-        run: cd frontend && npm ci && npm run build
-
-      - name: Build HRMS frontend
-        run: cd frontend-hrms && npm ci && npm run build
-
+  # ─────────────────────────────────────────────
+  # LINT & FORMAT
+  # ─────────────────────────────────────────────
   lint:
+    name: Lint & Format
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: '20'
           cache: 'npm'
       - run: npm ci
       - run: npm run lint
+      - run: npm run format:check
+
+  # ─────────────────────────────────────────────
+  # UNIT TESTS (Vitest) - Fast, isolated
+  # ─────────────────────────────────────────────
+  unit-test:
+    name: Unit Tests (Vitest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run test:unit -- --coverage
+      - uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage/lcov.info
+          fail_ci_if_error: true
+
+  # ─────────────────────────────────────────────
+  # INTEGRATION TESTS (Vitest + Test DB)
+  # ─────────────────────────────────────────────
+  integration-test:
+    name: Integration Tests (Vitest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run test:integration -- --coverage
+      - uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage-integration/lcov.info
+
+  # ─────────────────────────────────────────────
+  # BUILD FRONTENDS
+  # ─────────────────────────────────────────────
+  build-frontends:
+    name: Build Frontends
+    runs-on: ubuntu-latest
+    needs: [lint, unit-test]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pos-dist
+          path: frontend/dist/
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hrms-dist
+          path: frontend-hrms/dist/
+          retention-days: 1
+
+  # ─────────────────────────────────────────────
+  # E2E TESTS (Playwright)
+  # ─────────────────────────────────────────────
+  e2e-test:
+    name: E2E Tests (Playwright)
+    runs-on: ubuntu-latest
+    needs: [build-frontends]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - uses: actions/download-artifact@v4
+        with:
+          name: pos-dist
+          path: frontend/dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: hrms-dist
+          path: frontend-hrms/dist
+      - run: npm ci
+      - run: npm run test:e2e:install
+      - run: npm run test:e2e
+        env:
+          PLAYWRIGHT_BASE_URL: http://localhost:5000
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: tests/e2e/test-results/
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-traces
+          path: tests/e2e/test-results/traces/
+          retention-days: 3
+
+  # ─────────────────────────────────────────────
+  # SECURITY AUDIT
+  # ─────────────────────────────────────────────
+  security-audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm audit --audit-level=high
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: javascript
+      - uses: github/codeql-action/analyze@v3
+
+  # ─────────────────────────────────────────────
+  # DEPLOY STAGING
+  # ─────────────────────────────────────────────
+  deploy-staging:
+    name: Deploy to Staging (Render)
+    runs-on: ubuntu-latest
+    needs: [lint, unit-test, integration-test, build-frontends, e2e-test, security-audit]
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Trigger Render Deploy
+        run: |
+          curl -X POST "${{ secrets.RENDER_DEPLOY_HOOK_URL }}"

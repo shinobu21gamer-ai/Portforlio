@@ -1,0 +1,15 @@
+feat: M1 - Test infrastructure (Vitest + Playwright)
+
+- Install Vitest, Playwright, @faker-js/faker, msw, @vitest/coverage-v8
+- Create vitest.config.ts with unit + integration projects
+- Create playwright.config.ts with mobile + desktop projects
+- Scaffold tests/ folder structure (unit, integration, e2e)
+- Create factory system: User, Product, Employee, Sale, Payroll factories
+- Create test DB helper with Umzug migrations for in-memory SQLite
+- Create auth-helper, api-client, db-helper utilities
+- Create test seeder with scenarios (low stock, expired discount, etc.)
+- Update CI pipeline: lint -> unit -> integration -> build -> e2e -> security
+- Create infrastructure verification test (passes)
+- Update package.json with test scripts
+
+Infrastructure test passes: 6/6 tests pass (banker's rounding, VAT calc, faker, bcrypt, jwt)

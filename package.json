@@ -12,7 +12,20 @@
     "dev:hrms": "npm --prefix frontend-hrms run dev",
     "build": "npm --prefix frontend run build && npm --prefix frontend-hrms run build",
     "install:all": "npm install && npm --prefix frontend install && npm --prefix frontend-hrms install",
-    "install:prod": "npm install --omit=dev && npm --prefix frontend ci && npm --prefix frontend-hrms ci"
+    "install:prod": "npm install --omit=dev && npm --prefix frontend ci && npm --prefix frontend-hrms ci",
+    "test": "npm run test:unit && npm run test:integration",
+    "test:unit": "vitest run",
+    "test:unit:watch": "vitest",
+    "test:integration": "vitest run",
+    "test:integration:watch": "vitest",
+    "test:e2e": "playwright test",
+    "test:e2e:install": "playwright install --with-deps chromium",
+    "test:e2e:ui": "playwright test --ui",
+    "test:coverage": "vitest run --coverage",
+    "lint": "eslint src/**/*.js tests/**/*.ts",
+    "format": "prettier --write \"**/*.{js,ts,json,md}\"",
+    "format:check": "prettier --check \"**/*.{js,ts,json,md}\"",
+    "start:test": "NODE_ENV=test AUTO_SETUP=true node src/server.js"
   },
   "engines": {
     "node": ">=18.0.0"
@@ -41,5 +54,17 @@
   },
   "optionalDependencies": {
     "mysql2": "^3.11.0"
+  },
+  "devDependencies": {
+    "@faker-js/faker": "^10.6.0",
+    "@playwright/test": "^1.63.0",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@types/node": "^26.6.3",
+    "@vitest/coverage-v8": "^4.1.11",
+    "eslint": "^10.11.0",
+    "msw": "^2.15.0",
+    "prettier": "^3.9.9",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.11"
   }
 }
