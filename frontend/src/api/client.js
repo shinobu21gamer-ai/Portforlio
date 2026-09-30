@@ -25,7 +25,7 @@ const processQueue = (error, token = null) => {
 };
 
 client.interceptors.request.use((config) => {
-  const token = sessionStorage.getItem('token');
+  const token = localStorage.getItem('token');
   if (token && token !== 'null' && token !== '') {
     config.headers.Authorization = `Bearer ${token}`;
   }
@@ -49,14 +49,14 @@ client.interceptors.response.use(
       originalRequest._retry = true;
       isRefreshing = true;
 
-      const refreshToken = sessionStorage.getItem('refreshToken');
+      const refreshToken = localStorage.getItem('refreshToken');
       if (refreshToken && refreshToken !== 'null' && refreshToken !== '') {
         try {
           const res = await axios.post(`${API_URL}/auth/refresh-token`, { refreshToken });
           const { token: newToken, refreshToken: newRefreshToken } = res.data.data;
-          sessionStorage.setItem('token', newToken);
+          localStorage.setItem('token', newToken);
           if (newRefreshToken) {
-            sessionStorage.setItem('refreshToken', newRefreshToken);
+            localStorage.setItem('refreshToken', newRefreshToken);
           }
           try {
             useAuthStore.getState().updateTokens(newToken, newRefreshToken || null);
@@ -66,9 +66,9 @@ client.interceptors.response.use(
           return client(originalRequest);
         } catch (err) {
           processQueue(err, null);
-          sessionStorage.removeItem('token');
-          sessionStorage.removeItem('refreshToken');
-          sessionStorage.removeItem('user');
+          localStorage.removeItem('token');
+          localStorage.removeItem('refreshToken');
+          localStorage.removeItem('user');
           if (window.top !== window) {
             window.parent.postMessage({ type: 'pos-auth-failed', error: 'Session expired' }, HRMS_ORIGIN);
           } else {
@@ -79,9 +79,9 @@ client.interceptors.response.use(
         }
       } else {
         isRefreshing = false;
-        sessionStorage.removeItem('token');
-        sessionStorage.removeItem('refreshToken');
-        sessionStorage.removeItem('user');
+        localStorage.removeItem('token');
+        localStorage.removeItem('refreshToken');
+        localStorage.removeItem('user');
         if (window.top !== window) {
           window.parent.postMessage({ type: 'pos-auth-failed', error: 'No session' }, HRMS_ORIGIN);
         } else {

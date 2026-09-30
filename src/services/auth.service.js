@@ -34,14 +34,40 @@ class AuthService {
     }
   }
 
-  async blacklistToken(token) {
+  async blacklistToken(token, userId = null) {
     if (!token || token === 'null' || token === '') return;
     try {
       const decoded = jwt.decode(token);
       const expiresAt = decoded && decoded.exp ? new Date(decoded.exp * 1000) : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-      await BlacklistedToken.findOrCreate({ where: { token }, defaults: { token, expiresAt } });
+      await BlacklistedToken.findOrCreate({ where: { token }, defaults: { token, expiresAt, userId } });
     } catch (e) {
       logger.error('Failed to blacklist token:', e);
+    }
+  }
+
+  async claimAndBlacklistToken(token) {
+    if (!token || token === 'null' || token === '') return false;
+    try {
+      const decoded = jwt.decode(token);
+      if (!decoded || !decoded.exp) return false;
+      const expiresAt = new Date(decoded.exp * 1000);
+      const [blacklisted, created] = await BlacklistedToken.findOrCreate({
+        where: { token },
+        defaults: { token, expiresAt },
+      });
+      return created;
+    } catch (e) {
+      logger.error('Failed to claim and blacklist token:', e);
+      return false;
+    }
+  }
+
+  async blacklistAllUserTokens(userId) {
+    try {
+      const { BlacklistedToken } = require('../models');
+      await BlacklistedToken.destroy({ where: { userId } });
+    } catch (e) {
+      logger.error('Failed to blacklist all user tokens:', e.message);
     }
   }
 
@@ -92,8 +118,24 @@ class AuthService {
 
     if (!user.isActive) throw ApiError.unauthorized('Account has been deactivated');
 
+    if (user.lockedUntil && user.lockedUntil > new Date()) {
+      throw ApiError.unauthorized('Account temporarily locked due to too many failed attempts. Please try again later.');
+    }
+
     const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) throw ApiError.unauthorized('Invalid email or password');
+    if (!isMatch) {
+      const attempts = (user.failedLoginAttempts || 0) + 1;
+      const updates = { failedLoginAttempts: attempts };
+      if (attempts >= 5) {
+        updates.lockedUntil = new Date(Date.now() + 15 * 60 * 1000);
+      }
+      await user.update(updates);
+      throw ApiError.unauthorized('Invalid email or password');
+    }
+
+    await user.update({ failedLoginAttempts: 0, lockedUntil: null });
+
+    await this.blacklistAllUserTokens(user.id);
 
     await user.update({ lastLogin: new Date() });
 
@@ -157,10 +199,6 @@ class AuthService {
       });
     } catch (err) {
       logger.error('Failed to send reset email:', err.message);
-    }
-
-    if (process.env.NODE_ENV !== 'production') {
-      result.resetToken = resetToken;
     }
 
     return result;
@@ -229,14 +267,12 @@ class AuthService {
     try {
       const decoded = this.verifyRefreshToken(refreshToken);
 
-      const isBlacklisted = await this.isTokenBlacklisted(refreshToken);
-      if (isBlacklisted) throw ApiError.unauthorized('Refresh token has been revoked');
+      const claimed = await this.claimAndBlacklistToken(refreshToken);
+      if (!claimed) throw ApiError.unauthorized('Refresh token has been revoked or already used');
 
       const user = await User.findByPk(decoded.id);
       if (!user) throw ApiError.unauthorized('User not found');
       if (!user.isActive) throw ApiError.unauthorized('Account has been deactivated');
-
-      await this.blacklistToken(refreshToken);
 
       const token = this.generateToken(user.id);
       const newRefreshToken = this.generateRefreshToken(user.id);
@@ -255,9 +291,9 @@ class AuthService {
     }
   }
 
-  async logout(token, refreshToken) {
-    if (token && token !== 'null' && token !== '') await this.blacklistToken(token);
-    if (refreshToken && refreshToken !== 'null' && refreshToken !== '') await this.blacklistToken(refreshToken);
+  async logout(token, refreshToken, userId = null) {
+    if (token && token !== 'null' && token !== '') await this.blacklistToken(token, userId);
+    if (refreshToken && refreshToken !== 'null' && refreshToken !== '') await this.blacklistToken(refreshToken, userId);
     return { message: 'Logged out successfully' };
   }
 }

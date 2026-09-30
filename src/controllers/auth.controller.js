@@ -14,6 +14,21 @@ class AuthController {
   async login(req, res, next) {
     try {
       const data = await authService.login(req.body.email, req.body.password);
+      const isProd = process.env.NODE_ENV === 'production';
+      res.cookie('token', data.token, {
+        httpOnly: true,
+        secure: isProd,
+        sameSite: isProd ? 'strict' : 'lax',
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+      });
+      if (data.refreshToken) {
+        res.cookie('refreshToken', data.refreshToken, {
+          httpOnly: true,
+          secure: isProd,
+          sameSite: isProd ? 'strict' : 'lax',
+          maxAge: 30 * 24 * 60 * 60 * 1000,
+        });
+      }
       sendSuccess(res, data, 'Login successful');
     } catch (error) {
       next(error);
@@ -80,8 +95,25 @@ class AuthController {
       const token = authHeader ? authHeader.replace('Bearer ', '') : null;
       let refreshToken = req.body?.refreshToken || null;
       if (refreshToken === 'null' || refreshToken === '') refreshToken = null;
-      await authService.logout(token, refreshToken);
+      await authService.logout(token, refreshToken, req.user?.id);
+      res.clearCookie('token');
+      res.clearCookie('refreshToken');
       sendSuccess(res, null, 'Logged out successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async csrfToken(req, res, next) {
+    try {
+      const csrfToken = require('crypto').randomBytes(32).toString('hex');
+      res.cookie('csrf_token', csrfToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+        maxAge: 24 * 60 * 60 * 1000,
+      });
+      sendSuccess(res, { csrfToken }, 'CSRF token generated');
     } catch (error) {
       next(error);
     }

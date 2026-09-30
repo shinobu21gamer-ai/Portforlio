@@ -9,11 +9,36 @@ const isProd = process.env.NODE_ENV === 'production';
 
 const errors = [];
 
+const fs = require('fs');
+const path = require('path');
+
+const getOrCreateDevSecret = (secretName, envVar) => {
+  if (process.env[envVar]) return process.env[envVar];
+  if (!isDev) return null;
+  
+  const secretFile = path.resolve(__dirname, '..', '..', '.dev-secrets.json');
+  let secrets = {};
+  try {
+    if (fs.existsSync(secretFile)) {
+      secrets = JSON.parse(fs.readFileSync(secretFile, 'utf8'));
+    }
+  } catch { /* ignore */ }
+  
+  if (!secrets[secretName]) {
+    secrets[secretName] = crypto.randomBytes(32).toString('hex');
+    try {
+      fs.writeFileSync(secretFile, JSON.stringify(secrets, null, 2));
+    } catch { /* ignore */ }
+  }
+  return secrets[secretName];
+};
+
 if (!process.env.JWT_SECRET) {
-  if (isDev) {
-    process.env.JWT_SECRET = 'dev-jwt-secret-' + crypto.randomBytes(16).toString('hex');
-    console.warn('[CONFIG] Using generated dev JWT_SECRET. Set JWT_SECRET in .env for production.');
-  } else {
+  const devSecret = getOrCreateDevSecret('jwt_secret', 'JWT_SECRET');
+  if (devSecret) {
+    process.env.JWT_SECRET = devSecret;
+    console.warn('[CONFIG] Using persistent dev JWT_SECRET from .dev-secrets.json');
+  } else if (isProd) {
     errors.push('JWT_SECRET is required in production');
   }
 } else if (isProd && /^your_|^change_me/.test(process.env.JWT_SECRET)) {
@@ -21,10 +46,11 @@ if (!process.env.JWT_SECRET) {
 }
 
 if (!process.env.JWT_REFRESH_SECRET) {
-  if (isDev) {
-    process.env.JWT_REFRESH_SECRET = 'dev-refresh-secret-' + crypto.randomBytes(16).toString('hex');
-    console.warn('[CONFIG] Using generated dev JWT_REFRESH_SECRET. Set JWT_REFRESH_SECRET in .env for production.');
-  } else {
+  const devSecret = getOrCreateDevSecret('jwt_refresh_secret', 'JWT_REFRESH_SECRET');
+  if (devSecret) {
+    process.env.JWT_REFRESH_SECRET = devSecret;
+    console.warn('[CONFIG] Using persistent dev JWT_REFRESH_SECRET from .dev-secrets.json');
+  } else if (isProd) {
     errors.push('JWT_REFRESH_SECRET is required in production');
   }
 } else if (isProd && /^your_|^change_me/.test(process.env.JWT_REFRESH_SECRET)) {

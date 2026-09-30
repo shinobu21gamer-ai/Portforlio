@@ -75,6 +75,16 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: true,
       field: 'password_reset_expires',
     },
+    failedLoginAttempts: {
+      type: DataTypes.INTEGER,
+      defaultValue: 0,
+      field: 'failed_login_attempts',
+    },
+    lockedUntil: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      field: 'locked_until',
+    },
   }, {
     tableName: 'users',
     underscored: true,

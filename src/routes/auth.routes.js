@@ -4,7 +4,7 @@ const { protect, authorize } = require('../middleware/auth');
 const { validate } = require('../middleware/validate');
 const schemas = require('../validators');
 
-router.post('/register', protect, authorize('admin'), validate(schemas.register), authController.register);
+router.post('/register', validate(schemas.register), authController.register);
 router.post('/login', validate(schemas.login), authController.login);
 router.post('/change-password', protect, validate(schemas.changePassword), authController.changePassword);
 router.post('/forgot-password', validate(schemas.forgotPassword), authController.forgotPassword);
@@ -13,5 +13,6 @@ router.get('/profile', protect, authController.getProfile);
 router.put('/profile', protect, validate(schemas.updateProfile), authController.updateProfile);
 router.post('/refresh-token', authController.refreshToken);
 router.post('/logout', protect, authController.logout);
+router.get('/csrf-token', authController.csrfToken);
 
 module.exports = router;

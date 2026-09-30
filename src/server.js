@@ -5,6 +5,7 @@ const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
 const path = require('path');
 const fs = require('fs');
+const cookieParser = require('cookie-parser');
 const swaggerUi = require('swagger-ui-express');
 const cron = require('node-cron');
 
@@ -25,14 +26,17 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'"],
       imgSrc: ["'self'", 'data:', 'blob:'],
       fontSrc: ["'self'"],
+      connectSrc: ["'self'"],
+      frameAncestors: ["'none'"],
     },
   },
   crossOriginEmbedderPolicy: false,
-  frameguard: false,
+  frameguard: { action: 'deny' },
+  referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
 }));
 
 const allowedOrigins = (() => {
@@ -40,7 +44,8 @@ const allowedOrigins = (() => {
     ? process.env.CORS_ORIGIN.split(',').map((o) => o.trim()).filter(Boolean)
     : [];
   if (config.nodeEnv === 'production' && configured.length === 0) {
-    logger.warn('CORS_ORIGIN not set in production. Same-origin requests will still be allowed.');
+    logger.error('CORS_ORIGIN must be set in production for security');
+    throw new Error('CORS_ORIGIN must be set in production');
   }
   return configured.length > 0
     ? configured
@@ -63,6 +68,8 @@ app.use((req, res, next) => {
   })(req, res, next);
 });
 
+app.use(cookieParser());
+
 const server = require('http').createServer(app);
 const { Server } = require('socket.io');
 const io = new Server(server, { cors: { origin: true, credentials: true } });
@@ -84,8 +91,13 @@ const authLimiter = rateLimit({
   max: isDev ? 9999 : 20,
   message: { success: false, message: 'Too many attempts, please try again later.' },
 });
+const registerLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: isDev ? 100 : 5,
+  message: { success: false, message: 'Too many registration attempts. Please try again later.' },
+});
 app.use('/api/v1/auth/login', authLimiter);
-app.use('/api/v1/auth/register', authLimiter);
+app.use('/api/v1/auth/register', registerLimiter);
 app.use('/api/v1/auth/forgot-password', authLimiter);
 app.use('/api/v1/auth/reset-password', authLimiter);
 app.use('/api/v1/auth/refresh-token', rateLimit({ windowMs: 15 * 60 * 1000, max: isDev ? 9999 : 30, message: { success: false, message: 'Too many token refresh attempts.' } }));
