@@ -466,34 +466,36 @@ class PayrollService {
       period = `${months[month]} ${year}`;
     }
 
-    const existing = await Payroll.findOne({ where: { period } });
-    if (existing) throw ApiError.badRequest(`Payroll for ${period} already exists`);
-
-    const empWhere = { status: 'active' };
-    if (data.departmentId) empWhere.departmentId = data.departmentId;
-    const employees = await Employee.findAll({ where: empWhere });
-    if (employees.length === 0) throw ApiError.badRequest('No active employees found');
-
-    const attendanceRecords = await Attendance.findAll({
-      where: { date: { [Op.between]: [startDate, endDate] } },
-    });
-
-    const attendanceByEmployee = gatherAttendance(attendanceRecords, startDate, endDate);
-
-    let totalWorkingDays = 0;
-    const d = new Date(startDate + 'T00:00:00');
-    const endD = new Date(endDate + 'T00:00:00');
-    while (d <= endD) {
-      const day = d.getDay();
-      if (day !== 0 && day !== 6) totalWorkingDays++;
-      d.setDate(d.getDate() + 1);
-    }
-
-    const isDecember = month === 12;
-    const periodWorkingDays = isSemiMonthly => isSemiMonthly ? Math.ceil(totalWorkingDays / 2) : totalWorkingDays;
-
-    const t = await require('../../models').sequelize.transaction();
+    const t = await sequelize.transaction({ isolationLevel: 'REPEATABLE READ' });
     try {
+      const existing = await Payroll.findOne({ where: { period }, transaction: t, lock: t.LOCK.UPDATE });
+      if (existing) throw ApiError.badRequest(`Payroll for ${period} already exists`);
+
+      const empWhere = { status: 'active' };
+      if (data.departmentId) empWhere.departmentId = data.departmentId;
+      const employees = await Employee.findAll({ where: empWhere, transaction: t, lock: t.LOCK.UPDATE });
+      if (employees.length === 0) throw ApiError.badRequest('No active employees found');
+
+      const attendanceRecords = await Attendance.findAll({
+        where: { date: { [Op.between]: [startDate, endDate] } },
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
+
+      const attendanceByEmployee = gatherAttendance(attendanceRecords, startDate, endDate);
+
+      let totalWorkingDays = 0;
+      const d = new Date(startDate + 'T00:00:00');
+      const endD = new Date(endDate + 'T00:00:00');
+      while (d <= endD) {
+        const day = d.getDay();
+        if (day !== 0 && day !== 6) totalWorkingDays++;
+        d.setDate(d.getDate() + 1);
+      }
+
+      const isDecember = month === 12;
+      const periodWorkingDays = isSemiMonthly => isSemiMonthly ? Math.ceil(totalWorkingDays / 2) : totalWorkingDays;
+
       const payroll = await Payroll.create({
         period, startDate, endDate, status: 'draft',
       }, { transaction: t });

@@ -1,5 +1,5 @@
 const { Op } = require('sequelize');
-const { Attendance, Employee, Department, ShiftAssignment, Schedule } = require('../../models');
+const { Attendance, Employee, Department, ShiftAssignment, Schedule, sequelize } = require('../../models');
 const ApiError = require('../../utils/ApiError');
 const { getPagination, getPaginationMeta, escapeLike, sanitizeObject } = require('../../utils/helpers');
 
@@ -112,107 +112,121 @@ class AttendanceService {
   }
 
   async clockIn(data) {
-    const emp = await Employee.findByPk(data.employeeId);
-    if (!emp) throw ApiError.notFound('Employee not found');
-    if (emp.status !== 'active') throw ApiError.badRequest('Employee is not active');
+    const t = await sequelize.transaction({ isolationLevel: 'REPEATABLE READ' });
+    try {
+      const emp = await Employee.findByPk(data.employeeId, { transaction: t, lock: t.LOCK.UPDATE });
+      if (!emp) throw ApiError.notFound('Employee not found');
+      if (emp.status !== 'active') throw ApiError.badRequest('Employee is not active');
 
-    const today = getLocalDate();
-    const existing = await Attendance.findOne({ where: { employeeId: data.employeeId, date: today } });
-    if (existing) throw ApiError.badRequest('Already clocked in today');
+      const today = getLocalDate();
+      const existing = await Attendance.findOne({ where: { employeeId: data.employeeId, date: today }, transaction: t, lock: t.LOCK.UPDATE });
+      if (existing) throw ApiError.badRequest('Already clocked in today');
 
-    const schedule = await this.getScheduleForEmployee(data.employeeId, today);
-    const now = new Date();
-    let isLate = false;
-    let lateMinutes = 0;
+      const schedule = await this.getScheduleForEmployee(data.employeeId, today);
+      const now = new Date();
+      let isLate = false;
+      let lateMinutes = 0;
 
-    if (schedule && schedule.startTime) {
-      const [startH, startM] = schedule.startTime.split(':').map(Number);
-      const clockHour = now.getHours();
-      const clockMin = now.getMinutes();
-      const scheduleMinutes = startH * 60 + startM + 5;
-      const clockMinutes = clockHour * 60 + clockMin;
-      if (clockMinutes > scheduleMinutes) {
-        isLate = true;
-        lateMinutes = clockMinutes - scheduleMinutes;
+      if (schedule && schedule.startTime) {
+        const [startH, startM] = schedule.startTime.split(':').map(Number);
+        const clockHour = now.getHours();
+        const clockMin = now.getMinutes();
+        const scheduleMinutes = startH * 60 + startM + 5;
+        const clockMinutes = clockHour * 60 + clockMin;
+        if (clockMinutes > scheduleMinutes) {
+          isLate = true;
+          lateMinutes = clockMinutes - scheduleMinutes;
+        }
+      } else {
+        if (now.getHours() >= 9) { isLate = true; lateMinutes = (now.getHours() - 9) * 60 + now.getMinutes(); }
       }
-    } else {
-      if (now.getHours() >= 9) { isLate = true; lateMinutes = (now.getHours() - 9) * 60 + now.getMinutes(); }
+
+      const holidayType = getHolidayType(today);
+      const isRestDay = new Date(today + 'T00:00:00').getDay() === 0;
+
+      const record = await Attendance.create({
+        employeeId: data.employeeId,
+        date: today,
+        clockIn: now,
+        status: isLate ? 'late' : 'present',
+        lateMinutes,
+        holidayType,
+        isRestDay,
+        notes: data.notes || null,
+      }, { transaction: t });
+
+      await t.commit();
+      return record;
+    } catch (error) {
+      await t.rollback();
+      throw error;
     }
-
-    const holidayType = getHolidayType(today);
-    const isRestDay = new Date(today + 'T00:00:00').getDay() === 0;
-
-    const record = await Attendance.create({
-      employeeId: data.employeeId,
-      date: today,
-      clockIn: now,
-      status: isLate ? 'late' : 'present',
-      lateMinutes,
-      holidayType,
-      isRestDay,
-      notes: data.notes || null,
-    });
-
-    return record;
   }
 
   async clockOut(data) {
-    const emp = await Employee.findByPk(data.employeeId);
-    if (!emp) throw ApiError.notFound('Employee not found');
+    const t = await sequelize.transaction({ isolationLevel: 'REPEATABLE READ' });
+    try {
+      const emp = await Employee.findByPk(data.employeeId, { transaction: t, lock: t.LOCK.UPDATE });
+      if (!emp) throw ApiError.notFound('Employee not found');
 
-    const today = getLocalDate();
-    const record = await Attendance.findOne({ where: { employeeId: data.employeeId, date: today } });
-    if (!record) throw ApiError.badRequest('No clock-in record for today');
-    if (record.clockOut) throw ApiError.badRequest('Already clocked out today');
+      const today = getLocalDate();
+      const record = await Attendance.findOne({ where: { employeeId: data.employeeId, date: today }, transaction: t, lock: t.LOCK.UPDATE });
+      if (!record) throw ApiError.badRequest('No clock-in record for today');
+      if (record.clockOut) throw ApiError.badRequest('Already clocked out today');
 
-    const now = new Date();
-    const clockInTime = new Date(record.clockIn);
+      const now = new Date();
+      const clockInTime = new Date(record.clockIn);
 
-    // Handle overnight shifts: if clockOut is next day, adjust
-    let totalHoursRaw = (now - clockInTime) / (1000 * 60 * 60);
-    if (totalHoursRaw < 0) totalHoursRaw += 24;
+      // Handle overnight shifts: if clockOut is next day, adjust
+      let totalHoursRaw = (now - clockInTime) / (1000 * 60 * 60);
+      if (totalHoursRaw < 0) totalHoursRaw += 24;
 
-    // Deduct meal break (60 min for shifts >= 6 hours)
-    const mealBreakMinutes = totalHoursRaw >= 6 ? (record.mealBreakMinutes || 60) : 0;
-    const totalHours = parseFloat(Math.max(0, totalHoursRaw - mealBreakMinutes / 60).toFixed(2));
+      // Deduct meal break (60 min for shifts >= 6 hours)
+      const mealBreakMinutes = totalHoursRaw >= 6 ? (record.mealBreakMinutes || 60) : 0;
+      const totalHours = parseFloat(Math.max(0, totalHoursRaw - mealBreakMinutes / 60).toFixed(2));
 
-    let status = record.status;
-    if (totalHours < 4) status = 'half-day';
-    if (totalHours < 4 && record.status !== 'late') status = 'half-day';
+      let status = record.status;
+      if (totalHours < 4) status = 'half-day';
+      if (totalHours < 4 && record.status !== 'late') status = 'half-day';
 
-    // Overtime calculation
-    const schedule = await this.getScheduleForEmployee(data.employeeId, today);
-    let overtime = 0;
-    if (schedule && schedule.startTime && schedule.endTime) {
-      const [startH, startM] = schedule.startTime.split(':').map(Number);
-      const [endH, endM] = schedule.endTime.split(':').map(Number);
-      const shiftDecimal = (endH + endM / 60) - (startH + startM / 60);
-      const shiftHours = shiftDecimal > 0 ? shiftDecimal : 24 + shiftDecimal;
-      if (totalHours > shiftHours) overtime = parseFloat((totalHours - shiftHours).toFixed(2));
-    } else if (totalHours > 8) {
-      overtime = parseFloat((totalHours - 8).toFixed(2));
+      // Overtime calculation
+      const schedule = await this.getScheduleForEmployee(data.employeeId, today);
+      let overtime = 0;
+      if (schedule && schedule.startTime && schedule.endTime) {
+        const [startH, startM] = schedule.startTime.split(':').map(Number);
+        const [endH, endM] = schedule.endTime.split(':').map(Number);
+        const shiftDecimal = (endH + endM / 60) - (startH + startM / 60);
+        const shiftHours = shiftDecimal > 0 ? shiftDecimal : 24 + shiftDecimal;
+        if (totalHours > shiftHours) overtime = parseFloat((totalHours - shiftHours).toFixed(2));
+      } else if (totalHours > 8) {
+        overtime = parseFloat((totalHours - 8).toFixed(2));
+      }
+
+      // Night shift hours
+      const nightShiftHours = computeNightShiftHours(record.clockIn, now);
+
+      // Holiday and rest day pay
+      const hourlyRate = (parseFloat(emp.salary) / (emp.paymentFrequency === 'semi-monthly' ? 11 : 22)) / 8;
+      const holidayPay = computeHolidayPay(record.holidayType, totalHours, hourlyRate);
+      const restDayPay = record.isRestDay ? computeRestDayPay(totalHours, hourlyRate) : 0;
+
+      await record.update({
+        clockOut: now,
+        totalHours,
+        overtime,
+        nightShiftHours,
+        holidayPay: parseFloat(holidayPay.toFixed(2)),
+        restDayPay: parseFloat(restDayPay.toFixed(2)),
+        mealBreakMinutes,
+        status,
+      }, { transaction: t });
+
+      await t.commit();
+      return record.reload();
+    } catch (error) {
+      await t.rollback();
+      throw error;
     }
-
-    // Night shift hours
-    const nightShiftHours = computeNightShiftHours(record.clockIn, now);
-
-    // Holiday and rest day pay
-    const hourlyRate = (parseFloat(emp.salary) / (emp.paymentFrequency === 'semi-monthly' ? 11 : 22)) / 8;
-    const holidayPay = computeHolidayPay(record.holidayType, totalHours, hourlyRate);
-    const restDayPay = record.isRestDay ? computeRestDayPay(totalHours, hourlyRate) : 0;
-
-    await record.update({
-      clockOut: now,
-      totalHours,
-      overtime,
-      nightShiftHours,
-      holidayPay: parseFloat(holidayPay.toFixed(2)),
-      restDayPay: parseFloat(restDayPay.toFixed(2)),
-      mealBreakMinutes,
-      status,
-    });
-
-    return record;
   }
 
   async create(data) {
@@ -243,52 +257,68 @@ class AttendanceService {
     const holidayType = sanitized.holidayType || getHolidayType(sanitized.date);
     const isRestDay = sanitized.isRestDay !== undefined ? sanitized.isRestDay : (new Date(sanitized.date + 'T00:00:00').getDay() === 0);
 
-    return Attendance.create({
-      ...sanitized,
-      totalHours,
-      nightShiftHours,
-      overtime,
-      mealBreakMinutes,
-      holidayType,
-      isRestDay,
-    });
+    const t = await sequelize.transaction({ isolationLevel: 'REPEATABLE READ' });
+    try {
+      const record = await Attendance.create({
+        ...sanitized,
+        totalHours,
+        nightShiftHours,
+        overtime,
+        mealBreakMinutes,
+        holidayType,
+        isRestDay,
+      }, { transaction: t });
+
+      await t.commit();
+      return record.reload();
+    } catch (error) {
+      await t.rollback();
+      throw error;
+    }
   }
 
   async update(id, data) {
-    const record = await Attendance.findByPk(id);
-    if (!record) throw ApiError.notFound('Attendance record not found');
+    const t = await sequelize.transaction({ isolationLevel: 'REPEATABLE READ' });
+    try {
+      const record = await Attendance.findByPk(id, { transaction: t, lock: t.LOCK.UPDATE });
+      if (!record) throw ApiError.notFound('Attendance record not found');
 
-    const updates = {};
-    if (data.clockIn !== undefined) updates.clockIn = data.clockIn;
-    if (data.clockOut !== undefined) updates.clockOut = data.clockOut;
-    if (data.status !== undefined) updates.status = data.status;
-    if (data.notes !== undefined) updates.notes = data.notes;
-    if (data.holidayType !== undefined) updates.holidayType = data.holidayType;
-    if (data.isRestDay !== undefined) updates.isRestDay = data.isRestDay;
-    if (data.isOvertimeApproved !== undefined) updates.isOvertimeApproved = data.isOvertimeApproved;
+      const updates = {};
+      if (data.clockIn !== undefined) updates.clockIn = data.clockIn;
+      if (data.clockOut !== undefined) updates.clockOut = data.clockOut;
+      if (data.status !== undefined) updates.status = data.status;
+      if (data.notes !== undefined) updates.notes = data.notes;
+      if (data.holidayType !== undefined) updates.holidayType = data.holidayType;
+      if (data.isRestDay !== undefined) updates.isRestDay = data.isRestDay;
+      if (data.isOvertimeApproved !== undefined) updates.isOvertimeApproved = data.isOvertimeApproved;
 
-    if (updates.clockIn && updates.clockOut) {
-      let raw = (new Date(updates.clockOut) - new Date(updates.clockIn)) / (1000 * 60 * 60);
-      if (raw < 0) raw += 24;
-      updates.mealBreakMinutes = raw >= 6 ? 60 : 0;
-      updates.totalHours = parseFloat(Math.max(0, raw - updates.mealBreakMinutes / 60).toFixed(2));
-      updates.nightShiftHours = computeNightShiftHours(updates.clockIn, updates.clockOut);
-      updates.overtime = updates.totalHours > 8 ? parseFloat((updates.totalHours - 8).toFixed(2)) : 0;
-    } else if (updates.clockIn || updates.clockOut) {
-      const ci = updates.clockIn || record.clockIn;
-      const co = updates.clockOut || record.clockOut;
-      if (ci && co) {
-        let raw = (new Date(co) - new Date(ci)) / (1000 * 60 * 60);
+      if (updates.clockIn && updates.clockOut) {
+        let raw = (new Date(updates.clockOut) - new Date(updates.clockIn)) / (1000 * 60 * 60);
         if (raw < 0) raw += 24;
         updates.mealBreakMinutes = raw >= 6 ? 60 : 0;
         updates.totalHours = parseFloat(Math.max(0, raw - updates.mealBreakMinutes / 60).toFixed(2));
-        updates.nightShiftHours = computeNightShiftHours(ci, co);
+        updates.nightShiftHours = computeNightShiftHours(updates.clockIn, updates.clockOut);
         updates.overtime = updates.totalHours > 8 ? parseFloat((updates.totalHours - 8).toFixed(2)) : 0;
+      } else if (updates.clockIn || updates.clockOut) {
+        const ci = updates.clockIn || record.clockIn;
+        const co = updates.clockOut || record.clockOut;
+        if (ci && co) {
+          let raw = (new Date(co) - new Date(ci)) / (1000 * 60 * 60);
+          if (raw < 0) raw += 24;
+          updates.mealBreakMinutes = raw >= 6 ? 60 : 0;
+          updates.totalHours = parseFloat(Math.max(0, raw - updates.mealBreakMinutes / 60).toFixed(2));
+          updates.nightShiftHours = computeNightShiftHours(ci, co);
+          updates.overtime = updates.totalHours > 8 ? parseFloat((updates.totalHours - 8).toFixed(2)) : 0;
+        }
       }
-    }
 
-    await record.update(updates);
-    return record.reload();
+      await record.update(updates, { transaction: t });
+      await t.commit();
+      return record.reload();
+    } catch (error) {
+      await t.rollback();
+      throw error;
+    }
   }
 
   async getTodaySummary() {

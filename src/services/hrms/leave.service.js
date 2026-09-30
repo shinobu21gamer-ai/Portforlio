@@ -150,10 +150,42 @@ class LeaveService {
           subject: `Leave Request Submitted — MiniMart POS`,
           html: leaveRequestEmail(emp.firstName || emp.email, sanitized.leaveType, 'submitted', sanitized.startDate, sanitized.endDate),
         }).catch(() => {});
-      }
-    } catch (e) { console.error('[EMAIL] Leave submission email failed:', e.message); }
+      } catch (e) { console.error('[EMAIL] Leave submission email failed:', e.message); }
 
     return leave;
+  }
+
+  async getLeaveBalanceLocked(employeeId, transaction) {
+    const emp = await Employee.findByPk(employeeId, { transaction, lock: true });
+    if (!emp) throw ApiError.notFound('Employee not found');
+
+    const year = new Date().getFullYear();
+    const startOfYear = `${year}-01-01`;
+    const endOfYear = `${year}-12-31`;
+
+    const usedLeaves = await LeaveRequest.findAll({
+      where: {
+        employeeId,
+        status: { [Op.in]: ['admin-approved'] },
+        startDate: { [Op.gte]: startOfYear },
+        endDate: { [Op.lte]: endOfYear },
+      },
+      attributes: ['leaveType', [sequelize.fn('SUM', sequelize.col('days')), 'totalDays']],
+      group: ['leaveType'],
+      transaction,
+    });
+
+    const balance = {};
+    for (const [type, max] of Object.entries(LEAVE_CREDITS)) {
+      const used = usedLeaves.find(u => u.leaveType === type);
+      balance[type] = {
+        total: max,
+        used: used ? parseInt(used.get('totalDays')) : 0,
+        remaining: max - (used ? parseInt(used.get('totalDays')) : 0),
+      };
+    }
+
+    return balance;
   }
 
   async hrReview(id, reviewedBy, remarks) {
@@ -206,17 +238,18 @@ class LeaveService {
     });
     if (overlapping) throw ApiError.badRequest('Leave overlaps with an already approved leave');
 
-    await leave.update({ status: 'admin-approved', approvedBy, approvedAt: new Date() });
-    await logActivity(approvedBy, 'leave-admin-approved', 'HRMS', { referenceType: 'LeaveRequest', referenceId: id, description: `Admin approved leave request #${id}` });
+    const t = await sequelize.transaction({ isolationLevel: 'REPEATABLE READ' });
+    try {
+      await leave.update({ status: 'admin-approved', approvedBy, approvedAt: new Date() }, { transaction: t });
+      await logActivity(approvedBy, 'leave-admin-approved', 'HRMS', { referenceType: 'LeaveRequest', referenceId: id, description: `Admin approved leave request #${id}` });
 
-    await sequelize.transaction(async (t) => {
       const start = new Date(leave.startDate);
       const end = new Date(leave.endDate);
       for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
         const dateStr = d.toISOString().split('T')[0];
         const dayOfWeek = d.getDay();
         if (dayOfWeek === 0 || dayOfWeek === 6) continue;
-        const existing = await Attendance.findOne({ where: { employeeId: leave.employeeId, date: dateStr } });
+        const existing = await Attendance.findOne({ where: { employeeId: leave.employeeId, date: dateStr }, transaction: t });
         if (!existing) {
           await Attendance.create({
             employeeId: leave.employeeId,
@@ -226,30 +259,35 @@ class LeaveService {
           }, { transaction: t });
         }
       }
-    });
 
-    const emp = await Employee.findByPk(leave.employeeId);
-    if (emp) {
-      await Notification.create({
-        userId: emp.userId || null,
-        type: 'hrms_leave_approved',
-        title: 'Leave Request Approved',
-        message: `Your ${leave.leaveType} leave request from ${leave.startDate} to ${leave.endDate} has been approved.`,
-      });
-      try {
-        const { sendEmail } = require('../../utils/mailer');
-        const { leaveStatusEmail } = require('../../utils/emailTemplates');
-        if (emp.email) {
-          sendEmail({
-            to: emp.email,
-            subject: `Leave Request Approved - ${process.env.APP_NAME || 'MiniMart POS'}`,
-            html: leaveStatusEmail(emp.firstName || emp.email, leave.leaveType, 'approved', leave.startDate, leave.endDate),
-          }).catch(() => {});
-        }
-      } catch (err) { /* email errors should not block leave approval */ }
+      await t.commit();
+
+      const emp = await Employee.findByPk(leave.employeeId);
+      if (emp) {
+        await Notification.create({
+          userId: emp.userId || null,
+          type: 'hrms_leave_approved',
+          title: 'Leave Request Approved',
+          message: `Your ${leave.leaveType} leave request from ${leave.startDate} to ${leave.endDate} has been approved.`,
+        });
+        try {
+          const { sendEmail } = require('../../utils/mailer');
+          const { leaveStatusEmail } = require('../../utils/emailTemplates');
+          if (emp.email) {
+            sendEmail({
+              to: emp.email,
+              subject: `Leave Request Approved - ${process.env.APP_NAME || 'MiniMart POS'}`,
+              html: leaveStatusEmail(emp.firstName || emp.email, leave.leaveType, 'approved', leave.startDate, leave.endDate),
+            }).catch(() => {});
+          }
+        } catch (err) { /* email errors should not block leave approval */ }
+      }
+
+      return this.getById(id);
+    } catch (error) {
+      await t.rollback();
+      throw error;
     }
-
-    return this.getById(id);
   }
 
   async adminReject(id, approvedBy, remarks) {
@@ -258,37 +296,41 @@ class LeaveService {
     if (leave.status !== 'hr-reviewed') throw ApiError.badRequest('Only HR-reviewed leaves can be rejected');
     await leave.update({ status: 'rejected', approvedBy, approvedAt: new Date(), remarks: remarks || leave.remarks });
 
-    await sequelize.transaction(async (t) => {
+    const t = await sequelize.transaction({ isolationLevel: 'REPEATABLE READ' });
+    try {
       const start = new Date(leave.startDate);
       const end = new Date(leave.endDate);
       for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
         const dateStr = d.toISOString().split('T')[0];
         await Attendance.destroy({ where: { employeeId: leave.employeeId, date: dateStr, status: 'on-leave' }, transaction: t });
       }
-    });
+      await t.commit();
 
-    const emp = await Employee.findByPk(leave.employeeId);
-    if (emp) {
-      await Notification.create({
-        userId: emp.userId || null,
-        type: 'hrms_leave_rejected',
-        title: 'Leave Request Rejected',
-        message: `Your ${leave.leaveType} leave request from ${leave.startDate} to ${leave.endDate} has been rejected.`,
-      });
-      try {
-        if (emp.email) {
-          const { sendEmail } = require('../../utils/mailer');
-          const { leaveRequestEmail } = require('../../utils/emailTemplates');
-          await sendEmail({
-            to: emp.email,
-            subject: `Leave Request Rejected — MiniMart POS`,
-            html: leaveRequestEmail(emp.firstName || emp.email, leave.leaveType, 'rejected', leave.startDate, leave.endDate),
-          }).catch(() => {});
-        }
-      } catch (e) { console.error('[EMAIL] Leave reject email failed:', e.message); }
+      const emp = await Employee.findByPk(leave.employeeId);
+      if (emp) {
+        await Notification.create({
+          userId: emp.userId || null,
+          type: 'hrms_leave_rejected',
+          title: 'Leave Request Rejected',
+          message: `Your ${leave.leaveType} leave request from ${leave.startDate} to ${leave.endDate} has been rejected.`,
+        });
+        try {
+          if (emp.email) {
+            const { sendEmail } = require('../../utils/mailer');
+            const { leaveRequestEmail } = require('../../utils/emailTemplates');
+            await sendEmail({
+              to: emp.email,
+              subject: `Leave Request Rejected — MiniMart POS`,
+              html: leaveRequestEmail(emp.firstName || emp.email, leave.leaveType, 'rejected', leave.startDate, leave.endDate),
+            }).catch(() => {});
+          } catch (e) { console.error('[EMAIL] Leave reject email failed:', e.message); }
+      }
+
+      return this.getById(id);
+    } catch (error) {
+      await t.rollback();
+      throw error;
     }
-
-    return this.getById(id);
   }
 
   async cancel(id, userId) {
