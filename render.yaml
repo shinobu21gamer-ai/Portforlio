@@ -6,7 +6,7 @@ services:
     region: oregon
     rootDir: .
     buildCommand: |
-      npm ci --omit=dev
+      npm ci
       npm --prefix frontend ci && npm --prefix frontend run build
       npm --prefix frontend-hrms ci && npm --prefix frontend-hrms run build
     startCommand: node src/server.js
