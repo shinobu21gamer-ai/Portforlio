@@ -260,53 +260,48 @@ const scheduleTokenCleanup = () => {
 // ─── Start Server ─────────────────────────────────────────
 let srv;
 
-const startServer = async () => {
+const runAutoSetup = async () => {
   try {
-    await connectDB();
+    const { Role, User, Category, ExpenseCategory, Product, Customer, Supplier, Department, Position, Schedule, Discount, Permission, Employee, Branch } = require('./models');
+    const { sequelize: db } = require('./config/database');
 
-    const shouldAutoSetup = config.nodeEnv === 'development' || process.env.AUTO_SETUP === 'true';
-    if (shouldAutoSetup) {
-      const { Role, User, Category, ExpenseCategory, Product, Customer, Supplier, Department, Position, Schedule, Discount, Permission, Employee, Branch } = require('./models');
-      const { sequelize: db } = require('./config/database');
-
-      const isSQLite = (process.env.DB_DIALECT || 'mysql') === 'sqlite';
-      const safeAddColumn = async (table, column, type) => {
-        try {
-          if (isSQLite) {
-            const [results] = await db.query(`PRAGMA table_info(${table})`);
-            const colNames = results.map(c => c.name);
-            if (!colNames.includes(column)) {
-              await db.query(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
-              logger.info(`Added column ${table}.${column}`);
-            }
-          } else {
-            // MySQL: check information_schema
-            const [results] = await db.query(
-              `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = ? AND COLUMN_NAME = ?`,
-              [table, column]
-            );
-            if (results.length === 0) {
-              await db.query(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
-              logger.info(`Added column ${table}.${column}`);
-            }
+    const isSQLite = (process.env.DB_DIALECT || 'mysql') === 'sqlite';
+    const safeAddColumn = async (table, column, type) => {
+      try {
+        if (isSQLite) {
+          const [results] = await db.query(`PRAGMA table_info(${table})`);
+          const colNames = results.map(c => c.name);
+          if (!colNames.includes(column)) {
+            await db.query(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+            logger.info(`Added column ${table}.${column}`);
           }
-        } catch (e) {
-          logger.info(`Column ${table}.${column} already exists or skip: ${e.message}`);
+        } else {
+          const [results] = await db.query(
+            `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = ? AND COLUMN_NAME = ?`,
+            [table, column]
+          );
+          if (results.length === 0) {
+            await db.query(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+            logger.info(`Added column ${table}.${column}`);
+          }
         }
-      };
+      } catch (e) {
+        logger.info(`Column ${table}.${column} already exists or skip: ${e.message}`);
+      }
+    };
 
-      await safeAddColumn('users', 'branch_id', 'INTEGER');
-      await safeAddColumn('users', 'reports_to_id', 'INTEGER');
-      await safeAddColumn('products', 'branch_id', 'INTEGER');
-      await safeAddColumn('products', 'supplier_id', 'INTEGER');
-      await safeAddColumn('sales', 'branch_id', 'INTEGER');
-      await safeAddColumn('attendances', 'night_shift_hours', "DECIMAL(5,2) DEFAULT 0");
-      await safeAddColumn('attendances', 'meal_break_minutes', "INTEGER DEFAULT 60");
-      await safeAddColumn('attendances', 'late_minutes', "INTEGER DEFAULT 0");
-      await safeAddColumn('attendances', 'is_rest_day', "BOOLEAN DEFAULT 0");
-      await safeAddColumn('attendances', 'holiday_type', "VARCHAR(20) DEFAULT 'none'");
-      await safeAddColumn('attendances', 'is_overtime_approved', "BOOLEAN DEFAULT 0");
-      await safeAddColumn('job_postings', 'closing_date', 'DATE');
+    await safeAddColumn('users', 'branch_id', 'INTEGER');
+    await safeAddColumn('users', 'reports_to_id', 'INTEGER');
+    await safeAddColumn('products', 'branch_id', 'INTEGER');
+    await safeAddColumn('products', 'supplier_id', 'INTEGER');
+    await safeAddColumn('sales', 'branch_id', 'INTEGER');
+    await safeAddColumn('attendances', 'night_shift_hours', "DECIMAL(5,2) DEFAULT 0");
+    await safeAddColumn('attendances', 'meal_break_minutes', "INTEGER DEFAULT 60");
+    await safeAddColumn('attendances', 'late_minutes', "INTEGER DEFAULT 0");
+    await safeAddColumn('attendances', 'is_rest_day', "BOOLEAN DEFAULT 0");
+    await safeAddColumn('attendances', 'holiday_type', "VARCHAR(20) DEFAULT 'none'");
+    await safeAddColumn('attendances', 'is_overtime_approved', "BOOLEAN DEFAULT 0");
+    await safeAddColumn('job_postings', 'closing_date', 'DATE');
       await safeAddColumn('job_postings', 'location', 'VARCHAR(100)');
       await safeAddColumn('suppliers', 'mobile', 'VARCHAR(20)');
       await safeAddColumn('suppliers', 'city', 'VARCHAR(100)');
@@ -699,9 +694,22 @@ const startServer = async () => {
       logger.info('Discounts seeded');
 
       logger.info('All seed data ready');
+    } catch (error) {
+      logger.error('Auto-setup failed:', error.message);
     }
+  };
 
-    scheduleLowStockCheck();
+  const startServer = async () => {
+    try {
+      await connectDB();
+
+      const shouldAutoSetup = config.nodeEnv === 'development' || process.env.AUTO_SETUP === 'true';
+      if (shouldAutoSetup) {
+        logger.info('Auto-setup running in background...');
+        runAutoSetup().catch((e) => logger.error('Auto-setup crashed:', e));
+      }
+
+      scheduleLowStockCheck();
     scheduleExpiryCheck();
     scheduleTokenCleanup();
 
