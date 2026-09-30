@@ -6,7 +6,7 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "concurrently \"node src/server.js\" \"npm --prefix frontend run dev\" \"npm --prefix frontend-hrms run dev\"",
+    "dev": "node src/server.js",
     "dev:api": "node src/server.js",
     "dev:pos": "npm --prefix frontend run dev",
     "dev:hrms": "npm --prefix frontend-hrms run dev",
@@ -38,9 +38,6 @@
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1",
     "uuid": "^9.0.1"
-  },
-  "devDependencies": {
-    "concurrently": "^9.0.1"
   },
   "optionalDependencies": {
     "mysql2": "^3.11.0"
