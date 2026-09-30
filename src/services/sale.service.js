@@ -94,7 +94,15 @@ class SaleService {
   }
 
   async create(data, userId) {
-    const t = await sequelize.transaction();
+    return this._createSale(data, userId, false);
+  }
+
+  async createPending(data, userId) {
+    return this._createSale(data, userId, true);
+  }
+
+  async _createSale(data, userId, isPending) {
+    const t = await sequelize.transaction({ isolationLevel: 'REPEATABLE READ' });
 
     try {
       const invoiceNo = generateInvoiceNo('INV');
@@ -105,24 +113,22 @@ class SaleService {
       const items = [];
 
       for (const item of data.items) {
-        const product = await Product.findByPk(item.productId, { transaction: t, lock: true });
+        // Use findOne with lock to ensure atomic stock check and update
+        const product = await Product.findOne({
+          where: { id: item.productId },
+          transaction: t,
+          lock: t.LOCK.UPDATE,
+        });
         if (!product) throw ApiError.notFound(`Product #${item.productId} not found`);
         if (!product.isActive) throw ApiError.badRequest(`Product ${product.name} is inactive`);
 
-        const updatedRows = await Product.update(
-          { stockQuantity: sequelize.literal(`stock_quantity - ${parseInt(item.quantity, 10)}`) },
-          {
-            where: { id: item.productId, stockQuantity: { [Op.gte]: item.quantity } },
-            transaction: t,
-          }
-        );
-
-        if (updatedRows[0] === 0) {
+        const qty = parseInt(item.quantity, 10);
+        if (product.stockQuantity < qty) {
           throw ApiError.badRequest(`Insufficient stock for ${product.name}. Available: ${product.stockQuantity}`);
         }
 
         const previousStock = product.stockQuantity;
-        const newStock = previousStock - item.quantity;
+        const newStock = previousStock - qty;
         const unitPrice = parseFloat(product.sellingPrice);
         const buyingPrice = parseFloat(product.buyingPrice);
         const itemSubtotal = unitPrice * item.quantity;
