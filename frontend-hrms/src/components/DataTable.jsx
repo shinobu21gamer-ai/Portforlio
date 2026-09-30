@@ -3,8 +3,16 @@ import { useState, useRef, useMemo, useEffect } from 'react';
 function SortIndicator({ field, sortBy, sortOrder }) {
   const isActive = sortBy === field;
   return (
-    <span className={isActive ? 'sort-indicator active' : 'sort-indicator'}>
-      {isActive ? (sortOrder === 'ASC' ? '▲' : '▼') : '⇅'}
+    <span className={isActive ? 'sort-indicator active' : 'sort-indicator'} aria-hidden="true">
+      {isActive ? (
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" focusable="false">
+          <path d={sortOrder === 'ASC' ? 'M12 6l6 8H6z' : 'M12 18l-6-8h12z'} />
+        </svg>
+      ) : (
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" focusable="false">
+          <path d="M12 5l5 7H7zM12 19l-5-7h10z" />
+        </svg>
+      )}
     </span>
   );
 }
@@ -180,9 +188,8 @@ export default function DataTable({
                     className={sortBy === (c.sortKey || c.key) ? 'sort-active' : ''}
                     style={{
                       cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap',
-                      background: sortBy === (c.sortKey || c.key) ? 'rgba(99,102,241,.06)' : undefined,
-                      color: sortBy === (c.sortKey || c.key) ? 'var(--primary)' : undefined,
-                      transition: 'background .15s, color .15s',
+                      boxShadow: sortBy === (c.sortKey || c.key) ? 'inset 0 -3px 0 rgba(255,255,255,.85)' : undefined,
+                      transition: 'box-shadow .15s',
                     }}
                   >
                     {c.label}

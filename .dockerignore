@@ -10,6 +10,8 @@ data/*
 uploads/resumes/*
 uploads/products/*
 uploads/*
+!uploads/products/
+!uploads/products/*.svg
 !.gitkeep
 .github
 .eslintrc.js

@@ -1,9 +1,8 @@
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import useAuthStore from '../store/authStore';
 import useCartStore from '../store/cartStore';
-import { useToast } from '../components/Toast';
-import { useUnreadCount, useLogout } from '../hooks/useApi';
+import { useUnreadCount } from '../hooks/useApi';
 import { peso, productEmoji } from '../utils/helpers';
 import Button from '../components/Button';
 import Avatar from '../components/Avatar';
@@ -14,13 +13,11 @@ const HRMS_ORIGIN = import.meta.env.VITE_HRMS_URL
 const HRMS_HOME = import.meta.env.VITE_HRMS_URL || `${window.location.origin}/hrms`;
 
 export default function PosLayout({ children, active, showCart = false, cartFooter }) {
-  const { user, logout } = useAuthStore();
+  const { user } = useAuthStore();
   const clearCart = useCartStore(s => s.clearCart);
   const removeItem = useCartStore(s => s.removeItem);
   const navigate = useNavigate();
   const location = useLocation();
-  const toast = useToast();
-  const logoutMutation = useLogout();
   const { data: unreadData } = useUnreadCount();
   const unreadCount = unreadData?.unreadCount || 0;
 
@@ -36,17 +33,6 @@ export default function PosLayout({ children, active, showCart = false, cartFoot
     document.documentElement.setAttribute('data-theme', darkMode ? 'dark' : 'light');
     localStorage.setItem('minimart_theme', darkMode ? 'dark' : 'light');
   }, [darkMode]);
-
-  const handleLogout = useCallback(async () => {
-    if (window.top !== window) {
-      window.top.postMessage({ type: 'pos-logout' }, HRMS_ORIGIN);
-    }
-    try { await logoutMutation.mutateAsync(); } catch {}
-    logout();
-    clearCart();
-    toast.success('Logged out successfully');
-    navigate('/login');
-  }, [logoutMutation, logout, clearCart, toast, navigate]);
 
   const items = useCartStore(s => s.items);
   const subtotal = useCartStore(s => s.getSubtotal());
@@ -94,7 +80,6 @@ export default function PosLayout({ children, active, showCart = false, cartFoot
     profile: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>,
     dark: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>,
     light: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="23"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>,
-    logout: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>,
   };
 
   return (
@@ -173,16 +158,6 @@ export default function PosLayout({ children, active, showCart = false, cartFoot
               title={darkMode ? 'Light mode' : 'Dark mode'}
             >
               {darkMode ? ICONS.light : ICONS.dark}
-            </Button>
-            <Button
-              className="sidebar-signout"
-              variant="ghost"
-              size="sm"
-              onClick={handleLogout}
-              title="Sign out"
-            >
-              {ICONS.logout}
-              <span style={{ display: 'none' }}>Sign out</span>
             </Button>
           </div>
         </aside>

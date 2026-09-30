@@ -35,6 +35,7 @@ COPY src ./src
 
 COPY --from=pos-builder /app/frontend/dist ./frontend/dist
 COPY --from=hrms-builder /app/frontend-hrms/dist ./frontend-hrms/dist
+COPY uploads ./uploads
 
 RUN mkdir -p uploads/products uploads/resumes uploads/documents logs data && \
     chown -R appuser:appgroup /app

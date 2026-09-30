@@ -76,7 +76,7 @@ function NavGroup({ item, openGroups, toggleGroup, counts }) {
           {item.children.map(child => child.external ? (
             <a
               key={child.to}
-              href={child.to}
+              href={`${import.meta.env.BASE_URL}${child.to.replace(/^\//, '')}`}
               target="_blank"
               rel="noopener noreferrer"
               className="nav-item nav-child"

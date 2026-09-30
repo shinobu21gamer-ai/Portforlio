@@ -5,6 +5,7 @@ node_modules/
 logs/
 uploads/products/*
 !uploads/products/.gitkeep
+!uploads/products/*.svg
 uploads/resumes/*
 !uploads/resumes/.gitkeep
 exports/*
