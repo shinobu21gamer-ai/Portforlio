@@ -150,7 +150,8 @@ class LeaveService {
           subject: `Leave Request Submitted — MiniMart POS`,
           html: leaveRequestEmail(emp.firstName || emp.email, sanitized.leaveType, 'submitted', sanitized.startDate, sanitized.endDate),
         }).catch(() => {});
-      } catch (e) { console.error('[EMAIL] Leave submission email failed:', e.message); }
+      }
+    } catch (e) { console.error('[EMAIL] Leave submission email failed:', e.message); }
 
     return leave;
   }
@@ -323,7 +324,8 @@ class LeaveService {
               subject: `Leave Request Rejected — MiniMart POS`,
               html: leaveRequestEmail(emp.firstName || emp.email, leave.leaveType, 'rejected', leave.startDate, leave.endDate),
             }).catch(() => {});
-          } catch (e) { console.error('[EMAIL] Leave reject email failed:', e.message); }
+          }
+        } catch (e) { console.error('[EMAIL] Leave reject email failed:', e.message); }
       }
 
       return this.getById(id);
