@@ -5,6 +5,7 @@ const { validate } = require('../middleware/validate');
 const schemas = require('../validators');
 
 router.get('/', protect, discountController.getAll);
+router.get('/validate', protect, discountController.validateGet);
 router.get('/:id', protect, discountController.getById);
 router.post('/validate', protect, discountController.validate);
 router.post('/', protect, hasPermission('discounts.manage'), validate(schemas.createDiscount), discountController.create);

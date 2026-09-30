@@ -11,6 +11,15 @@ class SaleController {
     }
   }
 
+  async getPending(req, res, next) {
+    try {
+      const result = await saleService.getAll({ ...req.query, status: 'pending', user: req.user });
+      return sendSuccess(res, result, 'Pending sales retrieved successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async getById(req, res, next) {
     try {
       const sale = await saleService.getById(req.params.id, req.user);

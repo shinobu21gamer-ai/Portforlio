@@ -29,6 +29,19 @@ const validate = async (req, res, next) => {
   }
 };
 
+const validateGet = async (req, res, next) => {
+  try {
+    const { code, subtotal } = req.query;
+    if (!code) {
+      return res.status(400).json({ success: false, message: 'Discount code is required' });
+    }
+    const result = await discountService.validateAndApply(code, subtotal);
+    sendSuccess(res, result);
+  } catch (error) {
+    next(error);
+  }
+};
+
 const create = async (req, res, next) => {
   try {
     const result = await discountService.create(req.body);
@@ -56,4 +69,4 @@ const del = async (req, res, next) => {
   }
 };
 
-module.exports = { getAll, getById, validate, create, update, delete: del };
+module.exports = { getAll, getById, validate, validateGet, create, update, delete: del };

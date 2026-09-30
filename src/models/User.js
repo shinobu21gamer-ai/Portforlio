@@ -107,6 +107,7 @@ module.exports = (sequelize, DataTypes) => {
     User.belongsTo(models.Role, { foreignKey: 'role_id', as: 'role', onDelete: 'SET NULL' });
     User.belongsTo(models.User, { foreignKey: 'reports_to_id', as: 'reportsTo', onDelete: 'SET NULL' });
     User.hasMany(models.User, { foreignKey: 'reports_to_id', as: 'directReports' });
+    User.hasOne(models.Employee, { foreignKey: 'user_id', as: 'employee', onDelete: 'SET NULL' });
     User.hasMany(models.ActivityLog, { foreignKey: 'user_id', as: 'activityLogs', onDelete: 'CASCADE' });
     User.hasMany(models.Sale, { foreignKey: 'user_id', as: 'sales', onDelete: 'SET NULL' });
     User.hasMany(models.Purchase, { foreignKey: 'user_id', as: 'purchases', onDelete: 'SET NULL' });

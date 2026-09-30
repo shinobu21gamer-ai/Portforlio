@@ -7,6 +7,7 @@ const schemas = require('../validators');
 router.get('/report', protect, authorize('admin', 'manager'), saleController.getSalesReport);
 router.get('/invoice/:invoiceNo', protect, saleController.getByInvoice);
 router.get('/', protect, saleController.getAll);
+router.get('/pending', protect, saleController.getPending);
 router.get('/:id', protect, saleController.getById);
 router.post('/', protect, hasPermission('sales.create'), validate(schemas.createSale), saleController.create);
 router.post('/pending', protect, hasPermission('sales.create'), validate(schemas.createSale), saleController.createPending);

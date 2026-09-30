@@ -701,17 +701,21 @@ const runAutoSetup = async () => {
 
   const startServer = async () => {
     try {
+      console.log('[DEBUG] startServer: before connectDB');
       await connectDB();
+      console.log('[DEBUG] startServer: after connectDB');
 
       const shouldAutoSetup = config.nodeEnv === 'development' || process.env.AUTO_SETUP === 'true';
+      console.log('[DEBUG] startServer: shouldAutoSetup=', shouldAutoSetup);
       if (shouldAutoSetup) {
         logger.info('Auto-setup running in background...');
         runAutoSetup().catch((e) => logger.error('Auto-setup crashed:', e));
       }
+      console.log('[DEBUG] startServer: after runAutoSetup fire');
 
       scheduleLowStockCheck();
-    scheduleExpiryCheck();
-    scheduleTokenCleanup();
+      scheduleExpiryCheck();
+      scheduleTokenCleanup();
 
     cron.schedule('*/30 * * * *', async () => {
       try {
@@ -757,6 +761,11 @@ const runAutoSetup = async () => {
         if (expiredSales.length) logger.info(`Auto-cancelled ${expiredSales.length} expired pending sales`);
       } catch (err) { logger.error('Pending sale expiry cron failed:', err.message); }
     });
+    console.log('[DEBUG] startServer: about to call server.listen');
+
+    server.on('error', (err) => {
+      logger.error('Server error:', err);
+    });
 
     srv = server.listen(config.port, '0.0.0.0', () => {
       const addr = server.address();
@@ -764,10 +773,6 @@ const runAutoSetup = async () => {
       logger.info(`Server running on port ${config.port} in ${config.nodeEnv} mode`);
       logger.info(`API Docs: http://localhost:${config.port}/api-docs`);
       logger.info(`Health: http://localhost:${config.port}/health`);
-    });
-    
-    server.on('error', (err) => {
-      logger.error('Server error:', err);
     });
   } catch (error) {
     logger.error('Failed to start server:', error);

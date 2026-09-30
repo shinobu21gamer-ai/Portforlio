@@ -44,6 +44,15 @@ router.post('/positions', protect, authorize('admin', 'hr'), validate(schemas.cr
 router.put('/positions/:id', protect, authorize('admin', 'hr'), validate(schemas.updatePosition), posCtrl.update);
 router.delete('/positions/:id', protect, authorize('admin', 'hr'), posCtrl.delete);
 
+// ─── Categories (HRMS alias for /api/v1/categories) ───────────────
+const categoryCtrl = require('../../controllers/category.controller');
+router.get('/categories', protect, authorize('admin', 'hr', 'manager'), categoryCtrl.getAll);
+router.get('/categories/tree', protect, authorize('admin', 'hr', 'manager'), categoryCtrl.getTree);
+
+// ─── Branches (HRMS alias for /api/v1/branches) ───────────────
+const branchCtrl = require('../../controllers/branch.controller');
+router.get('/branches', protect, authorize('admin', 'hr', 'manager'), branchCtrl.getAll);
+
 // ─── Employees ────────────────────────────────────────
 router.get('/employees', protect, authorize('admin', 'hr', 'manager'), empCtrl.getAll);
 router.get('/employees/export', protect, authorize('admin', 'hr', 'manager'), empCtrl.exportCSV);
@@ -83,9 +92,10 @@ router.delete('/schedules/:id', protect, authorize('admin', 'hr'), schCtrl.delet
 
 // ─── Payroll ──────────────────────────────────────────
 router.get('/payrolls', protect, authorize('admin', 'hr', 'manager'), payCtrl.getAll);
+router.get('/payrolls/preview', protect, authorize('admin', 'hr'), payCtrl.previewGet);
+router.post('/payrolls/preview', protect, authorize('admin', 'hr'), payCtrl.preview);
 router.get('/payrolls/:id', protect, authorize('admin', 'hr', 'manager'), payCtrl.getById);
 router.post('/payrolls', protect, authorize('admin', 'hr'), validate(schemas.generatePayroll), payCtrl.generate);
-router.post('/payrolls/preview', protect, authorize('admin', 'hr'), payCtrl.preview);
 router.put('/payrolls/:id/process', protect, authorize('admin', 'hr'), payCtrl.process);
 router.put('/payrolls/:id/pay', protect, authorize('admin'), payCtrl.pay);
 router.get('/payrolls/:id/payslips', protect, authorize('admin', 'hr'), payCtrl.getPayslips);
@@ -159,6 +169,7 @@ router.delete('/employee-documents/:id', protect, authorize('admin', 'hr'), empD
 
 // ─── Employee Self-Service ──────────────────────────────
 router.get('/me', protect, empCtrl.getMyProfile);
+router.get('/me/profile', protect, empCtrl.getMyProfile);
 router.put('/me/profile', protect, validate(schemas.updateProfile), empCtrl.updateMyProfile);
 router.get('/me/attendance', protect, empCtrl.getMyAttendance);
 router.get('/me/leaves', protect, empCtrl.getMyLeaves);
