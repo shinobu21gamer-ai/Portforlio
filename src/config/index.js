@@ -10,7 +10,6 @@ const isProd = process.env.NODE_ENV === 'production';
 const errors = [];
 
 const fs = require('fs');
-const path = require('path');
 
 const getOrCreateDevSecret = (secretName, envVar) => {
   if (process.env[envVar]) return process.env[envVar];
