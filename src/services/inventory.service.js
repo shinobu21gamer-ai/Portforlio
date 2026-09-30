@@ -8,9 +8,13 @@ class InventoryService {
   async stockIn(data, userId) {
     const qty = parseInt(data.quantity, 10);
     if (!qty || qty <= 0) throw ApiError.badRequest('Quantity must be a positive integer');
-    const t = await sequelize.transaction();
+    const t = await sequelize.transaction({ isolationLevel: 'REPEATABLE READ' });
     try {
-      const product = await Product.findByPk(data.productId, { transaction: t, lock: true });
+      const product = await Product.findOne({
+        where: { id: data.productId },
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
       if (!product) throw ApiError.notFound('Product not found');
 
       const previousStock = product.stockQuantity;
@@ -50,25 +54,23 @@ class InventoryService {
   async stockOut(data, userId) {
     const qty = parseInt(data.quantity, 10);
     if (!qty || qty <= 0) throw ApiError.badRequest('Quantity must be a positive integer');
-    const t = await sequelize.transaction();
+    const t = await sequelize.transaction({ isolationLevel: 'REPEATABLE READ' });
     try {
-      const product = await Product.findByPk(data.productId, { transaction: t, lock: true });
+      const product = await Product.findOne({
+        where: { id: data.productId },
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
       if (!product) throw ApiError.notFound('Product not found');
 
-      const updatedRows = await Product.update(
-        { stockQuantity: sequelize.literal(`stock_quantity - ${qty}`) },
-        {
-          where: { id: data.productId, stockQuantity: { [Op.gte]: qty } },
-          transaction: t,
-        }
-      );
-
-      if (updatedRows[0] === 0) {
+      if (product.stockQuantity < qty) {
         throw ApiError.badRequest(`Insufficient stock. Available: ${product.stockQuantity}`);
       }
 
       const previousStock = product.stockQuantity;
       const newStock = previousStock - qty;
+
+      await product.update({ stockQuantity: newStock }, { transaction: t });
 
       await StockMovement.create({
         productId: product.id,
@@ -102,9 +104,13 @@ class InventoryService {
   async adjustStock(data, userId) {
     const newQty = parseInt(data.newQuantity, 10);
     if (isNaN(newQty) || newQty < 0) throw ApiError.badRequest('newQuantity must be a non-negative integer');
-    const t = await sequelize.transaction();
+    const t = await sequelize.transaction({ isolationLevel: 'REPEATABLE READ' });
     try {
-      const product = await Product.findByPk(data.productId, { transaction: t, lock: true });
+      const product = await Product.findOne({
+        where: { id: data.productId },
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
       if (!product) throw ApiError.notFound('Product not found');
 
       const previousStock = product.stockQuantity;
@@ -207,33 +213,43 @@ class InventoryService {
   }
 
   async checkLowStock() {
-    const products = await Product.findAll({
-      where: {
-        isActive: true,
-        stockQuantity: { [Op.lte]: sequelize.col('min_stock_level') },
-      },
-    });
-
-    for (const product of products) {
-      const existing = await Notification.findOne({
+    const t = await sequelize.transaction({ isolationLevel: 'REPEATABLE READ' });
+    try {
+      const products = await Product.findAll({
         where: {
-          type: 'low_stock',
-          'data.productId': product.id,
+          isActive: true,
+          stockQuantity: { [Op.lte]: sequelize.col('min_stock_level') },
         },
-        order: [['createdAt', 'DESC']],
+        transaction: t,
+        lock: t.LOCK.UPDATE,
       });
 
-      if (!existing || (Date.now() - new Date(existing.createdAt).getTime()) > 6 * 60 * 60 * 1000) {
-        await Notification.create({
-          type: 'low_stock',
-          title: `Low Stock: ${product.name}`,
-          message: `${product.name} has only ${product.stockQuantity} units left (min: ${product.minStockLevel})`,
-          data: { productId: product.id, stockQuantity: product.stockQuantity, minStockLevel: product.minStockLevel },
+      for (const product of products) {
+        const existing = await Notification.findOne({
+          where: {
+            type: 'low_stock',
+            'data.productId': product.id,
+          },
+          order: [['createdAt', 'DESC']],
+          transaction: t,
         });
-      }
-    }
 
-    return { count: products.length, products };
+        if (!existing || (Date.now() - new Date(existing.createdAt).getTime()) > 6 * 60 * 60 * 1000) {
+          await Notification.create({
+            type: 'low_stock',
+            title: `Low Stock: ${product.name}`,
+            message: `${product.name} has only ${product.stockQuantity} units left (min: ${product.minStockLevel})`,
+            data: { productId: product.id, stockQuantity: product.stockQuantity, minStockLevel: product.minStockLevel },
+          }, { transaction: t });
+        }
+      }
+
+      await t.commit();
+      return { count: products.length, products };
+    } catch (error) {
+      await t.rollback();
+      throw error;
+    }
   }
 
   async checkExpiringProducts(days) {
@@ -241,36 +257,46 @@ class InventoryService {
     const targetDate = new Date();
     targetDate.setDate(targetDate.getDate() + warningDays);
 
-    const products = await Product.findAll({
-      where: {
-        isActive: true,
-        expiryDate: {
-          [Op.not]: null,
-          [Op.between]: [new Date(), targetDate],
-        },
-      },
-    });
-
-    for (const product of products) {
-      const existing = await Notification.findOne({
+    const t = await sequelize.transaction({ isolationLevel: 'REPEATABLE READ' });
+    try {
+      const products = await Product.findAll({
         where: {
-          type: 'expiring_product',
-          'data.productId': product.id,
+          isActive: true,
+          expiryDate: {
+            [Op.not]: null,
+            [Op.between]: [new Date(), targetDate],
+          },
         },
-        order: [['createdAt', 'DESC']],
+        transaction: t,
+        lock: t.LOCK.UPDATE,
       });
 
-      if (!existing || (Date.now() - new Date(existing.createdAt).getTime()) > 24 * 60 * 60 * 1000) {
-        await Notification.create({
-          type: 'expiring_product',
-          title: `Expiring: ${product.name}`,
-          message: `${product.name} expires on ${product.expiryDate}`,
-          data: { productId: product.id, expiryDate: product.expiryDate },
+      for (const product of products) {
+        const existing = await Notification.findOne({
+          where: {
+            type: 'expiring_product',
+            'data.productId': product.id,
+          },
+          order: [['createdAt', 'DESC']],
+          transaction: t,
         });
-      }
-    }
 
-    return { count: products.length, products };
+        if (!existing || (Date.now() - new Date(existing.createdAt).getTime()) > 24 * 60 * 60 * 1000) {
+          await Notification.create({
+            type: 'expiring_product',
+            title: `Expiring: ${product.name}`,
+            message: `${product.name} expires on ${product.expiryDate}`,
+            data: { productId: product.id, expiryDate: product.expiryDate },
+          }, { transaction: t });
+        }
+      }
+
+      await t.commit();
+      return { count: products.length, products };
+    } catch (error) {
+      await t.rollback();
+      throw error;
+    }
   }
 }
 

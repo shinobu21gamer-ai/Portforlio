@@ -70,7 +70,7 @@ class PurchaseService {
   }
 
   async create(data, userId) {
-    const t = await sequelize.transaction();
+    const t = await sequelize.transaction({ isolationLevel: 'REPEATABLE READ' });
 
     try {
       const orderNo = generateOrderNo('PO');
@@ -79,7 +79,11 @@ class PurchaseService {
       const items = [];
 
       for (const item of data.items) {
-        const product = await Product.findByPk(item.productId, { transaction: t });
+        const product = await Product.findOne({
+          where: { id: item.productId },
+          transaction: t,
+          lock: t.LOCK.UPDATE,
+        });
         if (!product) throw ApiError.notFound(`Product #${item.productId} not found`);
 
         const unitCost = parseFloat(item.unitCost);
@@ -146,9 +150,9 @@ class PurchaseService {
   }
 
   async receive(id, data, userId) {
-    const t = await sequelize.transaction();
+    const t = await sequelize.transaction({ isolationLevel: 'REPEATABLE READ' });
     try {
-      const purchase = await Purchase.findByPk(id, { include: [{ association: 'items' }], transaction: t, lock: true });
+      const purchase = await Purchase.findByPk(id, { include: [{ association: 'items' }], transaction: t, lock: t.LOCK.UPDATE });
       if (!purchase) throw ApiError.notFound('Purchase not found');
       if (purchase.status === 'received') throw ApiError.badRequest('Purchase already received');
       if (purchase.status === 'cancelled') throw ApiError.badRequest('Purchase is cancelled');
@@ -163,15 +167,16 @@ class PurchaseService {
           throw ApiError.badRequest(`Invalid received quantity for ${item.productName}. Max: ${item.quantity}`);
         }
 
-        const product = await Product.findByPk(item.productId, { transaction: t, lock: true });
+        const product = await Product.findOne({
+          where: { id: item.productId },
+          transaction: t,
+          lock: t.LOCK.UPDATE,
+        });
         if (product && recvQty > 0) {
-          await Product.update(
-            { stockQuantity: sequelize.literal(`stock_quantity + ${parseInt(recvQty, 10)}`) },
-            { where: { id: item.productId }, transaction: t }
-          );
-
           const previousStock = product.stockQuantity;
           const newStock = previousStock + recvQty;
+
+          await product.update({ stockQuantity: newStock }, { transaction: t });
 
           await StockMovement.create({
             productId: item.productId,

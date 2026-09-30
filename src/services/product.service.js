@@ -160,134 +160,152 @@ class ProductService {
     if (!sanitized.name) throw ApiError.badRequest('Product name is required');
 
     const slug = slugify(sanitized.name);
-    const existingSlug = await Product.findOne({
-      where: sequelize.where(fn('LOWER', col('slug')), slug.toLowerCase()),
-    });
-    if (existingSlug) throw ApiError.conflict('A product with this name already exists');
 
-    const duplicateProduct = await this.findDuplicateProduct({
-      name: sanitized.name,
-      sku: sanitized.sku,
-      barcode: sanitized.barcode,
-    });
-    if (duplicateProduct) {
-      if (duplicateProduct.field === 'sku') {
-        throw ApiError.conflict('SKU already exists');
+    const t = await sequelize.transaction({ isolationLevel: 'REPEATABLE READ' });
+    try {
+      const existingSlug = await Product.findOne({
+        where: sequelize.where(fn('LOWER', col('slug')), slug.toLowerCase()),
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
+      if (existingSlug) throw ApiError.conflict('A product with this name already exists');
+
+      const duplicateProduct = await this.findDuplicateProduct({
+        name: sanitized.name,
+        sku: sanitized.sku,
+        barcode: sanitized.barcode,
+      });
+      if (duplicateProduct) {
+        if (duplicateProduct.field === 'sku') {
+          throw ApiError.conflict('SKU already exists');
+        }
+        if (duplicateProduct.field === 'barcode') {
+          throw ApiError.conflict('Barcode already exists');
+        }
+        throw ApiError.conflict('A product with this name already exists');
       }
-      if (duplicateProduct.field === 'barcode') {
-        throw ApiError.conflict('Barcode already exists');
+
+      if (sanitized.sellingPrice !== undefined && sanitized.buyingPrice !== undefined) {
+        if (parseFloat(sanitized.sellingPrice) < parseFloat(sanitized.buyingPrice)) {
+          throw ApiError.badRequest('Selling price cannot be less than buying price');
+        }
       }
-      throw ApiError.conflict('A product with this name already exists');
-    }
 
-    if (sanitized.sellingPrice !== undefined && sanitized.buyingPrice !== undefined) {
-      if (parseFloat(sanitized.sellingPrice) < parseFloat(sanitized.buyingPrice)) {
-        throw ApiError.badRequest('Selling price cannot be less than buying price');
+      if (sanitized.stockQuantity !== undefined && parseInt(sanitized.stockQuantity, 10) < 0) {
+        throw ApiError.badRequest('Stock quantity cannot be negative');
       }
-    }
 
-    if (sanitized.stockQuantity !== undefined && parseInt(sanitized.stockQuantity, 10) < 0) {
-      throw ApiError.badRequest('Stock quantity cannot be negative');
-    }
+      let categoryName = null;
+      if (sanitized.categoryId) {
+        const category = await Category.findByPk(sanitized.categoryId, { transaction: t });
+        if (!category) throw ApiError.notFound('Category not found');
+        categoryName = category.name;
+      }
 
-    let categoryName = null;
-    if (sanitized.categoryId) {
-      const category = await Category.findByPk(sanitized.categoryId);
-      if (!category) throw ApiError.notFound('Category not found');
-      categoryName = category.name;
-    }
+      if (!sanitized.sku) {
+        sanitized.sku = generateSKU(categoryName, Date.now());
+      }
 
-    if (!sanitized.sku) {
-      sanitized.sku = generateSKU(categoryName, Date.now());
-    }
+      if (!sanitized.barcode) {
+        sanitized.barcode = generateBarcode();
+      }
 
-    if (!sanitized.barcode) {
-      sanitized.barcode = generateBarcode();
+      sanitized.slug = slug;
+      const product = await Product.create(sanitized, { transaction: t });
+      await t.commit();
+      return this.getById(product.id);
+    } catch (error) {
+      await t.rollback();
+      throw error;
     }
-
-    sanitized.slug = slug;
-    const product = await Product.create(sanitized);
-    return this.getById(product.id);
   }
 
   async update(id, data) {
-    const product = await Product.findByPk(id);
-    if (!product) throw ApiError.notFound('Product not found');
+    const t = await sequelize.transaction({ isolationLevel: 'REPEATABLE READ' });
+    try {
+      const product = await Product.findByPk(id, { transaction: t, lock: t.LOCK.UPDATE });
+      if (!product) throw ApiError.notFound('Product not found');
 
-    const sanitized = sanitizeObject(data);
+      const sanitized = sanitizeObject(data);
 
-    if (sanitized.name && sanitized.name !== product.name) {
-      sanitized.slug = slugify(sanitized.name);
-      const existingSlug = await Product.findOne({
-        where: {
-          [Op.and]: [
-            sequelize.where(fn('LOWER', col('slug')), sanitized.slug.toLowerCase()),
-            { id: { [Op.ne]: id } },
-          ],
-        },
-      });
-      if (existingSlug) throw ApiError.conflict('A product with this name already exists');
-    }
-
-    const duplicateProduct = await this.findDuplicateProduct({
-      name: sanitized.name || product.name,
-      sku: sanitized.sku || product.sku,
-      barcode: sanitized.barcode || product.barcode,
-    }, id);
-    if (duplicateProduct) {
-      if (duplicateProduct.field === 'sku') {
-        throw ApiError.conflict('SKU already exists');
+      if (sanitized.name && sanitized.name !== product.name) {
+        sanitized.slug = slugify(sanitized.name);
+        const existingSlug = await Product.findOne({
+          where: {
+            [Op.and]: [
+              sequelize.where(fn('LOWER', col('slug')), sanitized.slug.toLowerCase()),
+              { id: { [Op.ne]: id } },
+            ],
+          },
+          transaction: t,
+        });
+        if (existingSlug) throw ApiError.conflict('A product with this name already exists');
       }
-      if (duplicateProduct.field === 'barcode') {
-        throw ApiError.conflict('Barcode already exists');
+
+      const duplicateProduct = await this.findDuplicateProduct({
+        name: sanitized.name || product.name,
+        sku: sanitized.sku || product.sku,
+        barcode: sanitized.barcode || product.barcode,
+      }, id);
+      if (duplicateProduct) {
+        if (duplicateProduct.field === 'sku') {
+          throw ApiError.conflict('SKU already exists');
+        }
+        if (duplicateProduct.field === 'barcode') {
+          throw ApiError.conflict('Barcode already exists');
+        }
+        throw ApiError.conflict('A product with this name already exists');
       }
-      throw ApiError.conflict('A product with this name already exists');
-    }
 
-    if (sanitized.sellingPrice !== undefined && sanitized.buyingPrice !== undefined) {
-      if (parseFloat(sanitized.sellingPrice) < parseFloat(sanitized.buyingPrice)) {
-        throw ApiError.badRequest('Selling price cannot be less than buying price');
+      if (sanitized.sellingPrice !== undefined && sanitized.buyingPrice !== undefined) {
+        if (parseFloat(sanitized.sellingPrice) < parseFloat(sanitized.buyingPrice)) {
+          throw ApiError.badRequest('Selling price cannot be less than buying price');
+        }
+      } else if (sanitized.sellingPrice !== undefined) {
+        if (parseFloat(sanitized.sellingPrice) < parseFloat(product.buyingPrice)) {
+          throw ApiError.badRequest('Selling price cannot be less than buying price');
+        }
+      } else if (sanitized.buyingPrice !== undefined) {
+        if (parseFloat(product.sellingPrice) < parseFloat(sanitized.buyingPrice)) {
+          throw ApiError.badRequest('Selling price cannot be less than buying price');
+        }
       }
-    } else if (sanitized.sellingPrice !== undefined) {
-      if (parseFloat(sanitized.sellingPrice) < parseFloat(product.buyingPrice)) {
-        throw ApiError.badRequest('Selling price cannot be less than buying price');
+
+      if (sanitized.stockQuantity !== undefined && parseInt(sanitized.stockQuantity, 10) < 0) {
+        throw ApiError.badRequest('Stock quantity cannot be negative');
       }
-    } else if (sanitized.buyingPrice !== undefined) {
-      if (parseFloat(product.sellingPrice) < parseFloat(sanitized.buyingPrice)) {
-        throw ApiError.badRequest('Selling price cannot be less than buying price');
+
+      if (sanitized.categoryId) {
+        const category = await Category.findByPk(sanitized.categoryId, { transaction: t });
+        if (!category) throw ApiError.notFound('Category not found');
       }
+
+      const oldStock = product.stockQuantity;
+      const newStock = sanitized.stockQuantity !== undefined ? parseInt(sanitized.stockQuantity, 10) : undefined;
+
+      await product.update(sanitized, { transaction: t });
+
+      if (newStock !== undefined && newStock !== oldStock) {
+        const difference = newStock - oldStock;
+        await StockMovement.create({
+          productId: product.id,
+          userId: sanitized.updatedBy || 1,
+          type: 'adjustment',
+          quantity: Math.abs(difference),
+          previousStock: oldStock,
+          newStock: newStock,
+          referenceType: 'Product',
+          referenceId: product.id,
+          notes: `Stock adjusted via product edit (${difference > 0 ? '+' : ''}${difference})`,
+        }, { transaction: t });
+      }
+
+      await t.commit();
+      return this.getById(id);
+    } catch (error) {
+      await t.rollback();
+      throw error;
     }
-
-    if (sanitized.stockQuantity !== undefined && parseInt(sanitized.stockQuantity, 10) < 0) {
-      throw ApiError.badRequest('Stock quantity cannot be negative');
-    }
-
-    if (sanitized.categoryId) {
-      const category = await Category.findByPk(sanitized.categoryId);
-      if (!category) throw ApiError.notFound('Category not found');
-    }
-
-    const oldStock = product.stockQuantity;
-    const newStock = sanitized.stockQuantity !== undefined ? parseInt(sanitized.stockQuantity, 10) : undefined;
-
-    await product.update(sanitized);
-
-    if (newStock !== undefined && newStock !== oldStock) {
-      const difference = newStock - oldStock;
-      await StockMovement.create({
-        productId: product.id,
-        userId: sanitized.updatedBy || 1,
-        type: 'adjustment',
-        quantity: Math.abs(difference),
-        previousStock: oldStock,
-        newStock: newStock,
-        referenceType: 'Product',
-        referenceId: product.id,
-        notes: `Stock adjusted via product edit (${difference > 0 ? '+' : ''}${difference})`,
-      });
-    }
-
-    return this.getById(id);
   }
 
   async delete(id) {

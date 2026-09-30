@@ -1,5 +1,5 @@
 const { Op, fn, col } = require('sequelize');
-const { Expense, ExpenseCategory } = require('../models');
+const { Expense, ExpenseCategory, sequelize } = require('../models');
 const ApiError = require('../utils/ApiError');
 const { getPagination, getPaginationMeta, sanitizeObject, escapeLike } = require('../utils/helpers');
 
@@ -57,22 +57,61 @@ class ExpenseService {
   }
 
   async create(data, userId) {
-    return Expense.create({ ...sanitizeObject(data), userId });
+    const t = await sequelize.transaction({ isolationLevel: 'REPEATABLE READ' });
+    try {
+      if (!data.amount || parseFloat(data.amount) <= 0) {
+        throw ApiError.badRequest('Expense amount must be greater than zero');
+      }
+      if (!data.expenseCategoryId) {
+        throw ApiError.badRequest('Expense category is required');
+      }
+      if (!data.expenseDate) {
+        throw ApiError.badRequest('Expense date is required');
+      }
+
+      const category = await ExpenseCategory.findByPk(data.expenseCategoryId, { transaction: t });
+      if (!category) throw ApiError.notFound('Expense category not found');
+
+      const expense = await Expense.create({ ...sanitizeObject(data), userId }, { transaction: t });
+      await t.commit();
+      return expense;
+    } catch (error) {
+      await t.rollback();
+      throw error;
+    }
   }
 
   async update(id, data) {
-    const expense = await Expense.findByPk(id);
-    if (!expense) throw ApiError.notFound('Expense not found');
+    const t = await sequelize.transaction({ isolationLevel: 'REPEATABLE READ' });
+    try {
+      const expense = await Expense.findByPk(id, { transaction: t, lock: t.LOCK.UPDATE });
+      if (!expense) throw ApiError.notFound('Expense not found');
 
-    await expense.update(sanitizeObject(data));
-    return this.getById(id);
+      if (data.amount !== undefined && parseFloat(data.amount) <= 0) {
+        throw ApiError.badRequest('Expense amount must be greater than zero');
+      }
+
+      await expense.update(sanitizeObject(data), { transaction: t });
+      await t.commit();
+      return this.getById(id);
+    } catch (error) {
+      await t.rollback();
+      throw error;
+    }
   }
 
   async delete(id) {
-    const expense = await Expense.findByPk(id);
-    if (!expense) throw ApiError.notFound('Expense not found');
-    await expense.destroy();
-    return { message: 'Expense deleted successfully' };
+    const t = await sequelize.transaction({ isolationLevel: 'REPEATABLE READ' });
+    try {
+      const expense = await Expense.findByPk(id, { transaction: t, lock: t.LOCK.UPDATE });
+      if (!expense) throw ApiError.notFound('Expense not found');
+      await expense.destroy({ transaction: t });
+      await t.commit();
+      return { message: 'Expense deleted successfully' };
+    } catch (error) {
+      await t.rollback();
+      throw error;
+    }
   }
 
   async getReport(startDate, endDate) {

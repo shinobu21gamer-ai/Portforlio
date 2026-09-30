@@ -55,7 +55,7 @@ class DiscountService {
     return { discount };
   }
 
-  async validateAndApply(code, subtotal) {
+  async validateAndApply(code, subtotal, appliedDiscounts = []) {
     const { discount } = await this.getByCode(code);
 
     if (discount.usageLimit && discount.usedCount >= discount.usageLimit) {
@@ -64,6 +64,13 @@ class DiscountService {
 
     if (discount.minPurchaseAmount && parseFloat(subtotal) < parseFloat(discount.minPurchaseAmount)) {
       throw ApiError.badRequest(`Minimum purchase amount of ₱${discount.minPurchaseAmount} required`);
+    }
+
+    // Validate discount stacking rules
+    const allDiscounts = [...appliedDiscounts, discount];
+    const validation = this._validateDiscountStacking(allDiscounts);
+    if (!validation.valid) {
+      throw ApiError.badRequest(validation.error);
     }
 
     let discountAmount = 0;
@@ -87,6 +94,29 @@ class DiscountService {
       },
       discountAmount,
     };
+  }
+
+  _validateDiscountStacking(discounts) {
+    const types = discounts.map(d => d.type);
+    const percentageCount = types.filter(t => t === 'percentage').length;
+    const fixedCount = types.filter(t => t === 'fixed').length;
+    const hasBxgy = types.includes('bxgy');
+    const hasSenior = types.includes('senior');
+
+    if (types.includes('senior') && types.length > 1) {
+      return { valid: false, error: 'Senior discount is exclusive and cannot be combined with other discounts' };
+    }
+    if (types.includes('bxgy') && types.length > 1) {
+      return { valid: false, error: 'BXGY discount cannot be combined with other discounts' };
+    }
+    if (types.filter(t => t === 'percentage').length > 1) {
+      return { valid: false, error: 'Cannot stack multiple percentage discounts' };
+    }
+    if (types.filter(t => t === 'fixed').length > 1) {
+      return { valid: false, error: 'Cannot stack multiple fixed discounts' };
+    }
+
+    return { valid: true };
   }
 
   async create(data) {

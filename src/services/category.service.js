@@ -1,4 +1,4 @@
-const { Category, Product } = require('../models');
+const { Category, Product, sequelize } = require('../models');
 const ApiError = require('../utils/ApiError');
 const { slugify, getPagination, getPaginationMeta, sanitizeObject, escapeLike } = require('../utils/helpers');
 
@@ -49,37 +49,53 @@ class CategoryService {
   async create(data) {
     const sanitized = sanitizeObject(data);
     const slug = slugify(sanitized.name);
-    const existing = await Category.findOne({ where: { slug } });
-    if (existing) throw ApiError.conflict('Category with this name already exists');
 
-    if (sanitized.parentId) {
-      const parent = await Category.findByPk(sanitized.parentId);
-      if (!parent) throw ApiError.notFound('Parent category not found');
+    const t = await sequelize.transaction({ isolationLevel: 'REPEATABLE READ' });
+    try {
+      const existing = await Category.findOne({ where: { slug }, transaction: t, lock: t.LOCK.UPDATE });
+      if (existing) throw ApiError.conflict('Category with this name already exists');
+
+      if (sanitized.parentId) {
+        const parent = await Category.findByPk(sanitized.parentId, { transaction: t });
+        if (!parent) throw ApiError.notFound('Parent category not found');
+      }
+
+      const category = await Category.create({ ...sanitized, slug }, { transaction: t });
+      await t.commit();
+      return category;
+    } catch (error) {
+      await t.rollback();
+      throw error;
     }
-
-    return Category.create({ ...sanitized, slug });
   }
 
   async update(id, data) {
-    const category = await Category.findByPk(id);
-    if (!category) throw ApiError.notFound('Category not found');
+    const t = await sequelize.transaction({ isolationLevel: 'REPEATABLE READ' });
+    try {
+      const category = await Category.findByPk(id, { transaction: t, lock: t.LOCK.UPDATE });
+      if (!category) throw ApiError.notFound('Category not found');
 
-    const sanitized = sanitizeObject(data);
+      const sanitized = sanitizeObject(data);
 
-    if (sanitized.name && sanitized.name !== category.name) {
-      sanitized.slug = slugify(sanitized.name);
-      const existing = await Category.findOne({ where: { slug: sanitized.slug, id: { [require('sequelize').Op.ne]: id } } });
-      if (existing) throw ApiError.conflict('Category with this name already exists');
+      if (sanitized.name && sanitized.name !== category.name) {
+        sanitized.slug = slugify(sanitized.name);
+        const existing = await Category.findOne({ where: { slug: sanitized.slug, id: { [require('sequelize').Op.ne]: id } }, transaction: t });
+        if (existing) throw ApiError.conflict('Category with this name already exists');
+      }
+
+      if (sanitized.parentId) {
+        if (sanitized.parentId === id) throw ApiError.badRequest('Category cannot be its own parent');
+        const parent = await Category.findByPk(sanitized.parentId, { transaction: t });
+        if (!parent) throw ApiError.notFound('Parent category not found');
+      }
+
+      await category.update(sanitized, { transaction: t });
+      await t.commit();
+      return this.getById(id);
+    } catch (error) {
+      await t.rollback();
+      throw error;
     }
-
-    if (sanitized.parentId) {
-      if (sanitized.parentId === id) throw ApiError.badRequest('Category cannot be its own parent');
-      const parent = await Category.findByPk(sanitized.parentId);
-      if (!parent) throw ApiError.notFound('Parent category not found');
-    }
-
-    await category.update(sanitized);
-    return this.getById(id);
   }
 
   async delete(id) {
