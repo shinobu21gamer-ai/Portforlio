@@ -16,7 +16,8 @@ uploads/*
 jest.config.js
 *.md
 docs/
-frontend-hrms/
+frontend-hrms/dist
+frontend-hrms/node_modules
 database/
 .DS_Store
 Thumbs.db
