@@ -1,4 +1,4 @@
-const express = require('express');
+﻿const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
@@ -20,7 +20,7 @@ const app = express();
 
 app.set('trust proxy', 1);
 
-// ─── Security Middleware ──────────────────────────────────
+// â”€â”€â”€ Security Middleware â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
@@ -68,7 +68,7 @@ const { Server } = require('socket.io');
 const io = new Server(server, { cors: { origin: true, credentials: true } });
 io.on('connection', (socket) => { socket.on('join-delivery', (id) => socket.join(String(id))); });
 
-// ─── Rate Limiting ────────────────────────────────────────
+// â”€â”€â”€ Rate Limiting â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const isDev = config.nodeEnv === 'development';
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -90,18 +90,18 @@ app.use('/api/v1/auth/forgot-password', authLimiter);
 app.use('/api/v1/auth/reset-password', authLimiter);
 app.use('/api/v1/auth/refresh-token', rateLimit({ windowMs: 15 * 60 * 1000, max: isDev ? 9999 : 30, message: { success: false, message: 'Too many token refresh attempts.' } }));
 
-// ─── Body Parsing ─────────────────────────────────────────
+// â”€â”€â”€ Body Parsing â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.use(express.json({ limit: '1mb', verify: (req, _res, buf) => { req.rawBody = buf; } }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
-// ─── Logging ──────────────────────────────────────────────
+// â”€â”€â”€ Logging â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if (config.nodeEnv === 'development') {
   app.use(morgan('dev'));
 } else {
   app.use(morgan('combined', { stream: { write: (message) => logger.info(message.trim()) } }));
 }
 
-// ─── Static Files ─────────────────────────────────────────
+// â”€â”€â”€ Static Files â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Only product images (under uploads/products) are served publicly.
 // Private HR files (uploads/resumes, uploads/documents, uploads/products/resumes)
 // must be retrieved through authenticated API routes.
@@ -115,10 +115,10 @@ app.use('/uploads/products', (req, res, next) => {
   next();
 }, express.static(path.join(uploadsRoot, 'products'), { dotfiles: 'deny', index: false }));
 
-// ─── Request ID ────────────────────────────────────────
+// â”€â”€â”€ Request ID â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.use(requestIdMiddleware);
 
-// ─── API Documentation (protected in production) ──────────
+// â”€â”€â”€ API Documentation (protected in production) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if (config.nodeEnv === 'production') {
   const { authorize } = require('./middleware/auth');
   app.use('/api-docs', protect, authorize('admin'), swaggerUi.serve, swaggerUi.setup(specs, {
@@ -132,16 +132,16 @@ if (config.nodeEnv === 'production') {
   }));
 }
 
-// ─── Health Check ─────────────────────────────────────────
+// â”€â”€â”€ Health Check â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.get('/health', (req, res) => {
   res.json({ success: true, message: 'MiniMart POS API is running', timestamp: new Date().toISOString() });
 });
 
-// ─── Prometheus Metrics ───────────────────────────────────
+// â”€â”€â”€ Prometheus Metrics â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const startTime = Date.now();
 let requestCount = 0;
 
-// ─── Metrics Endpoint ────────────────────────────────────
+// â”€â”€â”€ Metrics Endpoint â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.get('/metrics', protect, authorize('admin'), (req, res) => {
   const mem = process.memoryUsage();
   const uptime = process.uptime();
@@ -177,10 +177,15 @@ app.get('/metrics', protect, authorize('admin'), (req, res) => {
 
 app.use((req, res, next) => { requestCount++; next(); });
 
-// ─── Routes ───────────────────────────────────────────────
+// â”€â”€â”€ Routes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.use(routes);
 
-// ─── HRMS Frontend Static Files (served at /hrms) ─────────
+// Redirect root to Job Portal (landing page)
+app.get('/', (req, res) => {
+  res.redirect('/hrms/careers');
+});
+
+// â”€â”€â”€ HRMS Frontend Static Files (served at /hrms) â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const hrmsDist = path.join(__dirname, '..', 'frontend-hrms', 'dist');
 if (fs.existsSync(hrmsDist)) {
   app.use('/hrms', express.static(hrmsDist, { index: 'index.html' }));
@@ -190,10 +195,10 @@ if (fs.existsSync(hrmsDist)) {
   });
   logger.info('HRMS frontend served at /hrms');
 } else {
-  logger.warn('HRMS frontend dist not found — skipping /hrms');
+  logger.warn('HRMS frontend dist not found â€” skipping /hrms');
 }
 
-// ─── POS Frontend Static Files (served at /) ──────────────
+// â”€â”€â”€ POS Frontend Static Files (served at /) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const frontendDist = path.join(__dirname, '..', 'frontend', 'dist');
 if (fs.existsSync(frontendDist)) {
   app.use(express.static(frontendDist));
@@ -206,18 +211,18 @@ if (fs.existsSync(frontendDist)) {
     });
   });
 } else {
-  logger.warn('Frontend dist not found — running API-only mode.');
+  logger.warn('Frontend dist not found â€” running API-only mode.');
 }
 
-// ─── 404 Handler ──────────────────────────────────────────
+// â”€â”€â”€ 404 Handler â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.use((req, res) => {
   res.status(404).json({ success: false, message: 'Route not found' });
 });
 
-// ─── Error Handler ────────────────────────────────────────
+// â”€â”€â”€ Error Handler â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.use(errorHandler);
 
-// ─── Scheduled Tasks ──────────────────────────────────────
+// â”€â”€â”€ Scheduled Tasks â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const { sequelize } = require('./config/database');
 
 const scheduleLowStockCheck = () => {
@@ -257,7 +262,7 @@ const scheduleTokenCleanup = () => {
   });
 };
 
-// ─── Start Server ─────────────────────────────────────────
+// â”€â”€â”€ Start Server â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 let srv;
 
 const runAutoSetup = async () => {
@@ -388,7 +393,7 @@ const runAutoSetup = async () => {
       });
       await User.findOrCreate({
         where: { email: 'inventory@minimart.com' },
-        defaults: { firstName: 'Rico', lastName: 'Dela Peña', email: 'inventory@minimart.com', password: 'inventory123', roleId: inventoryStaffRole.id, isActive: true }
+        defaults: { firstName: 'Rico', lastName: 'Dela PeÃ±a', email: 'inventory@minimart.com', password: 'inventory123', roleId: inventoryStaffRole.id, isActive: true }
       });
 
       const seedAccounts = [
@@ -668,7 +673,7 @@ const runAutoSetup = async () => {
 
       const employees = [
         { firstName: 'Joy', lastName: 'Dela Cruz', email: 'cashier@minimart.com', departmentId: deptMap.Operations, positionId: posMap['Cashier'], salary: 15000, userId: (await User.findOne({ where: { email: 'cashier@minimart.com' } }))?.id, status: 'active', hireDate: '2026-01-15' },
-        { firstName: 'Rico', lastName: 'Dela Peña', email: 'inventory@minimart.com', departmentId: deptMap.Warehouse, positionId: posMap['Warehouse Staff'], salary: 15000, userId: (await User.findOne({ where: { email: 'inventory@minimart.com' } }))?.id, status: 'active', hireDate: '2026-01-15' },
+        { firstName: 'Rico', lastName: 'Dela PeÃ±a', email: 'inventory@minimart.com', departmentId: deptMap.Warehouse, positionId: posMap['Warehouse Staff'], salary: 15000, userId: (await User.findOne({ where: { email: 'inventory@minimart.com' } }))?.id, status: 'active', hireDate: '2026-01-15' },
         { firstName: 'Ligma', lastName: 'One', email: 'ligma1@gmail.com', departmentId: deptMap.Sales, positionId: posMap['Sales Associate'], salary: 15000, userId: (await User.findOne({ where: { email: 'ligma1@gmail.com' } }))?.id, status: 'active', hireDate: '2026-01-15' },
       ];
       let empNum = 1001;
@@ -684,7 +689,7 @@ const runAutoSetup = async () => {
 
       const discounts = [
         { code: 'WELCOME10', name: 'Welcome Discount', description: '10% off for new customers', type: 'percentage', value: 10, minPurchaseAmount: 100, usageLimit: 100, startDate: '2026-01-01', endDate: '2026-12-31', isActive: true },
-        { code: 'FLAT50', name: 'Flat P50 Off', description: '₱50 off on purchases above ₱500', type: 'fixed', value: 50, minPurchaseAmount: 500, usageLimit: 50, startDate: '2026-01-01', endDate: '2026-12-31', isActive: true },
+        { code: 'FLAT50', name: 'Flat P50 Off', description: 'â‚±50 off on purchases above â‚±500', type: 'fixed', value: 50, minPurchaseAmount: 500, usageLimit: 50, startDate: '2026-01-01', endDate: '2026-12-31', isActive: true },
         { code: 'SENIOR15', name: 'Senior Citizen', description: '15% discount for senior citizens', type: 'percentage', value: 15, minPurchaseAmount: 0, maxDiscountAmount: 200, usageLimit: null, startDate: '2026-01-01', endDate: '2026-12-31', isActive: true },
         { code: 'HOLIDAY20', name: 'Holiday Special', description: '20% off during holidays', type: 'percentage', value: 20, minPurchaseAmount: 200, usageLimit: 200, startDate: '2026-12-01', endDate: '2026-12-31', isActive: false },
       ];
