@@ -1,9 +1,10 @@
 const { Op } = require('sequelize');
 const crypto = require('crypto');
-const { Employee, Department, Position, Contract, User, Role, Attendance, Payslip, Payroll } = require('../../models');
+const { Employee, Department, Position, Contract, User, Role, Attendance, Payslip, Payroll, sequelize } = require('../../models');
 const ApiError = require('../../utils/ApiError');
 const { getPagination, getPaginationMeta, sanitizeObject, generateEmployeeNo, escapeLike } = require('../../utils/helpers');
 const { logActivity } = require('../../utils/audit');
+const { formatDate, employeeApprovedEmail, employeeRejectedEmail, employeeTerminatedEmail } = require('../../utils/emailTemplates');
 
 class EmployeeService {
   async getAll(query) {
@@ -71,12 +72,13 @@ class EmployeeService {
     const { sequelize } = require('../../models');
     const employeeNo = await generateEmployeeNo(sequelize);
 
-    const result = await sequelize.transaction(async (t) => {
+    const t = await sequelize.transaction({ isolationLevel: 'REPEATABLE READ' });
+    try {
       const employee = await Employee.create({ ...sanitized, employeeNo, status: 'pending' }, { transaction: t });
 
-      const pos = await Position.findByPk(sanitized.positionId);
-      let role = pos?.roleSlug ? await Role.findOne({ where: { slug: pos.roleSlug } }) : null;
-      if (!role) role = await Role.findOne({ where: { slug: 'employee' } });
+      const pos = await Position.findByPk(sanitized.positionId, { transaction: t });
+      let role = pos?.roleSlug ? await Role.findOne({ where: { slug: pos.roleSlug }, transaction: t }) : null;
+      if (!role) role = await Role.findOne({ where: { slug: 'employee' }, transaction: t });
       if (role) {
         const tempPassword = 'employee123';
         const user = await User.create({
@@ -90,115 +92,151 @@ class EmployeeService {
         await employee.update({ userId: user.id }, { transaction: t });
       }
 
-      return employee;
-    });
+      await t.commit();
 
-    return this.getById(result.id);
+      return this.getById(employee.id);
+    } catch (error) {
+      await t.rollback();
+      throw error;
+    }
   }
 
   async update(id, data) {
-    const emp = await Employee.findByPk(id);
-    if (!emp) throw ApiError.notFound('Employee not found');
+    const t = await sequelize.transaction({ isolationLevel: 'REPEATABLE READ' });
+    try {
+      const emp = await Employee.findByPk(id, { transaction: t, lock: t.LOCK.UPDATE });
+      if (!emp) throw ApiError.notFound('Employee not found');
 
-    const sanitized = sanitizeObject(data);
+      const sanitized = sanitizeObject(data);
 
-    if (sanitized.email && sanitized.email !== emp.email) {
-      const existing = await Employee.findOne({ where: { email: sanitized.email } });
-      if (existing) throw ApiError.badRequest('Email already exists');
+      if (sanitized.email && sanitized.email !== emp.email) {
+        const existing = await Employee.findOne({ where: { email: sanitized.email }, transaction: t });
+        if (existing) throw ApiError.badRequest('Email already exists');
+      }
+      if (sanitized.departmentId) {
+        const dept = await Department.findByPk(sanitized.departmentId, { transaction: t });
+        if (!dept) throw ApiError.notFound('Department not found');
+      }
+      if (sanitized.positionId) {
+        const pos = await Position.findByPk(sanitized.positionId, { transaction: t });
+        if (!pos) throw ApiError.notFound('Position not found');
+      }
+
+      await emp.update(sanitized, { transaction: t });
+
+      const activeContract = await Contract.findOne({ where: { employeeId: id, status: 'active' }, transaction: t, lock: t.LOCK.UPDATE });
+      if (activeContract) {
+        const contractUpdate = { updatedAt: new Date() };
+        if (sanitized.salary !== undefined) contractUpdate.salary = sanitized.salary;
+        if (sanitized.paymentFrequency !== undefined) contractUpdate.paymentFrequency = sanitized.paymentFrequency;
+        await activeContract.update(contractUpdate, { transaction: t });
+      }
+
+      await t.commit();
+
+      return this.getById(id);
+    } catch (error) {
+      await t.rollback();
+      throw error;
     }
-    if (sanitized.departmentId) {
-      const dept = await Department.findByPk(sanitized.departmentId);
-      if (!dept) throw ApiError.notFound('Department not found');
-    }
-    if (sanitized.positionId) {
-      const pos = await Position.findByPk(sanitized.positionId);
-      if (!pos) throw ApiError.notFound('Position not found');
-    }
-
-    await emp.update(sanitized);
-
-    const activeContract = await Contract.findOne({ where: { employeeId: id, status: 'active' } });
-    if (activeContract) {
-      const contractUpdate = { updatedAt: new Date() };
-      if (sanitized.salary !== undefined) contractUpdate.salary = sanitized.salary;
-      if (sanitized.paymentFrequency !== undefined) contractUpdate.paymentFrequency = sanitized.paymentFrequency;
-      await activeContract.update(contractUpdate);
-    }
-
-    return this.getById(id);
   }
 
   async delete(id) {
-    const emp = await Employee.findByPk(id);
-    if (!emp) throw ApiError.notFound('Employee not found');
-    if (emp.userId) {
-      const user = await User.findByPk(emp.userId);
-      if (user) await user.update({ isActive: false });
+    const t = await sequelize.transaction({ isolationLevel: 'REPEATABLE READ' });
+    try {
+      const emp = await Employee.findByPk(id, { transaction: t, lock: t.LOCK.UPDATE });
+      if (!emp) throw ApiError.notFound('Employee not found');
+      if (emp.userId) {
+        const user = await User.findByPk(emp.userId, { transaction: t });
+        if (user) await user.update({ isActive: false }, { transaction: t });
+      }
+      await emp.destroy({ transaction: t });
+      await t.commit();
+      return { message: 'Employee deleted' };
+    } catch (error) {
+      await t.rollback();
+      throw error;
     }
-    await emp.destroy();
-    return { message: 'Employee deleted' };
   }
 
   async approve(id) {
-    const emp = await Employee.findByPk(id, {
-      include: [
-        { association: 'department', attributes: ['id', 'name'] },
-        { association: 'position', attributes: ['id', 'title'] },
-        { association: 'schedule', attributes: ['id', 'name', 'startTime', 'endTime'] },
-      ],
-    });
-    if (!emp) throw ApiError.notFound('Employee not found');
-    const oldData = { status: emp.status };
-    await emp.update({ status: 'active', approvedAt: new Date() });
-    await logActivity(null, 'employee-approved', 'HRMS', { referenceType: 'Employee', referenceId: id, description: `Approved employee ${emp.firstName} ${emp.lastName}`, oldData, newData: { status: 'active' } });
-
+    const t = await sequelize.transaction({ isolationLevel: 'REPEATABLE READ' });
     try {
-      const { sendEmail } = require('../../utils/mailer');
-      const { employeeApprovedEmail, formatDate } = require('../../utils/emailTemplates');
-      const user = emp.userId ? await User.findByPk(emp.userId) : null;
-      const tempPassword = user ? 'employee123' : null;
-      if (user && tempPassword) {
-        await user.update({ password: tempPassword, isActive: true });
-      }
-      const startDateFormatted = formatDate(emp.hireDate);
-      const scheduleInfo = emp.schedule ? `${emp.schedule.name} (${emp.schedule.startTime} — ${emp.schedule.endTime})` : '';
-      await sendEmail({
-        to: emp.email,
-        subject: 'Welcome to MiniMart — Your Account is Ready',
-        html: employeeApprovedEmail(emp.firstName || emp.email, emp.employeeNo, tempPassword, {
-          startDate: startDateFormatted,
-          department: emp.department?.name || '',
-          position: emp.position?.title || '',
-          schedule: scheduleInfo,
-        }),
-      }).catch(() => {});
-    } catch (e) { console.error('[EMAIL] Employee approve email failed:', e.message); }
+      const emp = await Employee.findByPk(id, {
+        include: [
+          { association: 'department', attributes: ['id', 'name'] },
+          { association: 'position', attributes: ['id', 'title'] },
+          { association: 'schedule', attributes: ['id', 'name', 'startTime', 'endTime'] },
+        ],
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
+      if (!emp) throw ApiError.notFound('Employee not found');
+      const oldData = { status: emp.status };
+      await emp.update({ status: 'active', approvedAt: new Date() }, { transaction: t });
+      await logActivity(null, 'employee-approved', 'HRMS', { referenceType: 'Employee', referenceId: id, description: `Approved employee ${emp.firstName} ${emp.lastName}`, oldData, newData: { status: 'active' } }, t);
 
-    return this.getById(id);
+      await t.commit();
+
+      try {
+        const { sendEmail } = require('../../utils/mailer');
+        const { employeeApprovedEmail, formatDate } = require('../../utils/emailTemplates');
+        const user = emp.userId ? await User.findByPk(emp.userId) : null;
+        const tempPassword = user ? 'employee123' : null;
+        if (user && tempPassword) {
+          await user.update({ password: tempPassword, isActive: true });
+        }
+        const startDateFormatted = formatDate(emp.hireDate);
+        const scheduleInfo = emp.schedule ? `${emp.schedule.name} (${emp.schedule.startTime} — ${emp.schedule.endTime})` : '';
+        await sendEmail({
+          to: emp.email,
+          subject: 'Welcome to MiniMart — Your Account is Ready',
+          html: employeeApprovedEmail(emp.firstName || emp.email, emp.employeeNo, tempPassword, {
+            startDate: startDateFormatted,
+            department: emp.department?.name || '',
+            position: emp.position?.title || '',
+            schedule: scheduleInfo,
+          }),
+        }).catch(() => {});
+      } catch (e) { console.error('[EMAIL] Employee approve email failed:', e.message); }
+
+      return this.getById(id);
+    } catch (error) {
+      await t.rollback();
+      throw error;
+    }
   }
 
   async reject(id) {
-    const emp = await Employee.findByPk(id);
-    if (!emp) throw ApiError.notFound('Employee not found');
-    const oldData = { status: emp.status };
-    await emp.update({ status: 'inactive' });
-    if (emp.userId) {
-      const user = await User.findByPk(emp.userId);
-      if (user) await user.update({ isActive: false });
-    }
-    await logActivity(null, 'employee-rejected', 'HRMS', { referenceType: 'Employee', referenceId: id, description: `Rejected employee ${emp.firstName} ${emp.lastName}`, oldData, newData: { status: 'inactive' } });
-
+    const t = await sequelize.transaction({ isolationLevel: 'REPEATABLE READ' });
     try {
-      const { sendEmail } = require('../../utils/mailer');
-      const { employeeRejectedEmail } = require('../../utils/emailTemplates');
-      await sendEmail({
-        to: emp.email,
-        subject: 'Employment Application Update — MiniMart POS',
-        html: employeeRejectedEmail(emp.firstName || emp.email),
-      }).catch(() => {});
-    } catch (e) { console.error('[EMAIL] Employee reject email failed:', e.message); }
+      const emp = await Employee.findByPk(id, { transaction: t, lock: t.LOCK.UPDATE });
+      if (!emp) throw ApiError.notFound('Employee not found');
+      const oldData = { status: emp.status };
+      await emp.update({ status: 'inactive' }, { transaction: t });
+      if (emp.userId) {
+        const user = await User.findByPk(emp.userId, { transaction: t });
+        if (user) await user.update({ isActive: false }, { transaction: t });
+      }
+      await logActivity(null, 'employee-rejected', 'HRMS', { referenceType: 'Employee', referenceId: id, description: `Rejected employee ${emp.firstName} ${emp.lastName}`, oldData, newData: { status: 'inactive' } }, t);
 
-    return emp;
+      await t.commit();
+
+      try {
+        const { sendEmail } = require('../../utils/mailer');
+        const { employeeRejectedEmail } = require('../../utils/emailTemplates');
+        await sendEmail({
+          to: emp.email,
+          subject: 'Employment Application Update — MiniMart POS',
+          html: employeeRejectedEmail(emp.firstName || emp.email),
+        }).catch(() => {});
+      } catch (e) { console.error('[EMAIL] Employee reject email failed:', e.message); }
+
+      return emp;
+    } catch (error) {
+      await t.rollback();
+      throw error;
+    }
   }
 
   async terminate(id, data = {}) {
@@ -209,7 +247,11 @@ class EmployeeService {
     const { ShiftAssignment, LeaveRequest, Notification, sequelize } = require('../../models');
     const today = new Date().toISOString().split('T')[0];
 
-    await sequelize.transaction(async (t) => {
+    const t = await sequelize.transaction({ isolationLevel: 'REPEATABLE READ' });
+    try {
+      const empLocked = await Employee.findByPk(id, { transaction: t, lock: t.LOCK.UPDATE });
+      if (!empLocked) throw ApiError.notFound('Employee not found');
+
       await Contract.update(
         { status: 'terminated' },
         { where: { employeeId: id, status: { [Op.in]: ['active', 'pending'] } } },
@@ -218,38 +260,43 @@ class EmployeeService {
 
       await ShiftAssignment.destroy({ where: { employeeId: id }, transaction: t });
 
-      if (emp.userId) {
-        await User.update({ isActive: false }, { where: { id: emp.userId }, transaction: t });
+      if (empLocked.userId) {
+        await User.update({ isActive: false }, { where: { id: empLocked.userId }, transaction: t });
       }
 
-      await emp.update({
+      await empLocked.update({
         status: 'inactive',
         scheduleId: null,
         terminationType: data.terminationType || 'end-of-contract',
         terminationDate: data.terminationDate || today,
       }, { transaction: t });
-    });
 
-    await logActivity(null, 'employee-terminated', 'HRMS', { referenceType: 'Employee', referenceId: id, description: `Terminated employee ${emp.firstName} ${emp.lastName} (${emp.employeeNo})` });
+      await t.commit();
 
-    await Notification.create({
-      userId: emp.userId,
-      type: 'hrms_contract_terminated',
-      title: 'Employee Terminated',
-      message: `Employee ${emp.firstName} ${emp.lastName} (${emp.employeeNo}) has been terminated.`,
-    });
+      await logActivity(null, 'employee-terminated', 'HRMS', { referenceType: 'Employee', referenceId: id, description: `Terminated employee ${emp.firstName} ${emp.lastName} (${emp.employeeNo})` });
 
-    try {
-      const { sendEmail } = require('../../utils/mailer');
-      const { employeeTerminatedEmail } = require('../../utils/emailTemplates');
-      await sendEmail({
-        to: emp.email,
-        subject: 'Employment Termination Notice — MiniMart POS',
-        html: employeeTerminatedEmail(emp.firstName || emp.email, (data.terminationType || 'end-of-contract').replace(/-/g, ' '), data.terminationDate || today),
-      }).catch(() => {});
-    } catch (e) { console.error('[EMAIL] Employee terminate email failed:', e.message); }
+      await Notification.create({
+        userId: emp.userId,
+        type: 'hrms_contract_terminated',
+        title: 'Employee Terminated',
+        message: `Employee ${emp.firstName} ${emp.lastName} (${emp.employeeNo}) has been terminated.`,
+      });
 
-    return { message: 'Employee terminated. Attendance and payslip records preserved for audit.' };
+      try {
+        const { sendEmail } = require('../../utils/mailer');
+        const { employeeTerminatedEmail } = require('../../utils/emailTemplates');
+        await sendEmail({
+          to: emp.email,
+          subject: 'Employment Termination Notice — MiniMart POS',
+          html: employeeTerminatedEmail(emp.firstName || emp.email, (data.terminationType || 'end-of-contract').replace(/-/g, ' '), data.terminationDate || today),
+        }).catch(() => {});
+      } catch (e) { console.error('[EMAIL] Employee terminate email failed:', e.message); }
+
+      return { message: 'Employee terminated. Attendance and payslip records preserved for audit.' };
+    } catch (error) {
+      await t.rollback();
+      throw error;
+    }
   }
 
   async updateProfile(userId, data) {
@@ -268,50 +315,66 @@ class EmployeeService {
   }
 
   async assignPosAccess(id, data) {
-    const emp = await Employee.findByPk(id, { include: [{ association: 'user', include: [{ association: 'role' }] }] });
-    if (!emp) throw ApiError.notFound('Employee not found');
-    if (!emp.userId) throw ApiError.badRequest('Employee has no user account. Approve the employee first.');
+    const t = await sequelize.transaction({ isolationLevel: 'REPEATABLE READ' });
+    try {
+      const emp = await Employee.findByPk(id, { include: [{ association: 'user', include: [{ association: 'role' }] }], transaction: t, lock: t.LOCK.UPDATE });
+      if (!emp) throw ApiError.notFound('Employee not found');
+      if (!emp.userId) throw ApiError.badRequest('Employee has no user account. Approve the employee first.');
 
-    const POS_ROLES = ['cashier', 'manager', 'inventory_staff'];
-    const { roleSlug } = data;
-    if (!roleSlug) throw ApiError.badRequest('roleSlug is required');
-    if (!POS_ROLES.includes(roleSlug)) throw ApiError.badRequest(`Invalid POS role. Allowed: ${POS_ROLES.join(', ')}`);
+      const POS_ROLES = ['cashier', 'manager', 'inventory_staff'];
+      const { roleSlug } = data;
+      if (!roleSlug) throw ApiError.badRequest('roleSlug is required');
+      if (!POS_ROLES.includes(roleSlug)) throw ApiError.badRequest(`Invalid POS role. Allowed: ${POS_ROLES.join(', ')}`);
 
-    const role = await Role.findOne({ where: { slug: roleSlug } });
-    if (!role) throw ApiError.notFound('Role not found');
+      const role = await Role.findOne({ where: { slug: roleSlug }, transaction: t });
+      if (!role) throw ApiError.notFound('Role not found');
 
-    const user = await User.findByPk(emp.userId);
-    if (!user) throw ApiError.notFound('User account not found');
+      const user = await User.findByPk(emp.userId, { transaction: t });
+      if (!user) throw ApiError.notFound('User account not found');
 
-    await user.update({ roleId: role.id });
-    await logActivity(null, 'employee-pos-access', 'HRMS', {
-      referenceType: 'Employee', referenceId: id,
-      description: `Assigned POS role "${roleSlug}" to ${emp.firstName} ${emp.lastName}`,
-      newData: { roleSlug, userId: user.id },
-    });
+      await user.update({ roleId: role.id }, { transaction: t });
+      await logActivity(null, 'employee-pos-access', 'HRMS', {
+        referenceType: 'Employee', referenceId: id,
+        description: `Assigned POS role "${roleSlug}" to ${emp.firstName} ${emp.lastName}`,
+        newData: { roleSlug, userId: user.id },
+      }, t);
 
-    return this.getById(id);
+      await t.commit();
+
+      return this.getById(id);
+    } catch (error) {
+      await t.rollback();
+      throw error;
+    }
   }
 
   async revokePosAccess(id) {
-    const emp = await Employee.findByPk(id, { include: [{ association: 'user', include: [{ association: 'role' }] }] });
-    if (!emp) throw ApiError.notFound('Employee not found');
-    if (!emp.userId) throw ApiError.badRequest('Employee has no user account');
+    const t = await sequelize.transaction({ isolationLevel: 'REPEATABLE READ' });
+    try {
+      const emp = await Employee.findByPk(id, { include: [{ association: 'user', include: [{ association: 'role' }] }], transaction: t, lock: t.LOCK.UPDATE });
+      if (!emp) throw ApiError.notFound('Employee not found');
+      if (!emp.userId) throw ApiError.badRequest('Employee has no user account');
 
-    const employeeRole = await Role.findOne({ where: { slug: 'employee' } });
-    if (!employeeRole) throw ApiError.notFound('Employee role not found');
+      const employeeRole = await Role.findOne({ where: { slug: 'employee' }, transaction: t });
+      if (!employeeRole) throw ApiError.notFound('Employee role not found');
 
-    const user = await User.findByPk(emp.userId);
-    if (!user) throw ApiError.notFound('User account not found');
+      const user = await User.findByPk(emp.userId, { transaction: t });
+      if (!user) throw ApiError.notFound('User account not found');
 
-    await user.update({ roleId: employeeRole.id });
-    await logActivity(null, 'employee-pos-revoke', 'HRMS', {
-      referenceType: 'Employee', referenceId: id,
-      description: `Revoked POS access from ${emp.firstName} ${emp.lastName}`,
-      newData: { userId: user.id },
-    });
+      await user.update({ roleId: employeeRole.id }, { transaction: t });
+      await logActivity(null, 'employee-pos-revoke', 'HRMS', {
+        referenceType: 'Employee', referenceId: id,
+        description: `Revoked POS access from ${emp.firstName} ${emp.lastName}`,
+        newData: { userId: user.id },
+      }, t);
 
-    return this.getById(id);
+      await t.commit();
+
+      return this.getById(id);
+    } catch (error) {
+      await t.rollback();
+      throw error;
+    }
   }
 
   async getPosStaff(query) {
