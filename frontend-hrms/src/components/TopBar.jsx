@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import useAuthStore from '../store/authStore';
 import api from '../api/client';
 import { useGlobalSearch } from '../context/GlobalSearchContext';
@@ -48,6 +48,12 @@ export default function TopBar() {
       </button>
 
       <div className="topbar__actions">
+        {!user && (
+          <Link to="/hrms/login" className="topbar__login-btn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/></svg>
+            Sign In
+          </Link>
+        )}
         <div ref={notifRef} className="topbar__bell">
           <button className="icon-btn" onClick={() => setNotifOpen(o => !o)} aria-label="Notifications" aria-expanded={notifOpen}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

@@ -51,7 +51,11 @@ const PageLoader = () => (
 function RoleRedirect() {
   const user = useAuthStore(s => s.user);
   const slug = user?.role?.slug;
-  if (slug === 'cashier' || slug === 'employee' || slug === 'inventory_staff') return <Navigate to="/pos" replace />;
+  // POS roles: cashier, manager, inventory_staff -> POS
+  // HRMS roles: admin, hr, employee -> HRMS Dashboard
+  if (slug === 'cashier' || slug === 'manager' || slug === 'inventory_staff') {
+    return <Navigate to="/pos" replace />;
+  }
   return (
     <HrmsLayout>
       <Suspense fallback={<PageLoader />}><Dashboard /></Suspense>

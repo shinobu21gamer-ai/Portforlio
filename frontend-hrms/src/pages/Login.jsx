@@ -8,6 +8,7 @@ import Button from '../components/Button';
 
 const ROLE_REDIRECTS = {
   cashier: '/pos',
+  manager: '/pos',
   inventory_staff: '/pos',
 };
 
