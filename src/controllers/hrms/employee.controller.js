@@ -23,7 +23,7 @@ class EmployeeController {
 
   async getDetail(req, res, next) {
     try {
-      const emp = await Employee.findByPk(req.params.id, {
+      const emp = await Employee.scope('withSensitive').findByPk(req.params.id, {
         include: [
           { association: 'department' },
           { association: 'position' },
@@ -50,7 +50,7 @@ class EmployeeController {
 
   async getMyProfile(req, res, next) {
     try {
-      const emp = await Employee.findOne({
+      const emp = await Employee.scope('withSensitive').findOne({
         where: { userId: req.user.id },
         include: [
           { association: 'department' },

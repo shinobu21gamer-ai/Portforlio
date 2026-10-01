@@ -73,7 +73,7 @@ class DiscountService {
       throw ApiError.badRequest(validation.error);
     }
 
-    let discountAmount = 0;
+    let discountAmount;
     if (discount.type === 'percentage') {
       discountAmount = parseFloat(((parseFloat(subtotal) * parseFloat(discount.value)) / 100).toFixed(2));
     } else {
@@ -146,7 +146,11 @@ class DiscountService {
       if (existing) throw ApiError.conflict('Discount code already exists');
     }
 
-    if (sanitized.type === 'percentage' && sanitized.value && parseFloat(sanitized.value) > 100) {
+    // The check must consider the type the record will end up with, not just
+    // the type in this payload. A partial update of only `value` on an existing
+    // percentage discount would otherwise bypass the ceiling entirely.
+    const effectiveType = sanitized.type || discount.type;
+    if (effectiveType === 'percentage' && sanitized.value && parseFloat(sanitized.value) > 100) {
       throw ApiError.badRequest('Percentage discount cannot exceed 100%');
     }
 
@@ -162,9 +166,14 @@ class DiscountService {
   }
 
   async incrementUsage(id, transaction) {
-    const discount = await Discount.findByPk(id, transaction ? { transaction } : {});
+    const opts = transaction ? { transaction } : {};
+    const discount = await Discount.findByPk(id, opts);
     if (!discount) throw ApiError.notFound('Discount not found');
-    await discount.increment('usedCount', transaction ? { transaction } : {});
+    await discount.increment('usedCount', opts);
+    // increment() updates the row but leaves this instance holding the
+    // pre-increment value, so callers that check the usage limit right after
+    // would see a stale usedCount. reload() to return the committed value.
+    await discount.reload(opts);
     return { discount };
   }
 }

@@ -69,7 +69,7 @@ class DashboardService {
 
     const lowStock = lowStockProducts;
 
-    let bestSellers = [];
+    let bestSellers;
     try {
       bestSellers = await SaleItem.findAll({
         attributes: [
@@ -90,7 +90,7 @@ class DashboardService {
       bestSellers = [];
     }
 
-    let recentTransactions = [];
+    let recentTransactions;
     try {
       recentTransactions = await Sale.findAll({
         include: [
@@ -104,7 +104,7 @@ class DashboardService {
       recentTransactions = [];
     }
 
-    let dailySales = [];
+    let dailySales;
     try {
       const isSQLite = sequelize.getDialect() === 'sqlite';
       const dateExpr = isSQLite ? "date(created_at)" : "DATE(created_at)";
@@ -133,7 +133,7 @@ class DashboardService {
       dailySales = [];
     }
 
-    let paymentMethods = [];
+    let paymentMethods;
     try {
       const isSQLite = sequelize.getDialect() === 'sqlite';
       const dateExpr = isSQLite ? "date(created_at)" : "DATE(created_at)";
@@ -158,7 +158,7 @@ class DashboardService {
       paymentMethods = [];
     }
 
-    let categorySales = [];
+    let categorySales;
     try {
       const rawCatSales = await sequelize.query(`
         SELECT c.name as category,

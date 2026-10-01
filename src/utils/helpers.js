@@ -15,8 +15,10 @@ const generateSKU = (categoryName, index) => {
 };
 
 const generateBarcode = () => {
+  // 20 + 8 timestamp digits + 3 random digits = 13, the EAN-13 width.
+  // The previous 4-digit random produced 14 characters.
   const timestamp = Date.now().toString().slice(-8);
-  const random = Math.floor(1000 + Math.random() * 9000).toString();
+  const random = Math.floor(100 + Math.random() * 900).toString();
   return `20${timestamp}${random}`;
 };
 
@@ -33,8 +35,9 @@ const generateOrderNo = (prefix = 'PO') => {
   const date = new Date();
   const y = date.getFullYear().toString().slice(-2);
   const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
   const rand = crypto.randomBytes(4).toString('hex').toUpperCase();
-  return `${prefix}-${y}${m}-${rand}`;
+  return `${prefix}-${y}${m}${d}-${rand}`;
 };
 
 const slugify = (text) => {
@@ -62,11 +65,14 @@ const calculateDiscount = (subtotal, discountType, discountValue) => {
 };
 
 const getPagination = (page = 1, limit = 10) => {
-    const p = Math.max(1, parseInt(page, 10) || 1);
-    const parsedLimit = parseInt(limit, 10) || 10;
-    // Allow limit <= 0 to bypass cap (for bulk operations like dashboard)
-    const l = parsedLimit <= 0 ? 1000 : Math.min(100, Math.max(1, parsedLimit));
-    return { page: p, limit: l, offset: (p - 1) * l };
+  const p = Math.max(1, parseInt(page, 10) || 1);
+  // Check for an explicit non-positive value before the `|| 10` fallback,
+  // which would otherwise swallow 0 and make the bulk branch unreachable.
+  const rawLimit = parseInt(limit, 10);
+  const parsedLimit = Number.isNaN(rawLimit) ? 10 : rawLimit;
+  // Allow limit <= 0 to bypass cap (for bulk operations like dashboard)
+  const l = parsedLimit <= 0 ? 1000 : Math.min(100, Math.max(1, parsedLimit));
+  return { page: p, limit: l, offset: (p - 1) * l };
   };
 
 const getPaginationMeta = (count, page, limit) => {

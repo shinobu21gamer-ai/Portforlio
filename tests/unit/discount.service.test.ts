@@ -1,121 +1,263 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 
-describe('DiscountService - VAT Rounding Logic (Pure Functions)', () => {
-  // Test the VAT rounding logic directly without importing the service
-  // JavaScript uses "round half away from zero" not banker's rounding
-  function roundToTwoDecimals(value: number): number {
-    return Math.round(value * 100) / 100;
-  }
+process.env.DB_DIALECT = 'sqlite';
+process.env.DB_STORAGE = ':memory:';
 
-  function calculateVat(subtotal: number, discountAmount: number, isZeroRated = false, isSenior = false): number {
-    if (isZeroRated || isSenior) return 0;
-    const taxable = Math.max(0, subtotal - discountAmount);
-    return roundToTwoDecimals(taxable * 0.12);
-  }
+const { sequelize, Discount } = require('../../src/models');
+const discountService = require('../../src/services/discount.service');
 
-  describe('roundToTwoDecimals - JavaScript Rounding (round half away from zero)', () => {
-    it('should round 0.005 to 0.01 (away from zero)', () => {
-      expect(roundToTwoDecimals(0.005)).toBe(0.01);
-    });
+const baseDiscount = (overrides = {}) => ({
+  code: 'SAVE10',
+  name: 'Save 10%',
+  type: 'percentage',
+  value: 10,
+  isActive: true,
+  ...overrides,
+});
 
-    it('should round 0.015 to 0.02', () => {
-      expect(roundToTwoDecimals(0.015)).toBe(0.02);
-    });
+beforeAll(async () => {
+  await sequelize.sync({ force: true });
+});
 
-    it('should round 0.025 to 0.03', () => {
-      expect(roundToTwoDecimals(0.025)).toBe(0.03);
-    });
+afterAll(async () => {
+  await sequelize.close();
+});
 
-    it('should round 0.035 to 0.04', () => {
-      expect(roundToTwoDecimals(0.035)).toBe(0.04);
-    });
+beforeEach(async () => {
+  await Discount.destroy({ where: {}, force: true });
+});
 
-    it('should round 0.045 to 0.05', () => {
-      expect(roundToTwoDecimals(0.045)).toBe(0.05);
-    });
-
-    it('should round 0.055 to 0.06', () => {
-      expect(roundToTwoDecimals(0.055)).toBe(0.06);
-    });
+describe('discount.service - stacking rules', () => {
+  it('allows percentage + fixed together', () => {
+    expect(discountService._validateDiscountStacking([{ type: 'percentage' }, { type: 'fixed' }])).toEqual({ valid: true });
   });
 
-  describe('calculateVat - VAT Calculation', () => {
-    it('should calculate VAT on standard sale correctly', () => {
-      expect(calculateVat(1000, 0)).toBe(120); // 1000 * 0.12 = 120
-    });
-
-    it('should calculate VAT with percentage discount correctly', () => {
-      expect(calculateVat(1000, 100)).toBe(108); // (1000-100) * 0.12 = 108
-    });
-
-    it('should calculate VAT with fixed discount correctly', () => {
-      expect(calculateVat(1000, 50)).toBe(114); // (1000-50) * 0.12 = 114
-    });
-
-    it('should return 0 for zero-rated items', () => {
-      expect(calculateVat(1000, 0, true)).toBe(0);
-    });
-
-    it('should return 0 for senior citizen (VAT exempt)', () => {
-      expect(calculateVat(1000, 200, false, true)).toBe(0);
-    });
-
-    it('should correctly round VAT to 2 decimal places', () => {
-      expect(calculateVat(111.11, 0)).toBe(13.33); // 111.11 * 0.12 = 13.3332 -> 13.33
-    });
-
-    it('should cap discount at subtotal (taxable cannot be negative)', () => {
-      expect(calculateVat(100, 150)).toBe(0); // Discount capped at subtotal
-    });
+  it('rejects two percentage discounts', () => {
+    const r = discountService._validateDiscountStacking([{ type: 'percentage' }, { type: 'percentage' }]);
+    expect(r.valid).toBe(false);
+    expect(r.error).toMatch(/multiple percentage/i);
   });
 
-  describe('Discount Stacking Rules', () => {
-    function validateDiscounts(discounts: Array<{ type: string }>): { valid: boolean; error?: string } {
-      const types = discounts.map(d => d.type);
-      const percentageCount = types.filter(t => t === 'percentage').length;
-      const fixedCount = types.filter(t => t === 'fixed').length;
-      const hasBxgy = types.includes('bxgy');
-      const hasSenior = types.includes('senior');
+  it('rejects two fixed discounts', () => {
+    const r = discountService._validateDiscountStacking([{ type: 'fixed' }, { type: 'fixed' }]);
+    expect(r.valid).toBe(false);
+    expect(r.error).toMatch(/multiple fixed/i);
+  });
 
-      if (hasSenior && types.length > 1) {
-        return { valid: false, error: 'Senior discount is exclusive' };
-      }
-      if (types.includes('bxgy') && types.length > 1) {
-        return { valid: false, error: 'BXGY discount cannot be combined' };
-      }
-      if (discounts.filter(d => d.type === 'percentage').length > 1) {
-        return { valid: false, error: 'Cannot stack multiple percentage discounts' };
-      }
-      if (discounts.filter(d => d.type === 'fixed').length > 1) {
-        return { valid: false, error: 'Cannot stack multiple fixed discounts' };
-      }
-      if (types.includes('bxgy') && types.length > 1) {
-        return { valid: false, error: 'BXGY discount cannot be combined' };
-      }
-      if (hasSenior && types.length > 1) {
-        return { valid: false, error: 'Senior discount is exclusive' };
-      }
-      return { valid: true };
-    }
+  it('rejects BXGY combined with anything', () => {
+    const r = discountService._validateDiscountStacking([{ type: 'bxgy' }, { type: 'percentage' }]);
+    expect(r.valid).toBe(false);
+    expect(r.error).toMatch(/BXGY/i);
+  });
 
-    it('should allow percentage + fixed discount stacking', () => {
-      expect(validateDiscounts([{ type: 'percentage' }, { type: 'fixed' }]).valid).toBe(true);
-    });
+  it('rejects senior combined with anything', () => {
+    const r = discountService._validateDiscountStacking([{ type: 'senior' }, { type: 'fixed' }]);
+    expect(r.valid).toBe(false);
+    expect(r.error).toMatch(/senior/i);
+  });
 
-    it('should reject two percentage discounts', () => {
-      expect(validateDiscounts([{ type: 'percentage' }, { type: 'percentage' }]).valid).toBe(false);
-    });
+  it('allows a lone senior discount', () => {
+    expect(discountService._validateDiscountStacking([{ type: 'senior' }])).toEqual({ valid: true });
+  });
+});
 
-    it('should reject two fixed discounts', () => {
-      expect(validateDiscounts([{ type: 'fixed' }, { type: 'fixed' }]).valid).toBe(false);
-    });
+describe('discount.service - validateAndApply', () => {
+  it('computes a percentage discount off the subtotal', async () => {
+    await Discount.create(baseDiscount());
+    const { discountAmount, discount } = await discountService.validateAndApply('SAVE10', 1000);
+    expect(discountAmount).toBe(100);
+    expect(discount.code).toBe('SAVE10');
+  });
 
-    it('should reject BXGY with any other discount', () => {
-      expect(validateDiscounts([{ type: 'bxgy' }, { type: 'percentage' }]).valid).toBe(false);
-    });
+  it('is case-insensitive on the code', async () => {
+    await Discount.create(baseDiscount());
+    const { discountAmount } = await discountService.validateAndApply('save10', 1000);
+    expect(discountAmount).toBe(100);
+  });
 
-    it('should reject senior with any other discount', () => {
-      expect(validateDiscounts([{ type: 'senior' }, { type: 'percentage' }]).valid).toBe(false);
-    });
+  it('caps a fixed discount at the subtotal so the total cannot go negative', async () => {
+    await Discount.create(baseDiscount({ code: 'BIGFIX', type: 'fixed', value: 5000 }));
+    const { discountAmount } = await discountService.validateAndApply('BIGFIX', 100);
+    expect(discountAmount).toBe(100);
+  });
+
+  it('respects maxDiscountAmount as a ceiling on a percentage', async () => {
+    await Discount.create(baseDiscount({ value: 50, maxDiscountAmount: 200 }));
+    const { discountAmount } = await discountService.validateAndApply('SAVE10', 1000);
+    expect(discountAmount).toBe(200);
+  });
+
+  it('rejects a subtotal below the minimum purchase', async () => {
+    await Discount.create(baseDiscount({ minPurchaseAmount: 500 }));
+    await expect(discountService.validateAndApply('SAVE10', 100)).rejects.toThrow(/Minimum purchase/i);
+  });
+
+  it('rejects a code past its usage limit', async () => {
+    await Discount.create(baseDiscount({ usageLimit: 5, usedCount: 5 }));
+    await expect(discountService.validateAndApply('SAVE10', 1000)).rejects.toThrow(/usage limit/i);
+  });
+
+  it('rejects an inactive code', async () => {
+    await Discount.create(baseDiscount({ isActive: false }));
+    await expect(discountService.validateAndApply('SAVE10', 1000)).rejects.toThrow(/not found or expired/i);
+  });
+
+  it('rejects a code that has not started yet', async () => {
+    await Discount.create(baseDiscount({ startDate: new Date(Date.now() + 86400000) }));
+    await expect(discountService.validateAndApply('SAVE10', 1000)).rejects.toThrow(/not found or expired/i);
+  });
+
+  it('rejects a code that has already ended', async () => {
+    await Discount.create(baseDiscount({ endDate: new Date(Date.now() - 86400000) }));
+    await expect(discountService.validateAndApply('SAVE10', 1000)).rejects.toThrow(/not found or expired/i);
+  });
+
+  it('rejects an unknown code', async () => {
+    await expect(discountService.validateAndApply('GONE', 1000)).rejects.toThrow(/not found or expired/i);
+  });
+
+  it('rejects stacking a second percentage discount', async () => {
+    await Discount.create(baseDiscount());
+    await expect(
+      discountService.validateAndApply('SAVE10', 1000, [{ type: 'percentage' }])
+    ).rejects.toThrow(/multiple percentage/i);
+  });
+
+  it('rejects applying a senior code on top of another discount', async () => {
+    await Discount.create(baseDiscount({ code: 'SENIOR', type: 'senior', value: 0 }));
+    await expect(
+      discountService.validateAndApply('SENIOR', 1000, [{ type: 'percentage' }])
+    ).rejects.toThrow(/senior/i);
+  });
+
+  it('allows stacking a fixed discount on a percentage', async () => {
+    await Discount.create(baseDiscount({ code: 'FIVEOFF', type: 'fixed', value: 5 }));
+    const { discountAmount } = await discountService.validateAndApply('FIVEOFF', 100, [{ type: 'percentage' }]);
+    expect(discountAmount).toBe(5);
+  });
+});
+
+describe('discount.service - create', () => {
+  it('uppercases the code before saving', async () => {
+    const { discount } = await discountService.create({ code: 'lower10', name: 'Lower Ten', type: 'percentage', value: 10 });
+    expect(discount.code).toBe('LOWER10');
+  });
+
+  it('rejects a duplicate code regardless of case', async () => {
+    await Discount.create(baseDiscount());
+    await expect(discountService.create({ code: 'save10', name: 'Dupe', type: 'percentage', value: 10 })).rejects.toThrow(/already exists/i);
+  });
+
+  it('rejects a percentage above 100', async () => {
+    await expect(
+      discountService.create({ code: 'TOOBIG', name: 'Too Big', type: 'percentage', value: 150 })
+    ).rejects.toThrow(/cannot exceed 100/i);
+  });
+
+  it('rejects a null name via the model', async () => {
+    await expect(
+      discountService.create({ code: 'NONAME', type: 'percentage', value: 10 })
+    ).rejects.toThrow();
+  });
+});
+
+describe('discount.service - update', () => {
+  it('updates a field', async () => {
+    const { discount } = await discountService.create({ code: 'UPD', name: 'Before', type: 'percentage', value: 10 });
+    const res = await discountService.update(discount.id, { name: 'After' });
+    expect(res.discount.name).toBe('After');
+  });
+
+  it('rejects renaming to a code that already exists', async () => {
+    const { discount } = await discountService.create({ code: 'OLD', name: 'Old', type: 'percentage', value: 10 });
+    await Discount.create(baseDiscount({ code: 'TAKEN', name: 'Taken' }));
+    await expect(discountService.update(discount.id, { code: 'taken' })).rejects.toThrow(/already exists/i);
+  });
+
+  it('allows a no-op save back to the same code', async () => {
+    const { discount } = await discountService.create({ code: 'SAME', name: 'Same', type: 'percentage', value: 10 });
+    const res = await discountService.update(discount.id, { code: 'SAME', value: 20 });
+    expect(res.discount.value).toBe(20);
+  });
+
+  it('throws when the discount does not exist', async () => {
+    await expect(discountService.update(999999, { name: 'x' })).rejects.toThrow(/not found/i);
+  });
+
+  it('rejects raising a percentage above 100', async () => {
+    const { discount } = await discountService.create({ code: 'PCT', name: 'Pct', type: 'percentage', value: 10 });
+    await expect(discountService.update(discount.id, { value: 101 })).rejects.toThrow(/cannot exceed 100/i);
+  });
+});
+
+describe('discount.service - delete', () => {
+  it('soft deletes a discount', async () => {
+    const { discount } = await discountService.create({ code: 'GONE', name: 'Gone', type: 'percentage', value: 10 });
+    await discountService.delete(discount.id);
+    await expect(discountService.getById(discount.id)).rejects.toThrow(/not found/i);
+  });
+
+  it('throws when deleting a missing discount', async () => {
+    await expect(discountService.delete(999999)).rejects.toThrow(/not found/i);
+  });
+});
+
+describe('discount.service - getAll', () => {
+  it('paginates and returns metadata', async () => {
+    await Discount.create(baseDiscount({ code: 'AAA', name: 'A' }));
+    await Discount.create(baseDiscount({ code: 'BBB', name: 'B' }));
+    const res = await discountService.getAll({ page: 1, limit: 1 });
+    expect(res.discounts).toHaveLength(1);
+    expect(res.pagination.totalItems).toBe(2);
+    expect(res.pagination.hasNextPage).toBe(true);
+  });
+
+  it('filters by type', async () => {
+    await Discount.create(baseDiscount({ code: 'PCT', name: 'Pct' }));
+    await Discount.create(baseDiscount({ code: 'FIX', name: 'Fix', type: 'fixed', value: 5 }));
+    const res = await discountService.getAll({ type: 'fixed' });
+    expect(res.discounts).toHaveLength(1);
+    expect(res.discounts[0].code).toBe('FIX');
+  });
+
+  it('filters out inactive records', async () => {
+    await Discount.create(baseDiscount({ code: 'ON', name: 'On', isActive: true }));
+    await Discount.create(baseDiscount({ code: 'OFF', name: 'Off', isActive: false }));
+    const res = await discountService.getAll({ isActive: 'true' });
+    expect(res.discounts).toHaveLength(1);
+    expect(res.discounts[0].code).toBe('ON');
+  });
+
+  it('searches by code without letting wildcards match everything', async () => {
+    await Discount.create(baseDiscount({ code: 'SAVE10', name: 'Save' }));
+    await Discount.create(baseDiscount({ code: 'OTHER', name: 'Other' }));
+    expect((await discountService.getAll({ search: 'SAVE' })).discounts).toHaveLength(1);
+    expect((await discountService.getAll({ search: '%' })).discounts).toHaveLength(0);
+  });
+
+  it('falls back to a safe sort column when given an unknown one', async () => {
+    await Discount.create(baseDiscount());
+    await expect(discountService.getAll({ sortBy: 'value; DROP TABLE discounts' })).resolves.toBeTruthy();
+  });
+});
+
+describe('discount.service - incrementUsage', () => {
+  it('increments usedCount', async () => {
+    const { discount } = await discountService.create({ code: 'USE', name: 'Use', type: 'percentage', value: 10 });
+    const res = await discountService.incrementUsage(discount.id);
+    expect(res.discount.usedCount).toBe(1);
+    const reread = await Discount.findByPk(discount.id);
+    expect(reread.usedCount).toBe(1);
+  });
+
+  it('accumulates across repeated increments', async () => {
+    const { discount } = await discountService.create({ code: 'USE2', name: 'Use2', type: 'percentage', value: 10 });
+    await discountService.incrementUsage(discount.id);
+    const res = await discountService.incrementUsage(discount.id);
+    expect(res.discount.usedCount).toBe(2);
+  });
+
+  it('throws for a missing discount', async () => {
+    await expect(discountService.incrementUsage(999999)).rejects.toThrow(/not found/i);
   });
 });

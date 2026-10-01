@@ -1,4 +1,10 @@
 module.exports = (sequelize, DataTypes) => {
+  const SENSITIVE_FIELDS = [
+    'tinNumber', 'sssNumber', 'philHealthNumber', 'pagIbigNumber',
+    'bankAccountNumber', 'birthDate', 'civilStatus', 'address',
+    'emergencyContactName', 'emergencyContactPhone', 'emergencyContactRelation',
+  ];
+
   const Employee = sequelize.define('Employee', {
     id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
     employeeNo: { type: DataTypes.STRING(50), allowNull: false, unique: true, field: 'employee_no' },
@@ -56,7 +62,17 @@ module.exports = (sequelize, DataTypes) => {
     tableName: 'employees',
     underscored: true,
     paranoid: true,
+    defaultScope: {
+      attributes: { exclude: SENSITIVE_FIELDS },
+    },
+    scopes: {
+      withSensitive: {
+        attributes: { include: SENSITIVE_FIELDS },
+      },
+    },
   });
+
+  Employee.SENSITIVE_FIELDS = SENSITIVE_FIELDS;
 
   Employee.associate = (models) => {
     Employee.belongsTo(models.Department, { foreignKey: 'department_id', as: 'department' });

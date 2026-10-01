@@ -44,7 +44,7 @@ class EmployeeService {
   }
 
   async getById(id) {
-    const emp = await Employee.findByPk(id, {
+    const emp = await Employee.scope('withSensitive').findByPk(id, {
       include: [
         { association: 'department' },
         { association: 'position' },
@@ -108,6 +108,15 @@ class EmployeeService {
       if (!emp) throw ApiError.notFound('Employee not found');
 
       const sanitized = sanitizeObject(data);
+
+      // Sensitive fields are excluded from list/detail responses. If a client
+      // round-trips a record and submits them blank, keep the stored value
+      // rather than erasing it.
+      for (const field of Employee.SENSITIVE_FIELDS) {
+        if (sanitized[field] === '' || sanitized[field] === null || sanitized[field] === undefined) {
+          delete sanitized[field];
+        }
+      }
 
       if (sanitized.email && sanitized.email !== emp.email) {
         const existing = await Employee.findOne({ where: { email: sanitized.email }, transaction: t });

@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [master, main, develop]
   pull_request:
-    branches: [main, develop]
+    branches: [master, main, develop]
   schedule:
     - cron: '0 2 * * *'
 
@@ -60,7 +60,7 @@ jobs:
       - run: npm run test:integration -- --coverage
       - uses: codecov/codecov-action@v4
         with:
-          files: ./coverage-integration/lcov.info
+          files: ./coverage/lcov.info
           flags: integration
 
   build-frontends:
@@ -143,7 +143,7 @@ jobs:
     name: Deploy to Staging (Render)
     runs-on: ubuntu-latest
     needs: [lint, unit-test, integration-test, build-frontends, e2e-test, security-audit]
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4
       - name: Trigger Render Deploy

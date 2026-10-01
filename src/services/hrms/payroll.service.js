@@ -1,5 +1,5 @@
 const { Op } = require('sequelize');
-const { Payroll, Payslip, Employee, Attendance, Department } = require('../../models');
+const { Payroll, Payslip, Employee, Attendance, Department, sequelize } = require('../../models');
 const ApiError = require('../../utils/ApiError');
 const { getPagination, getPaginationMeta, escapeLike } = require('../../utils/helpers');
 const { logActivity } = require('../../utils/audit');

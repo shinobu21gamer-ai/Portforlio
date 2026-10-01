@@ -252,7 +252,7 @@ function applicationStatusEmail(userName, jobTitle, status, details = {}) {
   };
   const color = colorMap[status] || '#6b7280';
   const label = labelMap[status] || status.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-  let statusMessage = '';
+  let statusMessage;
 
   if (status.includes('interview') && details.scheduledDate) {
     const { scheduledDate, scheduledTime, location } = details;

@@ -129,6 +129,21 @@ class SaleService {
 
         const previousStock = product.stockQuantity;
         const newStock = previousStock - qty;
+
+        // Decrement atomically with a guard so two concurrent sales cannot
+        // both pass the check above and oversell. The prior code computed
+        // newStock but never persisted it, so sales left inventory untouched.
+        const [stockRows] = await Product.update(
+          { stockQuantity: literal(`stock_quantity - ${qty}`) },
+          {
+            where: { id: product.id, stockQuantity: { [Op.gte]: qty } },
+            transaction: t,
+          }
+        );
+        if (stockRows === 0) {
+          throw ApiError.badRequest(`Insufficient stock for ${product.name}. Available: ${product.stockQuantity}`);
+        }
+
         const unitPrice = parseFloat(product.sellingPrice);
         const buyingPrice = parseFloat(product.buyingPrice);
         const itemSubtotal = unitPrice * item.quantity;
@@ -203,16 +218,27 @@ class SaleService {
       const saleTax = totalItemTax;
       const total = saleSubtotal - saleDiscount + saleTax + (parseFloat(data.shippingFee || 0));
 
-      // Non-cash payments must be verified through the gateway (pending checkout flow).
-      if (data.paymentMethod !== 'cash') {
-        throw ApiError.badRequest('Non-cash payments must be processed through the online checkout flow');
-      }
+      // A pending sale is an unpaid online checkout: the money has not arrived
+      // yet, so it must not be recorded as paid and the customer must not be
+      // credited loyalty points until finalizeAfterPayment confirms payment.
+      const pending = Boolean(isPending);
+      let cashAmt = null;
+      if (pending) {
+        if (data.paymentMethod === 'cash') {
+          throw ApiError.badRequest('Cash sales cannot be created as pending');
+        }
+      } else {
+        // Non-cash payments must be verified through the gateway (pending checkout flow).
+        if (data.paymentMethod !== 'cash') {
+          throw ApiError.badRequest('Non-cash payments must be processed through the online checkout flow');
+        }
 
-      // Cash payment must be provided and cover the total.
-      const cashAmtProvided = data.cashAmount !== undefined && data.cashAmount !== null && data.cashAmount !== '';
-      const cashAmt = cashAmtProvided ? parseFloat(data.cashAmount) : NaN;
-      if (!cashAmtProvided || Number.isNaN(cashAmt) || cashAmt < total) {
-        throw ApiError.badRequest(`Insufficient cash. Total: ${total}, Received: ${cashAmtProvided ? cashAmt : 0}`);
+        // Cash payment must be provided and cover the total.
+        const cashAmtProvided = data.cashAmount !== undefined && data.cashAmount !== null && data.cashAmount !== '';
+        cashAmt = cashAmtProvided ? parseFloat(data.cashAmount) : NaN;
+        if (!cashAmtProvided || Number.isNaN(cashAmt) || cashAmt < total) {
+          throw ApiError.badRequest(`Insufficient cash. Total: ${total}, Received: ${cashAmtProvided ? cashAmt : 0}`);
+        }
       }
 
       const sale = await Sale.create({
@@ -228,13 +254,13 @@ class SaleService {
         shippingFee: data.shippingFee || 0,
         total,
         profit: totalProfit,
-        paymentStatus: 'paid',
-        paymentMethod: data.paymentMethod,
+        paymentStatus: pending ? 'pending' : 'paid',
+        paymentMethod: data.paymentMethod || (pending ? 'gcash' : 'cash'),
         paymentReference: data.paymentReference || null,
         cashAmount: cashAmt,
-        changeAmount: parseFloat((cashAmt - total).toFixed(2)),
+        changeAmount: cashAmt == null ? null : parseFloat((cashAmt - total).toFixed(2)),
         notes: data.notes || null,
-        status: 'completed',
+        status: pending ? 'pending' : 'completed',
       }, { transaction: t });
 
       for (const item of items) {
@@ -252,53 +278,62 @@ class SaleService {
         }, { transaction: t });
       }
 
-      await Payment.create({
-        saleId: sale.id,
-        amount: total,
-        paymentMethod: data.paymentMethod,
-        reference: data.paymentReference || null,
-        status: 'completed',
-        paidAt: new Date(),
-      }, { transaction: t });
+      if (!pending) {
+        await Payment.create({
+          saleId: sale.id,
+          amount: total,
+          paymentMethod: data.paymentMethod,
+          reference: data.paymentReference || null,
+          status: 'completed',
+          paidAt: new Date(),
+        }, { transaction: t });
 
-      if (data.customerId) {
-        await Customer.increment(
-          { totalPurchases: total, visitCount: 1 },
-          { where: { id: data.customerId }, transaction: t }
-        );
-        await Customer.update({ lastVisit: new Date() }, { where: { id: data.customerId }, transaction: t });
-        const points = Math.floor(total / 100);
-        if (points > 0) {
-          const customer = await Customer.findByPk(data.customerId, { transaction: t });
-          await LoyaltyPoint.create({
-            customerId: data.customerId,
-            saleId: sale.id,
-            points,
-            type: 'earned',
-            balanceBefore: customer.loyaltyPoints,
-            balanceAfter: customer.loyaltyPoints + points,
-          }, { transaction: t });
-          await Customer.update(
-            { loyaltyPoints: customer.loyaltyPoints + points },
+        if (data.customerId) {
+          await Customer.increment(
+            { totalPurchases: total, visitCount: 1 },
             { where: { id: data.customerId }, transaction: t }
           );
+          await Customer.update({ lastVisit: new Date() }, { where: { id: data.customerId }, transaction: t });
+          const points = Math.floor(total / 100);
+          if (points > 0) {
+            const customer = await Customer.findByPk(data.customerId, { transaction: t });
+            await LoyaltyPoint.create({
+              customerId: data.customerId,
+              saleId: sale.id,
+              points,
+              type: 'earned',
+              balanceBefore: customer.loyaltyPoints,
+              balanceAfter: customer.loyaltyPoints + points,
+            }, { transaction: t });
+            await Customer.update(
+              { loyaltyPoints: customer.loyaltyPoints + points },
+              { where: { id: data.customerId }, transaction: t }
+            );
+          }
         }
-      }
 
-      await Notification.create({
-        type: 'new_sale',
-        title: `New Sale #${invoiceNo}`,
-        message: `Sale of ${total} ${config.app.currency} completed`,
-        data: { saleId: sale.id, invoiceNo, total },
-      }, { transaction: t });
+        await Notification.create({
+          type: 'new_sale',
+          title: `New Sale #${invoiceNo}`,
+          message: `Sale of ${total} ${config.app.currency} completed`,
+          data: { saleId: sale.id, invoiceNo, total },
+        }, { transaction: t });
 
-      if (data.discountId) {
-        await discountService.incrementUsage(data.discountId, t);
+        if (data.discountId) {
+          await discountService.incrementUsage(data.discountId, t);
+        }
+      } else {
+        await Notification.create({
+          type: 'pending_sale',
+          title: `Pending Sale #${invoiceNo}`,
+          message: `Sale of ${total} ${config.app.currency} awaiting payment`,
+          data: { saleId: sale.id, invoiceNo, total },
+        }, { transaction: t });
       }
 
       await t.commit();
 
-      if (data.customerId) {
+      if (!pending && data.customerId) {
         try {
           const { sendEmail: doSend } = require('../utils/mailer');
           const { receiptEmail } = require('../utils/emailTemplates');
@@ -326,156 +361,6 @@ class SaleService {
     }
   }
 
-  async createPending(data, userId) {
-    const t = await sequelize.transaction();
-    try {
-      const invoiceNo = generateInvoiceNo('INV');
-
-      let subtotal = 0;
-      let totalProfit = 0;
-      let totalItemTax = 0;
-      const items = [];
-
-      for (const item of data.items) {
-        const product = await Product.findByPk(item.productId, { transaction: t, lock: true });
-        if (!product) throw ApiError.notFound(`Product #${item.productId} not found`);
-        if (!product.isActive) throw ApiError.badRequest(`Product ${product.name} is inactive`);
-
-        const previousStock = product.stockQuantity;
-
-        const updatedRows = await Product.update(
-          { stockQuantity: sequelize.literal(`stock_quantity - ${parseInt(item.quantity, 10)}`) },
-          {
-            where: { id: item.productId, stockQuantity: { [Op.gte]: item.quantity } },
-            transaction: t,
-          }
-        );
-
-        if (updatedRows[0] === 0) {
-          throw ApiError.badRequest(`Insufficient stock for ${product.name}. Available: ${product.stockQuantity}`);
-        }
-
-        const newStock = previousStock - item.quantity;
-
-        const unitPrice = parseFloat(product.sellingPrice);
-        const buyingPrice = parseFloat(product.buyingPrice);
-        const itemSubtotal = unitPrice * item.quantity;
-        const itemDiscount = calculateDiscount(itemSubtotal, item.discountType, item.discountValue || 0);
-        const rawTaxRate = product.taxRate != null && product.taxRate !== ''
-          ? parseFloat(product.taxRate)
-          : null;
-        const itemTaxRate = rawTaxRate === null
-          ? config.app.taxRate
-          : (rawTaxRate > 1 ? rawTaxRate / 100 : rawTaxRate);
-        const itemTax = calculateTax(itemSubtotal - itemDiscount, itemTaxRate);
-        const itemTotal = itemSubtotal - itemDiscount + itemTax;
-        subtotal += itemSubtotal;
-        totalItemTax += itemTax;
-        totalProfit += ((unitPrice - (itemDiscount / item.quantity)) - buyingPrice) * item.quantity;
-
-        items.push({
-          productId: product.id,
-          productName: product.name,
-          productSku: product.sku,
-          quantity: item.quantity,
-          unitPrice,
-          buyingPrice,
-          discountType: item.discountType || null,
-          discountValue: item.discountValue || 0,
-          discountAmount: itemDiscount,
-          taxRate: product.taxRate || config.app.taxRate,
-          taxAmount: itemTax,
-          subtotal: itemSubtotal,
-          total: itemTotal,
-          previousStock,
-          newStock,
-        });
-      }
-
-      let discountType = data.discountType || null;
-      let discountValue = data.discountValue || 0;
-      let maxDiscountAmount = null;
-
-      if (data.discountId) {
-        const discount = await Discount.findByPk(data.discountId, { transaction: t });
-        if (!discount) throw ApiError.badRequest('Discount not found');
-        if (!discount.isActive) throw ApiError.badRequest('Discount is no longer active');
-        const today = new Date().toISOString().split('T')[0];
-        if (discount.startDate && today < discount.startDate) throw ApiError.badRequest('Discount is not yet valid');
-        if (discount.endDate && today > discount.endDate) throw ApiError.badRequest('Discount has expired');
-        if (discount.usageLimit && discount.usedCount >= discount.usageLimit) {
-          throw ApiError.badRequest('Promo code usage limit reached');
-        }
-        if (discount.minPurchaseAmount && parseFloat(subtotal) < parseFloat(discount.minPurchaseAmount)) {
-          throw ApiError.badRequest(`Minimum purchase amount of ${discount.minPurchaseAmount} required for this discount`);
-        }
-        discountType = discount.type;
-        discountValue = parseFloat(discount.value);
-        maxDiscountAmount = discount.maxDiscountAmount != null && discount.maxDiscountAmount !== ''
-          ? parseFloat(discount.maxDiscountAmount)
-          : null;
-      } else if (discountType || discountValue > 0) {
-        // Manual discount without a server-resolved promo code: require admin/manager role
-        const canManualDiscount = await this.canApplyManualDiscount(userId);
-        if (!canManualDiscount) {
-          discountType = null;
-          discountValue = 0;
-        }
-      }
-
-      let saleDiscount = calculateDiscount(subtotal, discountType, discountValue);
-      if (maxDiscountAmount != null && saleDiscount > maxDiscountAmount) {
-        saleDiscount = maxDiscountAmount;
-      }
-      const saleSubtotal = subtotal;
-      const saleTax = totalItemTax;
-      const total = saleSubtotal - saleDiscount + saleTax + (parseFloat(data.shippingFee || 0));
-
-      const sale = await Sale.create({
-        invoiceNo,
-        userId,
-        customerId: data.customerId || null,
-        discountId: data.discountId || null,
-        subtotal: saleSubtotal,
-        discountType: discountType,
-        discountValue: discountValue,
-        discountAmount: saleDiscount,
-        taxAmount: saleTax,
-        shippingFee: data.shippingFee || 0,
-        total,
-        profit: totalProfit,
-        paymentStatus: 'pending',
-        paymentMethod: data.paymentMethod || 'gcash',
-        paymentReference: data.paymentReference || null,
-        cashAmount: null,
-        changeAmount: null,
-        notes: data.notes || null,
-        status: 'pending',
-      }, { transaction: t });
-
-      for (const item of items) {
-        await SaleItem.create({ ...item, saleId: sale.id }, { transaction: t });
-        // Log stock movement as 'held' for pending sales (no actual stock change)
-        await StockMovement.create({
-          productId: item.productId,
-          userId,
-          type: 'out',
-          quantity: item.quantity,
-          previousStock: item.previousStock,
-          newStock: item.newStock,
-          referenceType: 'Sale',
-          referenceId: sale.id,
-          notes: `Sale #${invoiceNo} (pending online payment — stock reserved)`,
-        }, { transaction: t });
-      }
-
-      await t.commit();
-      return this.getById(sale.id);
-    } catch (error) {
-      await t.rollback();
-      throw error;
-    }
-  }
 
   async finalizeAfterPayment(saleId, transaction) {
     const sale = await Sale.findByPk(saleId, { transaction, lock: true });

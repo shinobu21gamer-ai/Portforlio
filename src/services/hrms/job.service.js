@@ -155,6 +155,10 @@ class JobPostingService {
       throw ApiError.badRequest(`Cannot transition from "${app.status}" to "${status}". Allowed: ${allowed.join(', ') || 'none'}`);
     }
 
+    // Declared at function scope because the onboarding email below needs
+    // them, and the block that populates them is scoped to `status === 'hired'`.
+    let hiredDetails = null;
+
     if (status === 'hired') {
       const job = app.job;
       if (!job) throw ApiError.badRequest('Job posting not found for this application');
@@ -260,6 +264,8 @@ class JobPostingService {
         await t.rollback();
         throw err;
       }
+
+      hiredDetails = { tempPassword, effectiveScheduleId, validDept, validPos, employeeNo };
     }
 
     await app.update({ status, notes: notes || app.notes });
@@ -271,7 +277,9 @@ class JobPostingService {
         const job = app.job || await JobPosting.findByPk(app.jobId);
 
         let emailDetails = {};
-        if (status === 'hired' && employee) {
+        if (status === 'hired' && hiredDetails) {
+          const { tempPassword, effectiveScheduleId, validDept, validPos, employeeNo } = hiredDetails;
+          const { Schedule } = require('../../models');
           const schedule = effectiveScheduleId ? await Schedule.findByPk(effectiveScheduleId) : null;
           const startDateFormatted = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
           emailDetails = {

@@ -6,10 +6,17 @@ dotenv.config();
 
 const isSQLite = (process.env.DB_DIALECT || 'mysql') === 'sqlite';
 
+// ':memory:' must be passed through untouched. path.resolve() would turn it
+// into a real file named ':memory:', which silently leaks to disk and lets
+// separate connections miss each other's tables.
+const sqliteStorage = process.env.DB_STORAGE === ':memory:'
+  ? ':memory:'
+  : path.resolve(__dirname, '..', '..', process.env.DB_STORAGE || './database.sqlite');
+
 const sequelize = isSQLite
   ? new Sequelize({
       dialect: 'sqlite',
-      storage: path.resolve(__dirname, '..', '..', process.env.DB_STORAGE || './database.sqlite'),
+      storage: sqliteStorage,
       logging: process.env.NODE_ENV === 'development' ? console.log : false,
       define: {
         timestamps: true,
