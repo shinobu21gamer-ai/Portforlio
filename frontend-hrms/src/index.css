@@ -245,6 +245,22 @@
   flex-wrap: wrap;
 }
 .topbar__actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.topbar__login-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 38px;
+  padding: 0 16px;
+  border-radius: var(--radius-md);
+  background: var(--gradient-primary);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  box-shadow: var(--shadow-glow);
+  transition: transform var(--transition), box-shadow var(--transition);
+}
+.topbar__login-btn:hover { transform: translateY(-1px); box-shadow: var(--shadow-glow-lg); }
 .search-trigger {
   display: inline-flex;
   align-items: center;
@@ -1115,6 +1131,47 @@ textarea.input-block { resize: vertical; min-height: 80px; }
 
 /* ─── Job Portal ──────────────────────────────────────────────────── */
 .jp { min-height: 100vh; background: var(--bg-primary); }
+
+.jp-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: var(--color-primary-800);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+.jp-topbar-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  max-width: 1140px;
+  margin: 0 auto;
+  padding: 12px 24px;
+}
+.jp-topbar-brand {
+  color: #fff;
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -0.3px;
+}
+.jp-topbar-nav { display: flex; align-items: center; gap: 18px; }
+.jp-topbar-link { color: rgba(255, 255, 255, 0.85); font-size: 14px; font-weight: 500; text-decoration: none; transition: color var(--transition); }
+.jp-topbar-link:hover { color: #fff; }
+.jp-topbar-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 18px;
+  border-radius: var(--radius-md);
+  background: #fff;
+  color: var(--primary);
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
+  transition: transform var(--transition), box-shadow var(--transition);
+}
+.jp-topbar-cta:hover { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.22); }
 
 .jp-hero {
   position: relative;

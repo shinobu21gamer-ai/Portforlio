@@ -134,6 +134,27 @@ export default function JobPortal() {
 
   return (
     <div className="jp">
+      {/* Portal Top Bar */}
+      <header className="jp-topbar">
+        <div className="jp-topbar-inner">
+          <span className="jp-topbar-brand">MiniMart</span>
+          <nav className="jp-topbar-nav">
+            <a href="#jp-listings-anchor" className="jp-topbar-link">Careers</a>
+            {isAuthenticated ? (
+              <Link to="/" className="jp-topbar-cta">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                My Work
+              </Link>
+            ) : (
+              <Link to="/hrms/login" className="jp-topbar-cta">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/></svg>
+                Sign In
+              </Link>
+            )}
+          </nav>
+        </div>
+      </header>
+
       {/* Hero */}
       <section className="jp-hero">
         <div className="jp-hero-bg">
@@ -145,14 +166,19 @@ export default function JobPortal() {
             <div className="jp-hero-badge">We're Hiring</div>
             <h1 className="jp-hero-title">Build Your Future<br/>With Us</h1>
             <p className="jp-hero-sub">Join a team that values growth, innovation, and meaningful work.<br/>Explore open positions and take the next step in your career.</p>
-            {!isAuthenticated && (
-              <div className="jp-hero-actions">
+            <div className="jp-hero-actions">
+              {isAuthenticated ? (
+                <Link to="/" className="jp-btn-primary jp-hero-btn">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                  Go to My Work
+                </Link>
+              ) : (
                 <Link to="/hrms/login" className="jp-btn-primary jp-hero-btn">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/></svg>
                   Employee Login
                 </Link>
-              </div>
-            )}
+              )}
+            </div>
             <div className="jp-hero-stats">
             <div className="jp-hero-stat">
               <span className="jp-hero-stat-value">{jobs.length}</span>
@@ -173,7 +199,7 @@ export default function JobPortal() {
       </section>
 
       {/* Search & Filters */}
-      <section className="jp-toolbar">
+      <section className="jp-toolbar" id="jp-listings-anchor">
         <div className="jp-toolbar-inner">
           <form onSubmit={handleSearch} className="jp-search">
             <svg className="jp-search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>

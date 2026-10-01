@@ -8,7 +8,7 @@ const useAuthStore = create((set, get) => {
     user: initial.user,
     token: initial.token,
     refreshToken: initial.refreshToken,
-    isAuthenticated: !!initial.token,
+    isAuthenticated: !!initial.token && !!initial.user,
     login: (user, token, refreshToken) => {
       localStorage.setItem('hrms_auth', JSON.stringify({ user, token, refreshToken }));
       set({ user, token, refreshToken, isAuthenticated: true });
