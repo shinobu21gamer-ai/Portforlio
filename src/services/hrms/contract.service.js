@@ -58,7 +58,12 @@ class ContractService {
     const emp = await Employee.findByPk(sanitized.employeeId);
     if (!emp) throw ApiError.notFound('Employee not found');
 
-    const activeContract = await Contract.findOne({ where: { employeeId: sanitized.employeeId, status: 'active' } });
+    const activeContract = await Contract.findOne({
+      where: {
+        employeeId: sanitized.employeeId,
+        status: { [require('sequelize').Op.in]: ['active', 'pending'] },
+      },
+    });
     if (activeContract) throw ApiError.badRequest('Employee already has an active contract');
 
     return Contract.create(sanitized);
