@@ -26,16 +26,16 @@ function getCategoryColor(cat, index) {
   return map[slug] || COLOR_DEFAULTS[index % COLOR_DEFAULTS.length];
 }
 
-const HELD_KEY = 'minimart_held';
-
-const loadHeld = () => {
-  try { return JSON.parse(localStorage.getItem(HELD_KEY)) || []; }
-  catch { return []; }
-};
-
-const saveHeld = (list) => localStorage.setItem(HELD_KEY, JSON.stringify(list));
-
 export default function Pos() {
+  const user = useAuthStore(s => s.user);
+  const HELD_KEY = `minimart_held_${user?.id || 'guest'}`;
+
+  const loadHeld = () => {
+    try { return JSON.parse(localStorage.getItem(HELD_KEY)) || []; }
+    catch { return []; }
+  };
+
+  const saveHeld = (list) => localStorage.setItem(HELD_KEY, JSON.stringify(list));
   const [searchParams] = useSearchParams();
   const [query, setQuery] = useState('');
   const [activeTab, setActiveTab] = useState(() => searchParams.get('cat') || 'all');
@@ -80,6 +80,10 @@ export default function Pos() {
   const isExpired = useCallback((p) => p.expiryDate && new Date(p.expiryDate) < new Date(), []);
 
   const handleAddProduct = useCallback((p, qty = 1) => {
+    if (p.isActive === false) {
+      toast.error('Product is inactive');
+      return;
+    }
     if (isExpired(p)) {
       toast.error('Cannot add expired product');
       return;

@@ -3,11 +3,13 @@ import './Toast.css';
 
 const ToastContext = createContext(null);
 
+let toastSeq = 0;
+
 export function ToastProvider({ children, maxToasts = 5, defaultDuration = 5000 }) {
   const [toasts, setToasts] = useState([]);
 
   const addToast = useCallback((message, options = {}) => {
-    const id = useId();
+    const id = `toast-${++toastSeq}`;
     const {
       type = 'info',
       title,
@@ -85,7 +87,8 @@ function ToastItem({ toast, onDismiss }) {
   const toastId = `toast-${id}`;
 
   useEffect(() => {
-    if (toast.duration !== 0 && toast.duration != null) {
+    // Only set timer if duration is explicitly a positive number
+    if (toast.duration && toast.duration > 0) {
       const timer = setTimeout(() => onDismiss(toast.id), toast.duration);
       return () => clearTimeout(timer);
     }

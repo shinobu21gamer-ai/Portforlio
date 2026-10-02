@@ -209,7 +209,13 @@ export default function Products() {
         }}
       />
 
-      <Modal open={showModal} onClose={() => setShowModal(false)} title={editItem ? 'Edit Product' : 'Add Product'}>
+      <Modal open={showModal} onClose={() => {
+        setShowModal(false);
+        setForm(EMPTY);
+        setImageFile(null);
+        setImagePreview(null);
+        setEditItem(null);
+      }} title={editItem ? 'Edit Product' : 'Add Product'}>
         <form onSubmit={handleSubmit}>
           <div className="field">
             <label>Product Image {!editItem && <span style={{ color: 'var(--danger)' }}>*</span>}</label>
