@@ -1,5 +1,4 @@
 const crypto = require('crypto');
-const logger = require('../utils/logger');
 const { sendError } = require('../utils/response');
 const ApiError = require('../utils/ApiError');
 
@@ -13,7 +12,7 @@ const requestIdMiddleware = (req, res, next) => {
 const errorHandler = (err, req, res, next) => {
   const requestId = req.id || 'unknown';
 
-  logger.error(`[${requestId}] ${err.stack || err.message}`);
+  console.error(`[${requestId}] ${err.stack || err.message}`);
 
   if (err instanceof ApiError) {
     return res.status(err.statusCode).json({

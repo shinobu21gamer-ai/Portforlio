@@ -7,7 +7,6 @@ const ApiError = require('../utils/ApiError');
 const { protect, authorize } = require('../middleware/auth');
 const { validate } = require('../middleware/validate');
 const schemas = require('../validators');
-const logger = require('../utils/logger');
 const { Sale, Payment, sequelize } = require('../models');
 
 const assertSaleAccess = (sale, user) => {
@@ -27,7 +26,7 @@ router.get('/test', protect, authorize('admin'), async (req, res) => {
     const pi = await paymongoService.createPaymentIntent({ amount: 1, description: 'Test connection', metadata: { test: 'true' } });
     sendSuccess(res, { configured: true, paymentIntentId: pi.id, status: pi.attributes?.status }, 'PayMongo is reachable');
   } catch (err) {
-    logger.error('PayMongo test failed:', err.response?.data || err.message);
+    console.error('PayMongo test failed:', err.response?.data || err.message);
     sendSuccess(res, { configured: true, error: 'PayMongo API error' }, 'PayMongo API error');
   }
 });
@@ -91,15 +90,15 @@ router.post('/create-checkout', protect, validate(schemas.createCheckout), async
 
     const checkoutUrl = result.attributes?.checkout_url;
     if (!checkoutUrl) {
-      logger.error('PayMongo returned no checkout_url:', JSON.stringify(result));
+      console.error('PayMongo returned no checkout_url:', JSON.stringify(result));
       throw ApiError.internal('PayMongo did not return a checkout URL');
     }
 
-    logger.info('PayMongo checkout created:', { sessionId: result.id, checkoutUrl });
+    console.log('PayMongo checkout created:', { sessionId: result.id, checkoutUrl });
     sendSuccess(res, { checkoutUrl, sessionId: result.id }, 'Checkout session created');
   } catch (err) {
     const detail = err.response?.data?.errors?.[0]?.detail || err.response?.data || err.message;
-    logger.error('Create checkout error:', detail);
+    console.error('Create checkout error:', detail);
     next(err);
   }
 });
@@ -151,7 +150,7 @@ router.get('/verify/:saleId', protect, async (req, res, next) => {
       const piId = session.attributes?.payment_intent?.id;
       const piStatus = session.attributes?.payment_intent?.attributes?.status;
 
-      logger.info(`PayMongo verify session ${sessionId}: sessionStatus=${sessionStatus}, paymentStatus=${paymentStatus}, piId=${piId}, piStatus=${piStatus}`);
+      console.log(`PayMongo verify session ${sessionId}: sessionStatus=${sessionStatus}, paymentStatus=${paymentStatus}, piId=${piId}, piStatus=${piStatus}`);
 
       if (paymentStatus === 'paid') {
         isPaid = true;
@@ -163,10 +162,10 @@ router.get('/verify/:saleId', protect, async (req, res, next) => {
         try {
           const pi = await paymongoService.retrievePaymentIntent(piId);
           const piLatestStatus = pi.attributes?.status;
-          logger.info(`PayMongo verify PI ${piId}: status=${piLatestStatus}`);
+          console.log(`PayMongo verify PI ${piId}: status=${piLatestStatus}`);
           if (piLatestStatus === 'succeeded') isPaid = true;
         } catch (piErr) {
-          logger.error('PayMongo PI retrieval error:', piErr.response?.data || piErr.message);
+          console.error('PayMongo PI retrieval error:', piErr.response?.data || piErr.message);
         }
       }
 
@@ -211,13 +210,13 @@ router.get('/verify/:saleId', protect, async (req, res, next) => {
           updatedSale = lockedSale;
         });
 
-        logger.info(`PayMongo verify: Sale ${updatedSale.id} marked as paid via session verification`);
+        console.log(`PayMongo verify: Sale ${updatedSale.id} marked as paid via session verification`);
         await saleService.emailReceiptForSale(updatedSale.id);
         return sendSuccess(res, { verified: true, paymentStatus: 'paid', ...updatedSale.toJSON() }, 'Payment confirmed');
       }
     } catch (apiErr) {
       if (apiErr instanceof ApiError) throw apiErr;
-      logger.error('PayMongo session retrieval error:', apiErr.response?.data || apiErr.message);
+      console.error('PayMongo session retrieval error:', apiErr.response?.data || apiErr.message);
     }
 
     sendSuccess(res, { verified: false, paymentStatus: sale.paymentStatus }, 'Payment not yet confirmed');
@@ -231,7 +230,7 @@ router.post('/webhook', async (req, res, next) => {
     const sig = req.headers['paymongo-signature'] || '';
 
     if (!paymongoService.verifyWebhookSignature(req.body, sig, req.rawBody)) {
-      logger.warn('Invalid PayMongo webhook signature');
+      console.warn('Invalid PayMongo webhook signature');
       return res.status(400).json({ received: false, error: 'Invalid signature' });
     }
 
@@ -284,7 +283,7 @@ router.post('/webhook', async (req, res, next) => {
         });
 
         if (finalized) {
-          logger.info(`PayMongo webhook: Sale ${saleId} marked as paid`);
+          console.log(`PayMongo webhook: Sale ${saleId} marked as paid`);
           await saleService.emailReceiptForSale(saleId);
         }
       }
@@ -292,7 +291,7 @@ router.post('/webhook', async (req, res, next) => {
 
     res.json({ received: true });
   } catch (err) {
-    logger.error('Webhook processing error:', err.message);
+    console.error('Webhook processing error:', err.message);
     res.status(500).json({ received: false, error: 'Processing error' });
   }
 });

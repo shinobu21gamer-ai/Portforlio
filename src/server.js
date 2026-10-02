@@ -14,7 +14,6 @@ const { connectDB } = require('./config/database');
 const routes = require('./routes');
 const { errorHandler, requestIdMiddleware } = require('./middleware/errorHandler');
 const specs = require('./docs/swagger');
-const logger = require('./utils/logger');
 const { protect, authorize } = require('./middleware/auth');
 
 const app = express();
@@ -44,7 +43,7 @@ const allowedOrigins = (() => {
     ? process.env.CORS_ORIGIN.split(',').map((o) => o.trim()).filter(Boolean)
     : [];
   if (config.nodeEnv === 'production' && configured.length === 0) {
-    logger.error('CORS_ORIGIN must be set in production for security');
+    console.error('CORS_ORIGIN must be set in production for security');
     throw new Error('CORS_ORIGIN must be set in production');
   }
   return configured.length > 0
@@ -110,7 +109,7 @@ app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 if (config.nodeEnv === 'development') {
   app.use(morgan('dev'));
 } else {
-  app.use(morgan('combined', { stream: { write: (message) => logger.info(message.trim()) } }));
+  app.use(morgan('combined', { stream: { write: (message) => console.log(message.trim()) } }));
 }
 
 // â”€â”€â”€ Static Files â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -205,9 +204,9 @@ if (fs.existsSync(hrmsDist)) {
     if (req.originalUrl.startsWith('/api')) return next();
     res.sendFile(path.join(hrmsDist, 'index.html'), (err) => { if (err) next(); });
   });
-  logger.info('HRMS frontend served at /hrms');
+  console.log('HRMS frontend served at /hrms');
 } else {
-  logger.warn('HRMS frontend dist not found â€” skipping /hrms');
+  console.warn('HRMS frontend dist not found â€” skipping /hrms');
 }
 
 // â”€â”€â”€ POS Frontend Static Files (served at /) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -223,7 +222,7 @@ if (fs.existsSync(frontendDist)) {
     });
   });
 } else {
-  logger.warn('Frontend dist not found â€” running API-only mode.');
+  console.warn('Frontend dist not found â€” running API-only mode.');
 }
 
 // â”€â”€â”€ 404 Handler â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -242,9 +241,9 @@ const scheduleLowStockCheck = () => {
     try {
       const inventoryService = require('./services/inventory.service');
       const result = await inventoryService.checkLowStock();
-      logger.info(`Low stock check completed: ${result.count} products low on stock`);
+      console.log(`Low stock check completed: ${result.count} products low on stock`);
     } catch (error) {
-      logger.error('Low stock check failed:', error.message);
+      console.error('Low stock check failed:', error.message);
     }
   });
 };
@@ -254,9 +253,9 @@ const scheduleExpiryCheck = () => {
     try {
       const inventoryService = require('./services/inventory.service');
       const result = await inventoryService.checkExpiringProducts();
-      logger.info(`Expiry check completed: ${result.count} products expiring soon`);
+      console.log(`Expiry check completed: ${result.count} products expiring soon`);
     } catch (error) {
-      logger.error('Expiry check failed:', error.message);
+      console.error('Expiry check failed:', error.message);
     }
   });
 };
@@ -267,9 +266,9 @@ const scheduleTokenCleanup = () => {
       const { BlacklistedToken } = require('./models');
       const { Op } = require('sequelize');
       const deleted = await BlacklistedToken.destroy({ where: { expiresAt: { [Op.lt]: new Date() } } });
-      logger.info(`Token cleanup: removed ${deleted} expired blacklisted tokens`);
+      console.log(`Token cleanup: removed ${deleted} expired blacklisted tokens`);
     } catch (error) {
-      logger.error('Token cleanup failed:', error.message);
+      console.error('Token cleanup failed:', error.message);
     }
   });
 };
@@ -290,7 +289,7 @@ const runAutoSetup = async () => {
           const colNames = results.map(c => c.name);
           if (!colNames.includes(column)) {
             await db.query(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
-            logger.info(`Added column ${table}.${column}`);
+            console.log(`Added column ${table}.${column}`);
           }
         } else {
           const [results] = await db.query(
@@ -299,11 +298,11 @@ const runAutoSetup = async () => {
           );
           if (results.length === 0) {
             await db.query(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
-            logger.info(`Added column ${table}.${column}`);
+            console.log(`Added column ${table}.${column}`);
           }
         }
       } catch (e) {
-        logger.info(`Column ${table}.${column} already exists or skip: ${e.message}`);
+        console.log(`Column ${table}.${column} already exists or skip: ${e.message}`);
       }
     };
 
@@ -355,7 +354,7 @@ const runAutoSetup = async () => {
       await safeAddColumn('sales', 'discount_id', 'INTEGER');
 
       await db.sync();
-      logger.info('Database synced');
+      console.log('Database synced');
 
       const [inventoryStaffRole] = await Role.findOrCreate({
         where: { slug: 'inventory_staff' },
@@ -425,7 +424,7 @@ const runAutoSetup = async () => {
         }
       }
 
-      logger.info('Seed data ready');
+      console.log('Seed data ready');
 
       const permissions = [
         { name: 'View Dashboard', slug: 'dashboard.view', module: 'dashboard' },
@@ -474,7 +473,7 @@ const runAutoSetup = async () => {
         const [perm] = await Permission.findOrCreate({ where: { slug: p.slug }, defaults: p });
         permMap[p.slug] = perm;
       }
-      logger.info('Permissions seeded');
+      console.log('Permissions seeded');
 
       const rolePermissions = {
         admin: Object.values(permMap).map(p => p.id),
@@ -519,7 +518,7 @@ const runAutoSetup = async () => {
           await role.setPermissions(permIds);
         }
       }
-      logger.info('Role permissions assigned');
+      console.log('Role permissions assigned');
 
       const categories = [
         { name: 'Beverages', slug: 'beverages', description: 'Drinks and refreshments' },
@@ -543,9 +542,9 @@ const runAutoSetup = async () => {
         const [c, created] = await Category.findOrCreate({ where: { slug: cat.slug }, defaults: cat });
         const id = c ? (c.id || c.dataValues.id) : null;
         catMap[cat.slug] = id;
-        logger.info(`Category: ${cat.name} -> ID ${id} (created: ${created})`);
+        console.log(`Category: ${cat.name} -> ID ${id} (created: ${created})`);
       }
-      logger.info('Categories seeded');
+      console.log('Categories seeded');
 
       const expenseCategories = [
         { name: 'Rent', slug: 'rent', description: 'Monthly store rental' },
@@ -560,7 +559,7 @@ const runAutoSetup = async () => {
       for (const ec of expenseCategories) {
         await ExpenseCategory.findOrCreate({ where: { slug: ec.slug }, defaults: ec });
       }
-      logger.info('Expense categories seeded');
+      console.log('Expense categories seeded');
 
       const suppliers = [
         { name: 'San Miguel Foods Corp.', contactPerson: 'Juan Dela Cruz', email: 'juan@sanmiguel.com', phone: '(02) 8888-1234', mobile: '0917-123-4567', address: '40 San Miguel Ave', city: 'Mandaluyong', province: 'Metro Manila', paymentTerms: 'Net 30' },
@@ -572,7 +571,7 @@ const runAutoSetup = async () => {
       for (const s of suppliers) {
         await Supplier.findOrCreate({ where: { name: s.name }, defaults: s });
       }
-      logger.info('Suppliers seeded');
+      console.log('Suppliers seeded');
 
       const branches = [
         { name: 'Main Branch - Makati', code: 'MAIN', address: '123 Ayala Ave, Makati City', city: 'Makati', province: 'Metro Manila', phone: '02-8888-1234', latitude: 14.5547, longitude: 121.05 },
@@ -584,7 +583,7 @@ const runAutoSetup = async () => {
       for (const b of branches) {
         await Branch.findOrCreate({ where: { code: b.code }, defaults: b });
       }
-      logger.info('Branches seeded');
+      console.log('Branches seeded');
 
       const products = [
         { name: 'Coca-Cola 1.5L', slug: 'coca-cola-15l', sku: 'BEV-001', barcode: '4800012345001', categoryId: catMap['beverages'], brand: 'Coca-Cola', unit: 'pcs', buyingPrice: 38, sellingPrice: 52, stockQuantity: 48, minStockLevel: 12, supplierId: 1 },
@@ -620,7 +619,7 @@ const runAutoSetup = async () => {
           }
         }
       }
-      logger.info('Products seeded');
+      console.log('Products seeded');
 
       const customers = [
         { firstName: 'Walk-in', lastName: 'Customer', phone: null },
@@ -634,7 +633,7 @@ const runAutoSetup = async () => {
         const where = c.email ? { email: c.email } : { firstName: c.firstName, lastName: c.lastName };
         await Customer.findOrCreate({ where, defaults: c });
       }
-      logger.info('Customers seeded');
+      console.log('Customers seeded');
 
       const departments = [
         { name: 'Operations', description: 'Store operations and daily management' },
@@ -648,7 +647,7 @@ const runAutoSetup = async () => {
         const [dept] = await Department.findOrCreate({ where: { name: d.name }, defaults: d });
         deptMap[d.name] = dept.id;
       }
-      logger.info('Departments seeded');
+      console.log('Departments seeded');
 
       const positions = [
         { title: 'Store Manager', departmentId: deptMap.Operations, minSalary: 25000, maxSalary: 40000, roleSlug: 'manager' },
@@ -668,7 +667,7 @@ const runAutoSetup = async () => {
           await pos.update({ roleSlug: p.roleSlug });
         }
       }
-      logger.info('Positions seeded');
+      console.log('Positions seeded');
 
       const schedules = [
         { name: 'Morning Shift', startTime: '08:00', endTime: '17:00', daysOfWeek: [1,2,3,4,5], breakMinutes: 60 },
@@ -681,7 +680,7 @@ const runAutoSetup = async () => {
         const [sch] = await Schedule.findOrCreate({ where: { name: s.name }, defaults: s });
         schedMap[s.name] = sch.id;
       }
-      logger.info('Schedules seeded');
+      console.log('Schedules seeded');
 
       const employees = [
         { firstName: 'Joy', lastName: 'Dela Cruz', email: 'cashier@minimart.com', departmentId: deptMap.Operations, positionId: posMap['Cashier'], salary: 15000, userId: (await User.findOne({ where: { email: 'cashier@minimart.com' } }))?.id, status: 'active', hireDate: '2026-01-15' },
@@ -697,7 +696,7 @@ const runAutoSetup = async () => {
           await existing.update({ departmentId: e.departmentId, positionId: e.positionId, salary: e.salary });
         }
       }
-      logger.info('Employees seeded');
+      console.log('Employees seeded');
 
       const discounts = [
         { code: 'WELCOME10', name: 'Welcome Discount', description: '10% off for new customers', type: 'percentage', value: 10, minPurchaseAmount: 100, usageLimit: 100, startDate: '2026-01-01', endDate: '2026-12-31', isActive: true },
@@ -708,11 +707,11 @@ const runAutoSetup = async () => {
       for (const d of discounts) {
         await Discount.findOrCreate({ where: { code: d.code }, defaults: d });
       }
-      logger.info('Discounts seeded');
+      console.log('Discounts seeded');
 
-      logger.info('All seed data ready');
+      console.log('All seed data ready');
     } catch (error) {
-      logger.error('Auto-setup failed:', error.message);
+      console.error('Auto-setup failed:', error.message);
     }
   };
 
@@ -725,8 +724,8 @@ const runAutoSetup = async () => {
       const shouldAutoSetup = config.nodeEnv === 'development' || process.env.AUTO_SETUP === 'true';
       console.log('[DEBUG] startServer: shouldAutoSetup=', shouldAutoSetup);
       if (shouldAutoSetup) {
-        logger.info('Auto-setup running in background...');
-        runAutoSetup().catch((e) => logger.error('Auto-setup crashed:', e));
+        console.log('Auto-setup running in background...');
+        runAutoSetup().catch((e) => console.error('Auto-setup crashed:', e));
       }
       console.log('[DEBUG] startServer: after runAutoSetup fire');
 
@@ -772,38 +771,38 @@ const runAutoSetup = async () => {
             await t.commit();
           } catch (innerErr) {
             await t.rollback();
-            logger.error(`Failed to auto-cancel sale #${sale.invoiceNo}:`, innerErr.message);
+            console.error(`Failed to auto-cancel sale #${sale.invoiceNo}:`, innerErr.message);
           }
         }
-        if (expiredSales.length) logger.info(`Auto-cancelled ${expiredSales.length} expired pending sales`);
-      } catch (err) { logger.error('Pending sale expiry cron failed:', err.message); }
+        if (expiredSales.length) console.log(`Auto-cancelled ${expiredSales.length} expired pending sales`);
+      } catch (err) { console.error('Pending sale expiry cron failed:', err.message); }
     });
     console.log('[DEBUG] startServer: about to call server.listen');
 
     server.on('error', (err) => {
-      logger.error('Server error:', err);
+      console.error('Server error:', err);
     });
 
     srv = server.listen(config.port, '0.0.0.0', () => {
       const addr = server.address();
-      logger.info(`Server bound to: ${JSON.stringify(addr)}`);
-      logger.info(`Server running on port ${config.port} in ${config.nodeEnv} mode`);
-      logger.info(`API Docs: http://localhost:${config.port}/api-docs`);
-      logger.info(`Health: http://localhost:${config.port}/health`);
+      console.log(`Server bound to: ${JSON.stringify(addr)}`);
+      console.log(`Server running on port ${config.port} in ${config.nodeEnv} mode`);
+      console.log(`API Docs: http://localhost:${config.port}/api-docs`);
+      console.log(`Health: http://localhost:${config.port}/health`);
     });
   } catch (error) {
-    logger.error('Failed to start server:', error);
+    console.error('Failed to start server:', error);
     process.exit(1);
   }
 };
 
 const gracefulShutdown = (signal) => {
-  logger.info(`\n${signal} received. Shutting down gracefully...`);
+  console.log(`\n${signal} received. Shutting down gracefully...`);
   if (server) {
     server.close(() => {
-      logger.info('HTTP server closed.');
+      console.log('HTTP server closed.');
       sequelize.close().then(() => {
-        logger.info('Database connection closed.');
+        console.log('Database connection closed.');
         process.exit(0);
       }).catch(() => process.exit(1));
     });
@@ -811,7 +810,7 @@ const gracefulShutdown = (signal) => {
     process.exit(0);
   }
   setTimeout(() => {
-    logger.error('Forced shutdown after timeout.');
+    console.error('Forced shutdown after timeout.');
     process.exit(1);
   }, 10000);
 };
@@ -819,10 +818,10 @@ const gracefulShutdown = (signal) => {
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 process.on('unhandledRejection', (reason) => {
-  logger.error('Unhandled Rejection:', reason);
+  console.error('Unhandled Rejection:', reason);
 });
 process.on('uncaughtException', (err) => {
-  logger.error('Uncaught Exception:', err);
+  console.error('Uncaught Exception:', err);
   gracefulShutdown('uncaughtException');
 });
 

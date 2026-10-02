@@ -8,7 +8,6 @@ const {
   generateInvoiceNo, calculateDiscount, calculateTax, getPagination, getPaginationMeta, escapeLike,
 } = require('../utils/helpers');
 const config = require('../config');
-const logger = require('../utils/logger');
 
 class SaleService {
   async canApplyManualDiscount(userId) {
@@ -609,7 +608,7 @@ async cancel(id, userId) {
       totalTax = parseFloat(summary?.totalTax || 0);
       totalDiscount = parseFloat(summary?.totalDiscount || 0);
     } catch (e) {
-      logger.error('Sales report summary error:', e.message);
+      console.error('Sales report summary error:', e.message);
     }
 
     let dailyBreakdown = {};
@@ -637,7 +636,7 @@ async cancel(id, userId) {
         };
       });
     } catch (e) {
-      logger.error('Sales report daily breakdown error:', e.message);
+      console.error('Sales report daily breakdown error:', e.message);
     }
 
     return {

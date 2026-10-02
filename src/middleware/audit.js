@@ -1,5 +1,4 @@
 const { ActivityLog } = require('../models');
-const logger = require('../utils/logger');
 
 const SENSITIVE_FIELDS = ['password', 'token', 'cardNumber', 'cardExpiry', 'cardCvv', 'cvv', 'secret'];
 
@@ -40,7 +39,7 @@ const auditLog = (action, module) => {
           });
         }
       } catch (err) {
-        logger.error(`Audit log failed (${action} ${module}): ${err.message}`);
+        console.error(`Audit log failed (${action} ${module}): ${err.message}`);
       }
       return originalJson(body);
     };
@@ -57,7 +56,7 @@ const manualAudit = async (userId, action, module, data = {}) => {
       ...data,
     });
   } catch (err) {
-    logger.error(`Manual audit log failed (${action} ${module}): ${err.message}`);
+    console.error(`Manual audit log failed (${action} ${module}): ${err.message}`);
   }
 };
 

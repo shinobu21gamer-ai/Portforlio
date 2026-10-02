@@ -4,20 +4,13 @@ const crypto = require('crypto');
 const { User, Role, ActivityLog, BlacklistedToken, Employee } = require('../models');
 const config = require('../config');
 const ApiError = require('../utils/ApiError');
-const logger = require('../utils/logger');
 const { Op } = require('sequelize');
 
 class AuthService {
-  generateToken(userId) {
-    return jwt.sign({ id: userId }, config.jwt.secret, {
-      expiresIn: config.jwt.expiresIn,
-    });
-  }
-
-  generateRefreshToken(userId) {
-    return jwt.sign({ id: userId }, config.jwt.refreshSecret, {
-      expiresIn: config.jwt.refreshExpiresIn,
-    });
+  generateToken(userId, isRefresh = false) {
+    const secret = isRefresh ? config.jwt.refreshSecret : config.jwt.secret;
+    const expiresIn = isRefresh ? config.jwt.refreshExpiresIn : config.jwt.expiresIn;
+    return jwt.sign({ id: userId }, secret, { expiresIn });
   }
 
   verifyRefreshToken(token) {
@@ -29,7 +22,7 @@ class AuthService {
       const blacklisted = await BlacklistedToken.findOne({ where: { token } });
       return !!blacklisted;
     } catch (e) {
-      logger.error('Token blacklist check failed:', e.message);
+      console.error('Token blacklist check failed:', e.message);
       return true;
     }
   }
@@ -41,7 +34,7 @@ class AuthService {
       const expiresAt = decoded && decoded.exp ? new Date(decoded.exp * 1000) : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
       await BlacklistedToken.findOrCreate({ where: { token }, defaults: { token, expiresAt, userId } });
     } catch (e) {
-      logger.error('Failed to blacklist token:', e);
+      console.error('Failed to blacklist token:', e);
     }
   }
 
@@ -57,7 +50,7 @@ class AuthService {
       });
       return created;
     } catch (e) {
-      logger.error('Failed to claim and blacklist token:', e);
+      console.error('Failed to claim and blacklist token:', e);
       return false;
     }
   }
@@ -67,7 +60,7 @@ class AuthService {
       const { BlacklistedToken } = require('../models');
       await BlacklistedToken.destroy({ where: { userId } });
     } catch (e) {
-      logger.error('Failed to blacklist all user tokens:', e.message);
+      console.error('Failed to blacklist all user tokens:', e.message);
     }
   }
 
@@ -99,7 +92,7 @@ class AuthService {
     });
 
     const token = this.generateToken(user.id);
-    const refreshToken = this.generateRefreshToken(user.id);
+    const refreshToken = this.generateToken(user.id, true);
 
     const userData = await User.findByPk(user.id, {
       include: [{ association: 'role', attributes: ['id', 'name', 'slug'] }],
@@ -140,7 +133,7 @@ class AuthService {
     await user.update({ lastLogin: new Date() });
 
     const token = this.generateToken(user.id);
-    const refreshToken = this.generateRefreshToken(user.id);
+    const refreshToken = this.generateToken(user.id, true);
 
     const userData = user.toJSON();
     delete userData.password;
@@ -184,7 +177,7 @@ class AuthService {
       passwordResetExpires: new Date(Date.now() + 3600000),
     });
 
-    logger.info(`Password reset requested for ${email}`);
+    console.log(`Password reset requested for ${email}`);
 
     const result = { message: 'If the email exists, a reset link has been sent.' };
 
@@ -198,7 +191,7 @@ class AuthService {
         html: passwordResetEmail(user.firstName || user.email, resetUrl),
       });
     } catch (err) {
-      logger.error('Failed to send reset email:', err.message);
+      console.error('Failed to send reset email:', err.message);
     }
 
     return result;
@@ -232,7 +225,7 @@ class AuthService {
         html: passwordResetSuccessEmail(user.firstName || user.email),
       });
     } catch (err) {
-      logger.error('Failed to send password reset success email:', err.message);
+      console.error('Failed to send password reset success email:', err.message);
     }
 
     return { message: 'Password reset successfully' };
@@ -275,7 +268,7 @@ class AuthService {
       if (!user.isActive) throw ApiError.unauthorized('Account has been deactivated');
 
       const token = this.generateToken(user.id);
-      const newRefreshToken = this.generateRefreshToken(user.id);
+      const newRefreshToken = this.generateToken(user.id, true);
       return { token, refreshToken: newRefreshToken };
     } catch (error) {
       if (error instanceof ApiError) throw error;
@@ -287,7 +280,7 @@ class AuthService {
     try {
       await BlacklistedToken.destroy({ where: { expiresAt: { [Op.lt]: new Date() } } });
     } catch (e) {
-      logger.error('Failed to clean blacklisted tokens:', e.message);
+      console.error('Failed to clean blacklisted tokens:', e.message);
     }
   }
 

@@ -1,6 +1,5 @@
 const axios = require('axios');
 const config = require('../config');
-const logger = require('../utils/logger');
 
 const PAYMONGO_BASE = 'https://api.paymongo.com/v1';
 
@@ -52,7 +51,7 @@ async function createCheckoutSession({ amount, description, lineItems = [], paym
     description: description || '',
   }];
 
-  logger.info('PayMongo checkout request:', { amount, lineItemsCount: formattedItems.length, successUrl, cancelUrl });
+  console.log('PayMongo checkout request:', { amount, lineItemsCount: formattedItems.length, successUrl, cancelUrl });
 
   const res = await axios.post(`${PAYMONGO_BASE}/checkout_sessions`, {
     data: {
@@ -103,10 +102,10 @@ function verifyWebhookSignature(body, signature, rawBody) {
 
   if (!webhookSecret || webhookSecret.includes('your_webhook')) {
     if (process.env.NODE_ENV === 'production') {
-      logger.error('PayMongo webhook secret not configured — rejecting webhook in production');
+      console.error('PayMongo webhook secret not configured — rejecting webhook in production');
       return false;
     }
-    logger.warn('PayMongo webhook secret not configured in dev — skipping signature verification');
+    console.warn('PayMongo webhook secret not configured in dev — skipping signature verification');
     return true;
   }
 
@@ -126,7 +125,7 @@ function verifyWebhookSignature(body, signature, rawBody) {
 
     const now = Date.now() / 1000;
     if (Math.abs(now - parseFloat(timestamp)) > 300) {
-      logger.warn('PayMongo webhook signature timestamp is stale — rejecting');
+      console.warn('PayMongo webhook signature timestamp is stale — rejecting');
       return false;
     }
 
@@ -139,7 +138,7 @@ function verifyWebhookSignature(body, signature, rawBody) {
     if (receivedBuf.length !== expectedBuf.length) return false;
     return crypto.timingSafeEqual(receivedBuf, expectedBuf);
   } catch (e) {
-    logger.error('Webhook signature verification failed:', e.message);
+    console.error('Webhook signature verification failed:', e.message);
     return false;
   }
 }
