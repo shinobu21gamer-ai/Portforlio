@@ -125,6 +125,7 @@ export default function Login() {
           />
           <div className="auth-options">
             <Link to="/forgot-password" className="auth-link">Forgot Password?</Link>
+            <a href="/" className="auth-link" style={{ marginLeft: 'auto' }}>← Back to Home</a>
           </div>
           <Button className="auth-submit" type="submit" size="lg" fullWidth loading={loading} disabled={loading}>
             {loading ? 'Signing in...' : 'Sign In'}
