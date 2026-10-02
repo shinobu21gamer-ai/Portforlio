@@ -13,6 +13,7 @@ module.exports = (sequelize, DataTypes) => {
     totalGrossPay: { type: DataTypes.DECIMAL(15, 2), defaultValue: 0, field: 'total_gross_pay' },
     totalDeductions: { type: DataTypes.DECIMAL(15, 2), defaultValue: 0, field: 'total_deductions' },
     totalNetPay: { type: DataTypes.DECIMAL(15, 2), defaultValue: 0, field: 'total_net_pay' },
+    paidAt: { type: DataTypes.DATE, allowNull: true, field: 'paid_at' },
   }, {
     tableName: 'payrolls',
     underscored: true,

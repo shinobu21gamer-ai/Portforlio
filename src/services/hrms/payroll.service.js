@@ -599,7 +599,7 @@ class PayrollService {
     const today = new Date().toISOString().split('T')[0];
     await sequelize.transaction(async (t) => {
       await Payslip.update({ status: 'paid', paidDate: today }, { where: { payrollId: id }, transaction: t });
-      await payroll.update({ status: 'paid' }, { transaction: t });
+      await payroll.update({ status: 'paid', paidAt: new Date() }, { transaction: t });
     });
     await logActivity(null, 'payroll-paid', 'HRMS', { referenceType: 'Payroll', referenceId: id, description: `Paid payroll for ${payroll.period}` });
     return this.getById(id);
