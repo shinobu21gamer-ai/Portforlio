@@ -65,17 +65,16 @@ function AuthCheck({ children }) {
       if (currentToken && currentToken !== ssoToken) {
         logout();
       }
+      window.history.replaceState({}, '', window.location.pathname);
       try {
         const res = await api.get('/auth/profile', { headers: { Authorization: `Bearer ${ssoToken}` } });
         const u = res.data.data;
         login(u, ssoToken, null);
-        window.history.replaceState({}, '', window.location.pathname);
         if (returnTo && returnTo.startsWith('/') && !returnTo.includes('://')) {
           navigate(returnTo, { replace: true });
         }
       } catch (err) {
         console.error('SSO failed:', err);
-        window.history.replaceState({}, '', window.location.pathname);
         if (embedded) {
           setSsoError('SSO authentication failed. Please return to HRMS and try again.');
           window.parent.postMessage({ type: 'pos-auth-failed', error: err?.response?.data?.message || 'Authentication failed' }, HRMS_ORIGIN);

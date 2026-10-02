@@ -15,20 +15,14 @@ export default function PosEmbed({ page, onClose }) {
 
   const posBase = import.meta.env.VITE_POS_URL || window.location.origin;
   const posUrl = `${posBase}${page || ''}`;
-
-  const getPosOrigin = useCallback(() => {
-    try { return new URL(posBase, window.location.origin).origin; } catch { return window.location.origin; }
-  }, [posBase]);
+  const posOrigin = (() => { try { return new URL(posBase, window.location.origin).origin; } catch { return window.location.origin; } })();
 
   const sendToken = useCallback(() => {
     if (!token) return;
     try {
-      iframeRef.current?.contentWindow?.postMessage({ type: 'pos-auth-token', token }, getPosOrigin());
+      iframeRef.current?.contentWindow?.postMessage({ type: 'pos-auth-token', token }, posOrigin);
     } catch { /* ignore */ }
-  }, [token, getPosOrigin]);
-
-  const sendTokenRef = useRef(sendToken);
-  sendTokenRef.current = sendToken;
+  }, [token, posOrigin]);
 
   useEffect(() => {
     setLoaded(false);
@@ -52,11 +46,10 @@ export default function PosEmbed({ page, onClose }) {
       if (e.key === 'Escape') handleClose();
     };
     const handleMessage = (e) => {
-      // Validate origin to prevent spoofed messages
-      if (e.origin !== getPosOrigin()) return;
+      if (e.origin !== posOrigin) return;
 
       if (e.data?.type === 'pos-ready') {
-        sendTokenRef.current?.();
+        sendToken();
         return;
       }
       if (e.data?.type === 'pos-logout' || e.data?.type === 'pos-back-to-hrms') {
@@ -79,7 +72,7 @@ export default function PosEmbed({ page, onClose }) {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('message', handleMessage);
     };
-  }, [handleClose, retryCount, getPosOrigin]);
+  }, [handleClose, retryCount, posOrigin, sendToken]);
 
   useEffect(() => {
     if (loaded || authError) return;

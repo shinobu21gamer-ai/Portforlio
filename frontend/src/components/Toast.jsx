@@ -87,7 +87,6 @@ function ToastItem({ toast, onDismiss }) {
   const toastId = `toast-${id}`;
 
   useEffect(() => {
-    // Only set timer if duration is explicitly a positive number
     if (toast.duration && toast.duration > 0) {
       const timer = setTimeout(() => onDismiss(toast.id), toast.duration);
       return () => clearTimeout(timer);

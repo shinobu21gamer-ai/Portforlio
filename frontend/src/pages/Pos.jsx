@@ -28,7 +28,7 @@ function getCategoryColor(cat, index) {
 
 export default function Pos() {
   const user = useAuthStore(s => s.user);
-  const HELD_KEY = `minimart_held_${user?.id || 'guest'}`;
+  const HELD_KEY = useMemo(() => `minimart_held_${user?.id || 'guest'}`, [user?.id]);
 
   const loadHeld = () => {
     try { return JSON.parse(localStorage.getItem(HELD_KEY)) || []; }

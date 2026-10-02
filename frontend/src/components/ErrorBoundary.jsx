@@ -9,10 +9,6 @@ export default class ErrorBoundary extends Component {
 
   componentDidCatch(error, errorInfo) {
     console.error('ErrorBoundary caught:', error, errorInfo);
-    // Send to error tracking service in production
-    if (import.meta.env.PROD) {
-      // Example: Sentry.captureException(error);
-    }
   }
 
   render() {
