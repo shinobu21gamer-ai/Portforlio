@@ -52,48 +52,73 @@ function AuthCheck({ children }) {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const ssoToken = params.get('sso_token');
+    const urlSsoToken = params.get('sso_token');
     const returnTo = params.get('returnTo');
+    const embedded = window.top !== window;
 
-    const doSso = async () => {
-      if (ssoToken) {
-        const currentToken = sessionStorage.getItem('token');
-        if (currentToken && currentToken !== ssoToken) {
-          logout();
-        }
-        try {
-          const res = await api.get('/auth/profile', { headers: { Authorization: `Bearer ${ssoToken}` } });
-          const u = res.data.data;
-          login(u, ssoToken, null);
-          window.history.replaceState({}, '', window.location.pathname);
-          if (returnTo && returnTo.startsWith('/') && !returnTo.includes('://')) {
-            navigate(returnTo, { replace: true });
-          }
-        } catch (err) {
-          console.error('SSO failed:', err);
-          window.history.replaceState({}, '', window.location.pathname);
-          if (window.top !== window) {
-            setSsoError('SSO authentication failed. Please return to HRMS and try again.');
-            window.parent.postMessage({ type: 'pos-auth-failed', error: err?.response?.data?.message || 'Authentication failed' }, HRMS_ORIGIN);
-          }
-        }
-        setChecking(false);
-        return;
-      }
+    let settled = false;
+    const finish = () => { if (!settled) { settled = true; setChecking(false); } };
 
-      if (!isAuthenticated || !token) {
-        setChecking(false);
-        return;
-      }
-      try {
-        await api.get('/auth/profile');
-      } catch {
+    const authenticateWithToken = async (ssoToken) => {
+      if (!ssoToken) { finish(); return; }
+      const currentToken = sessionStorage.getItem('token');
+      if (currentToken && currentToken !== ssoToken) {
         logout();
       }
-      setChecking(false);
+      try {
+        const res = await api.get('/auth/profile', { headers: { Authorization: `Bearer ${ssoToken}` } });
+        const u = res.data.data;
+        login(u, ssoToken, null);
+        window.history.replaceState({}, '', window.location.pathname);
+        if (returnTo && returnTo.startsWith('/') && !returnTo.includes('://')) {
+          navigate(returnTo, { replace: true });
+        }
+      } catch (err) {
+        console.error('SSO failed:', err);
+        window.history.replaceState({}, '', window.location.pathname);
+        if (embedded) {
+          setSsoError('SSO authentication failed. Please return to HRMS and try again.');
+          window.parent.postMessage({ type: 'pos-auth-failed', error: err?.response?.data?.message || 'Authentication failed' }, HRMS_ORIGIN);
+        }
+      }
+      finish();
     };
 
-    doSso();
+    const validateStoredSession = () => {
+      if (isAuthenticated && token) {
+        api.get('/auth/profile').catch(() => logout()).finally(finish);
+      } else {
+        finish();
+      }
+    };
+
+    // Legacy URL handoff (older HRMS builds): authenticate, then strip the token.
+    if (urlSsoToken) {
+      window.history.replaceState({}, '', window.location.pathname);
+      authenticateWithToken(urlSsoToken);
+      return;
+    }
+
+    if (!embedded) {
+      validateStoredSession();
+      return;
+    }
+
+    // Embedded in HRMS: request a token over postMessage and wait for it.
+    const onMessage = (e) => {
+      if (e.origin !== HRMS_ORIGIN) return;
+      if (e.data?.type === 'pos-auth-token' && e.data.token) {
+        authenticateWithToken(e.data.token);
+      }
+    };
+    window.addEventListener('message', onMessage);
+    try { window.parent.postMessage({ type: 'pos-ready' }, HRMS_ORIGIN); } catch { /* ignore */ }
+    const fallback = setTimeout(validateStoredSession, 4000);
+
+    return () => {
+      clearTimeout(fallback);
+      window.removeEventListener('message', onMessage);
+    };
   }, []);
 
   if (checking) {
@@ -128,6 +153,7 @@ function AuthCheck({ children }) {
 function GlobalSearchProvider({ children }) {
   const [searchOpen, setSearchOpen] = useState(false);
   const navigate = useNavigate();
+  const isAuthenticated = useAuthStore(s => s.isAuthenticated);
 
   const handleSearchSelect = useCallback((action) => {
     if (!action) return;
@@ -149,6 +175,7 @@ function GlobalSearchProvider({ children }) {
   }, [navigate]);
 
   const handleKeyDown = useCallback((e) => {
+    if (!isAuthenticated) return;
     const isMeta = e.metaKey || e.ctrlKey;
     if (isMeta && e.key === 'k') {
       e.preventDefault();
@@ -158,7 +185,11 @@ function GlobalSearchProvider({ children }) {
       e.preventDefault();
       setSearchOpen(false);
     }
-  }, [searchOpen]);
+  }, [searchOpen, isAuthenticated]);
+
+  useEffect(() => {
+    if (!isAuthenticated && searchOpen) setSearchOpen(false);
+  }, [isAuthenticated, searchOpen]);
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown);
@@ -168,7 +199,7 @@ function GlobalSearchProvider({ children }) {
   return (
     <>
       {children}
-      <GlobalSearch isOpen={searchOpen} onClose={() => setSearchOpen(false)} onSelect={handleSearchSelect} />
+      <GlobalSearch isOpen={searchOpen && isAuthenticated} onClose={() => setSearchOpen(false)} onSelect={handleSearchSelect} />
     </>
   );
 }

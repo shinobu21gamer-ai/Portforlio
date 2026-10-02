@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import PosLayout from '../layouts/PosLayout';
 import useAuthStore from '../store/authStore';
 import { useUsers, useCreateUser, useUpdateUser, useDeleteUser, useRoles } from '../hooks/useApi';
@@ -21,6 +22,7 @@ const columns = [
 
 export default function UserManagement() {
   const currentUser = useAuthStore(s => s.user);
+  const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search);
@@ -76,6 +78,7 @@ export default function UserManagement() {
         await createMut.mutateAsync(form);
         toast.success('User created');
       }
+      queryClient.invalidateQueries({ queryKey: ['users'] });
       setShowModal(false);
     } catch (err) { toast.error(err.response?.data?.message || 'Operation failed'); }
   };

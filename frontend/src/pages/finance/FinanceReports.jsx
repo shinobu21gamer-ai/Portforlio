@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useSalesReport, useSales, useExpenseReport } from '../../hooks/useApi';
 import LoadingSkeleton from '../../components/LoadingSkeleton';
+import Pagination from '../../components/Pagination';
 import { peso, formatDate, formatDateTime, statusBadge, useDebounce } from '../../utils/helpers';
 
 function downloadCsv(filename, rows, headers) {
@@ -27,10 +28,13 @@ export default function FinanceReports() {
   const { data: salesReport, isLoading: salesLoading } = useSalesReport({ startDate, endDate });
   const { data: expenseReport, isLoading: expenseLoading } = useExpenseReport({ startDate, endDate });
   const { data: salesData, isLoading: salesListLoading } = useSales({ page: salesPage, limit: 15, startDate, endDate, search: debouncedSearch || undefined });
+  const { data: allSalesData } = useSales({ page: 1, limit: 1000, startDate, endDate });
 
   const reportData = salesReport || {};
   const expenseData = expenseReport || {};
   const salesList = salesData?.sales || salesData?.data?.sales || [];
+  const allSalesList = allSalesData?.sales || allSalesData?.data?.sales || [];
+  const salesPagination = salesData?.pagination || salesData?.data?.pagination;
 
   const exportSalesCsv = () => {
     const days = Object.entries(reportData.dailyBreakdown || {});
@@ -45,8 +49,8 @@ export default function FinanceReports() {
   };
 
   const exportTransactionsCsv = () => {
-    if (salesList.length === 0) return;
-    downloadCsv(`transactions-${startDate}-to-${endDate}.csv`, salesList.map(s => [
+    if (allSalesList.length === 0) return;
+    downloadCsv(`transactions-${startDate}-to-${endDate}.csv`, allSalesList.map(s => [
       s.invoiceNo,
       s.customer ? `${s.customer.firstName || ''} ${s.customer.lastName || ''}`.trim() || 'Walk-in' : 'Walk-in',
       s.user ? `${s.user.firstName || ''} ${s.user.lastName || ''}`.trim() : 'N/A',
@@ -178,24 +182,29 @@ export default function FinanceReports() {
                 <p className="text-muted mt-sm">Transactions will appear here once sales are made.</p>
             </div>
           ) : (
-            <div className="table-wrap">
-              <table>
-                <thead><tr><th>Invoice</th><th>Customer</th><th>Cashier</th><th>Total</th><th>Payment</th><th>Status</th><th>Date</th></tr></thead>
-                <tbody>
-                  {salesList.map(s => (
-                    <tr key={s.id}>
-                      <td><strong>{s.invoiceNo}</strong></td>
-                      <td>{s.customer ? `${s.customer.firstName || ''} ${s.customer.lastName || ''}`.trim() || 'Walk-in' : 'Walk-in'}</td>
-                      <td>{s.user ? `${s.user.firstName || ''} ${s.user.lastName || ''}`.trim() : 'N/A'}</td>
-                      <td>{peso(s.total)}</td>
-                      <td><span className="badge info">{(s.paymentMethod || 'cash').replace(/_/g, ' ')}</span></td>
-                      <td>{statusBadge(s.status)}</td>
-                      <td>{formatDateTime(s.createdAt)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <>
+              <div className="table-wrap">
+                <table>
+                  <thead><tr><th>Invoice</th><th>Customer</th><th>Cashier</th><th>Total</th><th>Payment</th><th>Status</th><th>Date</th></tr></thead>
+                  <tbody>
+                    {salesList.map(s => (
+                      <tr key={s.id}>
+                        <td><strong>{s.invoiceNo}</strong></td>
+                        <td>{s.customer ? `${s.customer.firstName || ''} ${s.customer.lastName || ''}`.trim() || 'Walk-in' : 'Walk-in'}</td>
+                        <td>{s.user ? `${s.user.firstName || ''} ${s.user.lastName || ''}`.trim() : 'N/A'}</td>
+                        <td>{peso(s.total)}</td>
+                        <td><span className="badge info">{(s.paymentMethod || 'cash').replace(/_/g, ' ')}</span></td>
+                        <td>{statusBadge(s.status)}</td>
+                        <td>{formatDateTime(s.createdAt)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {salesPagination && salesPagination.totalPages > 1 && (
+                <Pagination pagination={salesPagination} onPageChange={setSalesPage} />
+              )}
+            </>
           )
         )
       )}

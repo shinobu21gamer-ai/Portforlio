@@ -115,7 +115,7 @@ export default function Purchases() {
     try {
       await receiveMut.mutateAsync({
         id: receiveModal.id,
-        data: { items: items.map(i => ({ purchaseItemId: i.id, quantity: Number(receiveQty[i.id] || i.quantity) })) },
+        data: { items: items.map(i => ({ purchaseItemId: i.id, quantity: Number(receiveQty[i.id] ?? i.quantity) })) },
       });
       toast.success('Purchase received');
       setReceiveModal(null);
@@ -123,8 +123,10 @@ export default function Purchases() {
     } catch (err) { toast.error(err.response?.data?.message || 'Failed to receive'); }
   };
 
+  const [cancelConfirm, setCancelConfirm] = useState(null);
+
   const handleCancel = async (id) => {
-    try { await cancelMut.mutateAsync(id); toast.success('Purchase cancelled'); }
+    try { await cancelMut.mutateAsync(id); toast.success('Purchase cancelled'); setCancelConfirm(null); }
     catch (err) { toast.error(err.response?.data?.message || 'Failed to cancel'); }
   };
 
@@ -190,7 +192,7 @@ export default function Purchases() {
             actions: <td className="table-actions">
               {(p.status === 'ordered' || p.status === 'partial') && <button className="btn btn-success btn-sm" onClick={() => setReceiveModal(p)}>Receive</button>}
               {p.paymentStatus !== 'paid' && <button className="btn btn-primary btn-sm" onClick={() => { setPayModal(p); setPayAmount(String(parseFloat(p.total) - parseFloat(p.paidAmount || 0)).toFixed(2)); }}>₱ Pay</button>}
-              {p.status === 'pending' && <button className="btn btn-destructive btn-sm" onClick={() => handleCancel(p.id)}>Cancel</button>}
+              {p.status === 'pending' && <button className="btn btn-destructive btn-sm" onClick={() => setCancelConfirm(p)}>Cancel</button>}
               {p.status !== 'received' && p.status !== 'cancelled' && (
                 <button className="btn btn-sm" style={{ background: '#6366f1', color: '#fff' }} onClick={() => setTrackModal(p)}>🗺️ Track</button>
               )}
@@ -329,6 +331,14 @@ export default function Purchases() {
             <button type="submit" className="btn btn-primary btn-sm" disabled={createProductMut.isPending}>{createProductMut.isPending && <span className="btn-spinner" />}+ Create</button>
           </div>
         </form>
+      </Modal>
+
+      <Modal open={!!cancelConfirm} onClose={() => setCancelConfirm(null)} title="Cancel Purchase Order">
+        <p>Are you sure you want to cancel purchase order <strong>{cancelConfirm?.orderNo}</strong>? This cannot be undone.</p>
+        <div className="modal-actions">
+          <button className="btn btn-outline btn-sm" onClick={() => setCancelConfirm(null)}>✕ Cancel</button>
+          <button className="btn btn-destructive btn-sm" onClick={() => handleCancel(cancelConfirm?.id)} disabled={cancelMut.isPending}>Confirm Cancel</button>
+        </div>
       </Modal>
 
       <Modal open={!!trackModal} onClose={() => setTrackModal(null)} title={`Track Delivery — ${trackModal?.orderNo || ''}`}>

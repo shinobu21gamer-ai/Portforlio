@@ -9,6 +9,12 @@ const WIDTHS = [
 ];
 
 export default function LoadingSkeleton({ rows = 5, cols = 4, type = 'table' }) {
+  const rowWidths = useMemo(() => {
+    return Array.from({ length: rows }).map((_, i) =>
+      Array.from({ length: cols }).map((_, j) => WIDTHS[i % WIDTHS.length][j % 3])
+    );
+  }, [rows, cols]);
+
   if (type === 'cards') {
     return (
       <div className="dashboard-grid">
@@ -28,12 +34,6 @@ export default function LoadingSkeleton({ rows = 5, cols = 4, type = 'table' }) 
       </div>
     );
   }
-
-  const rowWidths = useMemo(() => {
-    return Array.from({ length: rows }).map((_, i) =>
-      Array.from({ length: cols }).map((_, j) => WIDTHS[i % WIDTHS.length][j % 3])
-    );
-  }, [rows, cols]);
 
   return (
     <div className="table-wrap">

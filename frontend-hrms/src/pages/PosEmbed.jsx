@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import useAuthStore from '../store/authStore';
 
@@ -11,9 +11,24 @@ export default function PosEmbed({ page, onClose }) {
   const [authError, setAuthError] = useState(null);
   const [retryCount, setRetryCount] = useState(0);
   const [iframeKey, setIframeKey] = useState(0);
+  const iframeRef = useRef(null);
 
   const posBase = import.meta.env.VITE_POS_URL || window.location.origin;
-  const posUrl = `${posBase}${page || ''}?sso_token=${encodeURIComponent(token || '')}`;
+  const posUrl = `${posBase}${page || ''}`;
+
+  const getPosOrigin = useCallback(() => {
+    try { return new URL(posBase, window.location.origin).origin; } catch { return window.location.origin; }
+  }, [posBase]);
+
+  const sendToken = useCallback(() => {
+    if (!token) return;
+    try {
+      iframeRef.current?.contentWindow?.postMessage({ type: 'pos-auth-token', token }, getPosOrigin());
+    } catch { /* ignore */ }
+  }, [token, getPosOrigin]);
+
+  const sendTokenRef = useRef(sendToken);
+  sendTokenRef.current = sendToken;
 
   useEffect(() => {
     setLoaded(false);
@@ -32,19 +47,18 @@ export default function PosEmbed({ page, onClose }) {
 
   useEffect(() => {
     let authFailedOnce = false;
-    let retryTimer = null;
 
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') handleClose();
     };
     const handleMessage = (e) => {
       // Validate origin to prevent spoofed messages
-      const posOrigin = import.meta.env.VITE_POS_URL || window.location.origin;
-      try {
-        const expectedOrigin = new URL(posOrigin).origin;
-        if (e.origin !== expectedOrigin) return;
-      } catch { return; }
+      if (e.origin !== getPosOrigin()) return;
 
+      if (e.data?.type === 'pos-ready') {
+        sendTokenRef.current?.();
+        return;
+      }
       if (e.data?.type === 'pos-logout' || e.data?.type === 'pos-back-to-hrms') {
         handleClose();
       }
@@ -64,9 +78,14 @@ export default function PosEmbed({ page, onClose }) {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('message', handleMessage);
-      if (retryTimer) clearTimeout(retryTimer);
     };
-  }, [handleClose, retryCount]);
+  }, [handleClose, retryCount, getPosOrigin]);
+
+  useEffect(() => {
+    if (loaded || authError) return;
+    const timer = setTimeout(() => setAuthError('Timed out loading POS. Please try again.'), 20000);
+    return () => clearTimeout(timer);
+  }, [loaded, authError, iframeKey]);
 
   if (!posActive) return null;
 
@@ -147,8 +166,9 @@ export default function PosEmbed({ page, onClose }) {
 
       <iframe
         key={iframeKey}
+        ref={iframeRef}
         src={posUrl}
-        onLoad={() => setLoaded(true)}
+        onLoad={() => { setLoaded(true); sendToken(); }}
         style={{
           width: '100%', height: '100%', border: 'none',
           opacity: loaded ? 1 : 0,

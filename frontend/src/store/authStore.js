@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import useCartStore from './cartStore';
 
 const useAuthStore = create((set) => {
   const getStored = (key) => {
@@ -13,20 +14,19 @@ const useAuthStore = create((set) => {
     isAuthenticated: !!getStored('token'),
 
     login: (user, token, refreshToken) => {
+      const t = (token && token !== 'null' && token !== '') ? token : null;
+      const rt = (refreshToken && refreshToken !== 'null' && refreshToken !== '') ? refreshToken : null;
       localStorage.setItem('user', JSON.stringify(user));
-      localStorage.setItem('token', token || '');
-      if (refreshToken && refreshToken !== 'null' && refreshToken !== '') {
-        localStorage.setItem('refreshToken', refreshToken);
-      } else {
-        localStorage.removeItem('refreshToken');
-      }
-      set({ user, token: token || null, refreshToken: rt, isAuthenticated: !!(token && token !== 'null' && token !== '') });
+      if (t) localStorage.setItem('token', t); else localStorage.removeItem('token');
+      if (rt) localStorage.setItem('refreshToken', rt); else localStorage.removeItem('refreshToken');
+      set({ user, token: t, refreshToken: rt, isAuthenticated: !!t });
     },
 
     logout: () => {
       localStorage.removeItem('user');
       localStorage.removeItem('token');
       localStorage.removeItem('refreshToken');
+      useCartStore.getState().clearCart();
       set({ user: null, token: null, refreshToken: null, isAuthenticated: false });
     },
 

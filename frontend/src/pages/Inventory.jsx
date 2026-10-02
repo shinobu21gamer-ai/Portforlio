@@ -49,12 +49,20 @@ export default function Inventory() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    const qty = Number(form.quantity);
+    if (!form.productId) { toast.error('Select a product'); return; }
+    if (!qty || qty <= 0) { toast.error('Quantity must be greater than 0'); return; }
     try {
       if (showModal === 'in') {
-        await stockInMut.mutateAsync({ productId: Number(form.productId), quantity: Number(form.quantity), notes: form.notes });
+        await stockInMut.mutateAsync({ productId: Number(form.productId), quantity: qty, notes: form.notes });
         toast.success('Stock added');
       } else if (showModal === 'out') {
-        await stockOutMut.mutateAsync({ productId: Number(form.productId), quantity: Number(form.quantity), notes: form.notes });
+        const product = products.find(p => String(p.id) === String(form.productId));
+        if (product && qty > product.stockQuantity) {
+          toast.error(`Only ${product.stockQuantity} in stock`);
+          return;
+        }
+        await stockOutMut.mutateAsync({ productId: Number(form.productId), quantity: qty, notes: form.notes });
         toast.success('Stock removed');
       }
       setShowModal(null);

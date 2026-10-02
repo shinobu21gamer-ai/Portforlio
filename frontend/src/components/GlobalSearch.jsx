@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useProducts, useCustomers, useUsers, useSales } from '../hooks/useApi';
-import Button from './Button';
+import { useDebounce } from '../utils/helpers';
 import './GlobalSearch.css';
 
 export default function GlobalSearch({ isOpen, onClose, onSelect }) {
@@ -10,11 +10,14 @@ export default function GlobalSearch({ isOpen, onClose, onSelect }) {
   const [activeSection, setActiveSection] = useState(0);
   const inputRef = useRef(null);
   const listRef = useRef(null);
+  const keyHandlerRef = useRef(null);
 
-  const { data: productsData } = useProducts({ search: query || undefined, limit: 5 });
-  const { data: customersData } = useCustomers({ search: query || undefined, limit: 5 });
-  const { data: employeesData } = useUsers({ search: query || undefined, limit: 5 });
-  const { data: salesData } = useSales({ search: query || undefined, limit: 5 });
+  const debouncedQuery = useDebounce(query, 250);
+
+  const { data: productsData } = useProducts({ search: debouncedQuery || undefined, limit: 5 });
+  const { data: customersData } = useCustomers({ search: debouncedQuery || undefined, limit: 5 });
+  const { data: employeesData } = useUsers({ search: debouncedQuery || undefined, limit: 5 });
+  const { data: salesData } = useSales({ search: debouncedQuery || undefined, limit: 5 });
 
   const products = productsData?.data?.products || productsData?.products || [];
   const customers = customersData?.data?.customers || customersData?.customers || [];
@@ -32,23 +35,9 @@ export default function GlobalSearch({ isOpen, onClose, onSelect }) {
     section.items.map((item, ii) => ({ sectionIndex: si, itemIndex: ii, section, item }))
   ), [sections]);
 
-  useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-      setQuery('');
-      setSelectedIndex(0);
-      setActiveSection(0);
-      setTimeout(() => inputRef.current?.focus(), 50);
-      document.addEventListener('keydown', handleGlobalKeyDown);
-    }
-    return () => {
-      document.body.style.overflow = '';
-      document.removeEventListener('keydown', handleGlobalKeyDown);
-    };
-  }, [isOpen]);
-
-  const handleGlobalKeyDown = useCallback((e) => {
+  const handleGlobalKeyDown = (e) => {
     if (!isOpen) return;
+    const lastIndex = flatItems.length - 1;
 
     if (e.key === 'Escape') {
       e.preventDefault();
@@ -58,33 +47,21 @@ export default function GlobalSearch({ isOpen, onClose, onSelect }) {
 
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      setSelectedIndex(prev => Math.min(prev + 1, flatItems.length - 1));
+      if (lastIndex < 0) return;
+      setSelectedIndex(prev => Math.min(prev + 1, lastIndex));
       return;
     }
 
     if (e.key === 'ArrowUp') {
       e.preventDefault();
+      if (lastIndex < 0) return;
       setSelectedIndex(prev => Math.max(prev - 1, 0));
       return;
     }
 
-    if (e.key === 'ArrowRight') {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
       e.preventDefault();
-      if (sections.length > 1) {
-        setActiveSection(prev => (prev + 1) % sections.length);
-        setSelectedIndex(sections[activeSection === sections.length - 1 ? 0 : activeSection + 1].items.length > 0 ?
-          flatItems.findIndex(f => f.sectionIndex === ((activeSection + 1) % sections.length)) : 0);
-      }
-      return;
-    }
-
-    if (e.key === 'ArrowLeft') {
-      e.preventDefault();
-      if (sections.length > 1) {
-        setActiveSection(prev => (prev - 1 + sections.length) % sections.length);
-        setSelectedIndex(sections[activeSection === 0 ? sections.length - 1 : activeSection - 1].items.length > 0 ?
-          flatItems.findIndex(f => f.sectionIndex === (activeSection === 0 ? sections.length - 1 : activeSection - 1)) : 0);
-      }
+      moveToSection(e.key === 'ArrowRight' ? 1 : -1);
       return;
     }
 
@@ -100,14 +77,44 @@ export default function GlobalSearch({ isOpen, onClose, onSelect }) {
 
     if (e.key === 'Tab') {
       e.preventDefault();
+      if (lastIndex < 0) return;
       if (e.shiftKey) {
         setSelectedIndex(prev => Math.max(prev - 1, 0));
       } else {
-        setSelectedIndex(prev => Math.min(prev + 1, flatItems.length - 1));
+        setSelectedIndex(prev => Math.min(prev + 1, lastIndex));
       }
       return;
     }
-  }, [isOpen, flatItems, sections, selectedIndex, activeSection, onClose, onSelect]);
+  };
+
+  const moveToSection = (delta) => {
+    if (sections.length <= 1) return;
+    const current = flatItems[selectedIndex];
+    const currentSection = current ? current.sectionIndex : 0;
+    const nextSection = (currentSection + delta + sections.length) % sections.length;
+    const firstFlat = flatItems.findIndex(f => f.sectionIndex === nextSection);
+    setActiveSection(nextSection);
+    if (firstFlat >= 0) setSelectedIndex(firstFlat);
+  };
+
+  // Keep the registered listener pointing at the latest closure.
+  keyHandlerRef.current = handleGlobalKeyDown;
+  const stableKeyDown = useCallback((e) => keyHandlerRef.current?.(e), []);
+
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+      setQuery('');
+      setSelectedIndex(0);
+      setActiveSection(0);
+      setTimeout(() => inputRef.current?.focus(), 50);
+      document.addEventListener('keydown', stableKeyDown);
+    }
+    return () => {
+      document.body.style.overflow = '';
+      document.removeEventListener('keydown', stableKeyDown);
+    };
+  }, [isOpen, stableKeyDown]);
 
   useEffect(() => {
     if (listRef.current && flatItems[selectedIndex]) {
@@ -143,6 +150,8 @@ export default function GlobalSearch({ isOpen, onClose, onSelect }) {
     sales: '🧾'
   };
 
+  const activeDescendant = flatItems[selectedIndex] ? `gs-option-${selectedIndex}` : undefined;
+
   return createPortal(
     <div className="global-search-overlay" onClick={handleBackdropClick} role="dialog" aria-modal="true" aria-label="Global Search">
       <div className="global-search-modal" ref={listRef} onClick={e => e.stopPropagation()}>
@@ -155,18 +164,23 @@ export default function GlobalSearch({ isOpen, onClose, onSelect }) {
               ref={inputRef}
               type="text"
               className="global-search-input"
-              placeholder="Search products, customers, employees, sales... (⌘K)"
+              placeholder="Search products, customers, employees, sales... (Ctrl+K)"
               value={query}
               onChange={handleInputChange}
               onKeyDown={handleInputKeyDown}
+              role="combobox"
+              aria-autocomplete="list"
+              aria-expanded={sections.length > 0}
+              aria-controls="gs-listbox"
+              aria-activedescendant={activeDescendant}
               autoComplete="off"
               spellCheck="false"
             />
-            <kbd className="global-search-shortcut">⌘K</kbd>
+            <kbd className="global-search-shortcut">Ctrl K</kbd>
           </div>
         </header>
 
-        <div className="global-search-sections" role="listbox" aria-label="Search results">
+        <div className="global-search-sections" id="gs-listbox" role="listbox" aria-label="Search results">
           {sections.length === 0 ? (
             <div className="global-search-empty">
               <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
@@ -189,6 +203,7 @@ export default function GlobalSearch({ isOpen, onClose, onSelect }) {
                   return (
                     <li
                       key={`${section.key}-${item.id}`}
+                      id={`gs-option-${flatIndex}`}
                       data-index={flatIndex}
                       className={`global-search-result ${isSelected ? 'global-search-result--selected' : ''}`}
                       role="option"

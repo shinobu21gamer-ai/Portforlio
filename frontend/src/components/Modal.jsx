@@ -102,7 +102,6 @@ export default function Modal({
       className="modal-overlay"
       onClick={handleOverlayClick}
       role="presentation"
-      aria-hidden="true"
     >
       <div
         ref={modalRef}

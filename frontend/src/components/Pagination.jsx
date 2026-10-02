@@ -1,6 +1,7 @@
 export default function Pagination({ pagination, onPageChange, filteredCount, pageSize, onPageSizeChange }) {
   if (!pagination || pagination.totalPages <= 1) return null;
-  const { page, totalPages, hasPrevPage, hasNextPage, total } = pagination;
+  const { page, totalPages, hasPrevPage, hasNextPage } = pagination;
+  const total = pagination.total ?? pagination.totalItems;
 
   return (
     <div className="dt-pagination">

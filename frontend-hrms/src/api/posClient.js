@@ -59,8 +59,13 @@ posApi.interceptors.response.use(
 
       try {
         const res = await axios.post('/api/v1/auth/refresh-token', { refreshToken });
-        const { token: newToken } = res.data.data;
-        useAuthStore.getState().setToken(newToken);
+        const { token: newToken, refreshToken: newRefreshToken } = res.data.data;
+        const store = useAuthStore.getState();
+        if (newRefreshToken) {
+          store.login(store.user, newToken, newRefreshToken);
+        } else {
+          store.setToken(newToken);
+        }
         processQueue(null, newToken);
         originalRequest.headers.Authorization = `Bearer ${newToken}`;
         return posApi(originalRequest);

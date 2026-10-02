@@ -189,10 +189,10 @@ export function useVerifyPayment(saleId, sessionId, options = {}) {
 }
 
 export function useCancelSale() {
+  const qc = useQueryClient();
   return useMutation({
     mutationFn: (id) => api.post(`/sales/${id}/cancel`).then(r => r.data.data),
     onSuccess: () => {
-      const qc = useQueryClient();
       qc.invalidateQueries({ queryKey: ['sales'] });
       qc.invalidateQueries({ queryKey: ['finance-report'] });
       qc.invalidateQueries({ queryKey: ['cashflow'] });
@@ -626,12 +626,13 @@ export function useRoles() {
 export function useSettings() {
   return useQuery({
     queryKey: ['settings'],
-    queryFn: () => api.get('/settings').then(r => r.data.data),
-    onSuccess: (data) => {
+    queryFn: () => api.get('/settings').then(r => {
+      const data = r.data.data;
       if (data) {
         localStorage.setItem('minimart_settings', JSON.stringify(data));
       }
-    },
+      return data;
+    }),
   });
 }
 

@@ -49,7 +49,7 @@ export default function TopBar() {
 
       <div className="topbar__actions">
         {!user && (
-          <Link to="/hrms/login" className="topbar__login-btn">
+          <Link to="/login" className="topbar__login-btn">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/></svg>
             Sign In
           </Link>

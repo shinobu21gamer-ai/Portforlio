@@ -106,7 +106,7 @@ export default function Settings() {
         </div>
 
         <div className="flex-end mb-lg">
-          <button type="submit" className="btn btn-primary" disabled={updateSettingsMut.isPending}>{updateSettingsMut.isPending && <span className="btn-spinner" />}{updateSettingsMut.isPending ? 'Saving...' : 'Save Settings'}</button>
+          <button type="submit" className="btn btn-primary" disabled={updateSettingsMut.isPending || loadingSettings}>{updateSettingsMut.isPending && <span className="btn-spinner" />}{updateSettingsMut.isPending ? 'Saving...' : 'Save Settings'}</button>
         </div>
       </form>
     </PosLayout>

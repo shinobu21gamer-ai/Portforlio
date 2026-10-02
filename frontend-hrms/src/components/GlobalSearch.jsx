@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useEmployees, useDepartments, usePositions } from '../hooks/useApi';
+import useDebounce from '../hooks/useDebounce';
 import './GlobalSearch.css';
 
 export default function GlobalSearch({ isOpen, onClose, onSelect }) {
@@ -8,10 +9,13 @@ export default function GlobalSearch({ isOpen, onClose, onSelect }) {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef(null);
   const listRef = useRef(null);
+  const keyHandlerRef = useRef(null);
 
-  const { data: employeesData } = useEmployees({ search: query || undefined, limit: 5 });
-  const { data: departmentsData } = useDepartments({ search: query || undefined, limit: 5 });
-  const { data: positionsData } = usePositions({ search: query || undefined, limit: 5 });
+  const debouncedQuery = useDebounce(query, 250);
+
+  const { data: employeesData } = useEmployees({ search: debouncedQuery || undefined, limit: 5 });
+  const { data: departmentsData } = useDepartments({ search: debouncedQuery || undefined, limit: 5 });
+  const { data: positionsData } = usePositions({ search: debouncedQuery || undefined, limit: 5 });
 
   const employees = employeesData?.employees || [];
   const departments = departmentsData?.departments || [];
@@ -42,22 +46,9 @@ export default function GlobalSearch({ isOpen, onClose, onSelect }) {
     section.items.map((item, ii) => ({ sectionIndex: si, itemIndex: ii, section, item }))
   ), [sections]);
 
-  useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-      setQuery('');
-      setSelectedIndex(0);
-      setTimeout(() => inputRef.current?.focus(), 50);
-      document.addEventListener('keydown', handleGlobalKeyDown);
-    }
-    return () => {
-      document.body.style.overflow = '';
-      document.removeEventListener('keydown', handleGlobalKeyDown);
-    };
-  }, [isOpen]);
-
-  const handleGlobalKeyDown = useCallback((e) => {
+  const handleGlobalKeyDown = (e) => {
     if (!isOpen) return;
+    const lastIndex = flatItems.length - 1;
 
     if (e.key === 'Escape') {
       e.preventDefault();
@@ -67,12 +58,14 @@ export default function GlobalSearch({ isOpen, onClose, onSelect }) {
 
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      setSelectedIndex(prev => Math.min(prev + 1, flatItems.length - 1));
+      if (lastIndex < 0) return;
+      setSelectedIndex(prev => Math.min(prev + 1, lastIndex));
       return;
     }
 
     if (e.key === 'ArrowUp') {
       e.preventDefault();
+      if (lastIndex < 0) return;
       setSelectedIndex(prev => Math.max(prev - 1, 0));
       return;
     }
@@ -94,14 +87,33 @@ export default function GlobalSearch({ isOpen, onClose, onSelect }) {
 
     if (e.key === 'Tab') {
       e.preventDefault();
+      if (lastIndex < 0) return;
       if (e.shiftKey) {
         setSelectedIndex(prev => Math.max(prev - 1, 0));
       } else {
-        setSelectedIndex(prev => Math.min(prev + 1, flatItems.length - 1));
+        setSelectedIndex(prev => Math.min(prev + 1, lastIndex));
       }
       return;
     }
-  }, [isOpen, flatItems, selectedIndex, onClose, onSelect]);
+  };
+
+  // Keep the registered listener pointing at the latest closure.
+  keyHandlerRef.current = handleGlobalKeyDown;
+  const stableKeyDown = useCallback((e) => keyHandlerRef.current?.(e), []);
+
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+      setQuery('');
+      setSelectedIndex(0);
+      setTimeout(() => inputRef.current?.focus(), 50);
+      document.addEventListener('keydown', stableKeyDown);
+    }
+    return () => {
+      document.body.style.overflow = '';
+      document.removeEventListener('keydown', stableKeyDown);
+    };
+  }, [isOpen, stableKeyDown]);
 
   useEffect(() => {
     if (listRef.current && flatItems[selectedIndex]) {
@@ -136,6 +148,8 @@ export default function GlobalSearch({ isOpen, onClose, onSelect }) {
     positions: '💼'
   };
 
+  const activeDescendant = flatItems[selectedIndex] ? `gs-option-${selectedIndex}` : undefined;
+
   return createPortal(
     <div className="global-search-overlay" onClick={handleBackdropClick} role="dialog" aria-modal="true" aria-label="Global Search">
       <div className="global-search-modal" ref={listRef} onClick={e => e.stopPropagation()}>
@@ -148,18 +162,23 @@ export default function GlobalSearch({ isOpen, onClose, onSelect }) {
               ref={inputRef}
               type="text"
               className="global-search-input"
-              placeholder="Search employees, departments, positions... (⌘K)"
+              placeholder="Search employees, departments, positions... (Ctrl+K)"
               value={query}
               onChange={handleInputChange}
               onKeyDown={handleInputKeyDown}
+              role="combobox"
+              aria-autocomplete="list"
+              aria-expanded={sections.length > 0}
+              aria-controls="gs-listbox"
+              aria-activedescendant={activeDescendant}
               autoComplete="off"
               spellCheck="false"
             />
-            <kbd className="global-search-shortcut">⌘K</kbd>
+            <kbd className="global-search-shortcut">Ctrl K</kbd>
           </div>
         </header>
 
-        <div className="global-search-sections" role="listbox" aria-label="Search results">
+        <div className="global-search-sections" id="gs-listbox" role="listbox" aria-label="Search results">
           {sections.length === 0 ? (
             <div className="global-search-empty">
               <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
@@ -182,6 +201,7 @@ export default function GlobalSearch({ isOpen, onClose, onSelect }) {
                   return (
                     <li
                       key={`${section.key}-${item.id}`}
+                      id={`gs-option-${flatIndex}`}
                       data-index={flatIndex}
                       className={`global-search-result ${isSelected ? 'global-search-result--selected' : ''}`}
                       role="option"

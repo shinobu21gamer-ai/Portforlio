@@ -19,8 +19,9 @@ const TYPE_BADGES = {
 
 export default function Notifications() {
   const [page, setPage] = useState(1);
+  const [showRead, setShowRead] = useState(false);
   const toast = useToast();
-  const { data, isLoading, refetch } = useNotifications({ page, limit: 20, isRead: 'false' });
+  const { data, isLoading, refetch } = useNotifications({ page, limit: 20, isRead: showRead ? undefined : 'false' });
   const markReadMut = useMarkNotificationsRead();
   const markAllMut = useMarkAllNotificationsRead();
   const deleteMut = useDeleteNotification();
@@ -47,9 +48,14 @@ export default function Notifications() {
     <PosLayout active="notifications">
       <header className="pos-header">
         <div><h1>Notifications</h1><div className="sub">System alerts and activity</div></div>
-        <button className="btn btn-outline btn-sm" onClick={handleMarkAllRead} disabled={markAllMut.isPending}>
-          {markAllMut.isPending && <span className="btn-spinner" />}{markAllMut.isPending ? 'Marking...' : 'Mark all as read'}
-        </button>
+        <div className="flex-gap-sm items-center">
+          <button className={`btn btn-sm ${showRead ? 'btn-primary' : 'btn-outline'}`} onClick={() => { setShowRead(!showRead); setPage(1); }}>
+            {showRead ? 'Showing All' : 'Unread Only'}
+          </button>
+          <button className="btn btn-outline btn-sm" onClick={handleMarkAllRead} disabled={markAllMut.isPending}>
+            {markAllMut.isPending && <span className="btn-spinner" />}{markAllMut.isPending ? 'Marking...' : 'Mark all as read'}
+          </button>
+        </div>
       </header>
 
       {isLoading ? <LoadingSkeleton rows={10} cols={3} /> : (

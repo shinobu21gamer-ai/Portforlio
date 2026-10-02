@@ -84,8 +84,10 @@ export default function DataTable({
 
   const visHeaders = columns.filter(c => visibleCols.includes(c.key));
 
-  const startIdx = pagination ? ((pagination.page || 1) - 1) * (pagination.pageSize || 10) : 0;
-  const endIdx = Math.min(startIdx + filteredData.length, pagination?.total || filteredData.length);
+  const pageSize = pagination?.pageSize || pagination?.limit || pageSizeProp || 10;
+  const total = pagination?.total ?? pagination?.totalItems ?? filteredData.length;
+  const startIdx = pagination ? ((pagination.page || 1) - 1) * pageSize : 0;
+  const endIdx = Math.min(startIdx + filteredData.length, total);
 
   if (isLoading) {
     return (
@@ -114,8 +116,8 @@ export default function DataTable({
           {title && <h3 style={{ margin: 0 }}>{title}</h3>}
           {pagination && (
             <span className="dt-count">
-              {pagination.total > 0
-                ? `Showing ${startIdx + 1}–${endIdx} of ${pagination.total}`
+              {total > 0
+                ? `Showing ${startIdx + 1}–${endIdx} of ${total}`
                 : 'No results'}
             </span>
           )}
