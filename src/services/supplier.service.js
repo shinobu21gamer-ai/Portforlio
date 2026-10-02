@@ -1,4 +1,4 @@
-const { Supplier, Purchase, PurchaseItem, Product, sequelize } = require('../models');
+const { Supplier, Purchase, sequelize } = require('../models');
 const { Op, fn, col, literal } = require('sequelize');
 const ApiError = require('../utils/ApiError');
 const { getPagination, getPaginationMeta, sanitizeObject, escapeLike } = require('../utils/helpers');

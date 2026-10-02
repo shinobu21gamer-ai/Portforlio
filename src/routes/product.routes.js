@@ -1,6 +1,6 @@
 const router = require('express').Router();
 const productController = require('../controllers/product.controller');
-const { protect, authorize, hasPermission } = require('../middleware/auth');
+const { protect, hasPermission } = require('../middleware/auth');
 const { validate } = require('../middleware/validate');
 const schemas = require('../validators');
 const upload = require('../middleware/upload');

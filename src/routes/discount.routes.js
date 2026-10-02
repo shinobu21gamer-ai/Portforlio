@@ -1,6 +1,6 @@
 const router = require('express').Router();
 const discountController = require('../controllers/discount.controller');
-const { protect, authorize, hasPermission } = require('../middleware/auth');
+const { protect, hasPermission } = require('../middleware/auth');
 const { validate } = require('../middleware/validate');
 const schemas = require('../validators');
 

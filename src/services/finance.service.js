@@ -1,5 +1,5 @@
 const { Op, fn, col, literal } = require('sequelize');
-const { Sale, SaleItem, Purchase, PurchaseItem, Expense, Product, PettyCashTransaction, sequelize } = require('../models');
+const { Sale, SaleItem, Purchase, Expense, PettyCashTransaction, sequelize } = require('../models');
 
 const toLocalDateStr = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 

@@ -1,5 +1,4 @@
 const crypto = require('crypto');
-const { sendError } = require('../utils/response');
 const ApiError = require('../utils/ApiError');
 
 const requestIdMiddleware = (req, res, next) => {
@@ -9,7 +8,7 @@ const requestIdMiddleware = (req, res, next) => {
   next();
 };
 
-const errorHandler = (err, req, res, next) => {
+const errorHandler = (err, req, res, _next) => {
   const requestId = req.id || 'unknown';
 
   console.error(`[${requestId}] ${err.stack || err.message}`);

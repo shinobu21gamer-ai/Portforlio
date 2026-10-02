@@ -1,6 +1,4 @@
-const bcrypt = require('bcryptjs');
-const { User, Role } = require('../models');
-const config = require('../config');
+const { User } = require('../models');
 const ApiError = require('../utils/ApiError');
 const { getPagination, getPaginationMeta, sanitizeObject, escapeLike } = require('../utils/helpers');
 

@@ -1,4 +1,4 @@
-const { Contract, Employee, Department, Notification } = require('../../models');
+const { Contract, Employee, Notification } = require('../../models');
 const ApiError = require('../../utils/ApiError');
 const { getPagination, getPaginationMeta, escapeLike, sanitizeObject } = require('../../utils/helpers');
 const { Op } = require('sequelize');

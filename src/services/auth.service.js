@@ -44,7 +44,7 @@ class AuthService {
       const decoded = jwt.decode(token);
       if (!decoded || !decoded.exp) return false;
       const expiresAt = new Date(decoded.exp * 1000);
-      const [blacklisted, created] = await BlacklistedToken.findOrCreate({
+      const [, created] = await BlacklistedToken.findOrCreate({
         where: { token },
         defaults: { token, expiresAt },
       });
@@ -57,7 +57,6 @@ class AuthService {
 
   async blacklistAllUserTokens(userId) {
     try {
-      const { BlacklistedToken } = require('../models');
       await BlacklistedToken.destroy({ where: { userId } });
     } catch (e) {
       console.error('Failed to blacklist all user tokens:', e.message);
@@ -203,7 +202,7 @@ class AuthService {
     const user = await User.scope('withPassword').findOne({
       where: {
         passwordResetToken: hashedToken,
-        passwordResetExpires: { [require('sequelize').Op.gt]: new Date() },
+        passwordResetExpires: { [Op.gt]: new Date() },
       },
     });
 

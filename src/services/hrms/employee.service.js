@@ -1,10 +1,9 @@
 const { Op } = require('sequelize');
 const crypto = require('crypto');
-const { Employee, Department, Position, Contract, User, Role, Attendance, Payslip, Payroll, sequelize } = require('../../models');
+const { Employee, Department, Position, Contract, User, Role, sequelize } = require('../../models');
 const ApiError = require('../../utils/ApiError');
 const { getPagination, getPaginationMeta, sanitizeObject, generateEmployeeNo, escapeLike } = require('../../utils/helpers');
 const { logActivity } = require('../../utils/audit');
-const { formatDate, employeeApprovedEmail, employeeRejectedEmail, employeeTerminatedEmail } = require('../../utils/emailTemplates');
 
 class EmployeeService {
   async getAll(query) {

@@ -98,10 +98,6 @@ class DiscountService {
 
   _validateDiscountStacking(discounts) {
     const types = discounts.map(d => d.type);
-    const percentageCount = types.filter(t => t === 'percentage').length;
-    const fixedCount = types.filter(t => t === 'fixed').length;
-    const hasBxgy = types.includes('bxgy');
-    const hasSenior = types.includes('senior');
 
     if (types.includes('senior') && types.length > 1) {
       return { valid: false, error: 'Senior discount is exclusive and cannot be combined with other discounts' };

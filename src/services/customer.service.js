@@ -1,4 +1,4 @@
-const { Customer, Sale, LoyaltyPoint, sequelize } = require('../models');
+const { Customer, LoyaltyPoint, sequelize } = require('../models');
 const { Op } = require('sequelize');
 const ApiError = require('../utils/ApiError');
 const { getPagination, getPaginationMeta, sanitizeObject, escapeLike } = require('../utils/helpers');

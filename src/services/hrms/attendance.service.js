@@ -1,5 +1,5 @@
 const { Op } = require('sequelize');
-const { Attendance, Employee, Department, ShiftAssignment, Schedule, sequelize } = require('../../models');
+const { Attendance, Employee, ShiftAssignment, sequelize } = require('../../models');
 const ApiError = require('../../utils/ApiError');
 const { getPagination, getPaginationMeta, escapeLike, sanitizeObject } = require('../../utils/helpers');
 

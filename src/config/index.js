@@ -14,7 +14,7 @@ const fs = require('fs');
 const getOrCreateDevSecret = (secretName, envVar) => {
   if (process.env[envVar]) return process.env[envVar];
   if (!isDev) return null;
-  
+
   const secretFile = path.resolve(__dirname, '..', '..', '.dev-secrets.json');
   let secrets = {};
   try {
@@ -22,7 +22,7 @@ const getOrCreateDevSecret = (secretName, envVar) => {
       secrets = JSON.parse(fs.readFileSync(secretFile, 'utf8'));
     }
   } catch { /* ignore */ }
-  
+
   if (!secrets[secretName]) {
     secrets[secretName] = crypto.randomBytes(32).toString('hex');
     try {

@@ -1,5 +1,5 @@
 const { Op } = require('sequelize');
-const { ActivityLog, User } = require('../models');
+const { ActivityLog } = require('../models');
 const { getPagination, getPaginationMeta } = require('../utils/helpers');
 
 class ActivityService {

@@ -562,13 +562,13 @@ class PayrollService {
     const payroll = await Payroll.findByPk(id);
     if (!payroll) throw ApiError.notFound('Payroll not found');
     if (payroll.status !== 'draft') throw ApiError.badRequest('Only draft payrolls can be processed');
-    
+
     const { sequelize } = require('../../models');
     await sequelize.transaction(async (t) => {
       await Payslip.update({ status: 'processed' }, { where: { payrollId: id }, transaction: t });
       await payroll.update({ status: 'processed' }, { transaction: t });
     });
-    
+
     await logActivity(null, 'payroll-processed', 'HRMS', { referenceType: 'Payroll', referenceId: id, description: `Processed payroll for ${payroll.period}` });
 
     try {

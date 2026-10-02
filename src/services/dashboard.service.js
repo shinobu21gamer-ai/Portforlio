@@ -1,6 +1,6 @@
-const { Op, fn, col, literal } = require('sequelize');
+const { Op, fn, col } = require('sequelize');
 const {
-  Sale, SaleItem, Product, Customer, Category, Expense, sequelize,
+  Sale, SaleItem, Product, Customer, Expense, sequelize,
 } = require('../models');
 
 class DashboardService {
@@ -82,11 +82,10 @@ class DashboardService {
           { model: Sale, as: 'sale', attributes: [], required: true, where: { status: 'completed' } },
         ],
         group: ['SaleItem.product_id', 'product.id', 'product.name', 'product.sku', 'product.image'],
-        order: [[literal('totalSold'), 'DESC']],
         limit: 10,
         subQuery: false,
       });
-    } catch (e) {
+    } catch {
       bestSellers = [];
     }
 
@@ -100,7 +99,7 @@ class DashboardService {
         order: [['createdAt', 'DESC']],
         limit: 10,
       });
-    } catch (e) {
+    } catch {
       recentTransactions = [];
     }
 
@@ -129,7 +128,7 @@ class DashboardService {
         revenue: parseFloat(d.revenue || 0),
         profit: parseFloat(d.profit || 0),
       }));
-    } catch (e) {
+    } catch {
       dailySales = [];
     }
 
@@ -154,7 +153,7 @@ class DashboardService {
         count: parseInt(pm.count, 10),
         total: parseFloat(pm.total || 0),
       }));
-    } catch (e) {
+    } catch {
       paymentMethods = [];
     }
 
@@ -176,7 +175,7 @@ class DashboardService {
         totalRevenue: parseFloat(cs.revenue || 0),
         totalSold: parseInt(cs.totalSold || 0, 10),
       }));
-    } catch (e) {
+    } catch {
       categorySales = [];
     }
 
