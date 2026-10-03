@@ -305,7 +305,8 @@ const runAutoSetup = async () => {
           }
         } else {
           const [results] = await db.query(
-            `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = ? AND COLUMN_NAME = ?`,
+            `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?`,
             [table, column]
           );
           if (results.length === 0) {
@@ -323,7 +324,8 @@ const runAutoSetup = async () => {
       if (isSQLite) return;
       try {
         const [prev] = await db.query(
-          `SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = ? AND COLUMN_NAME = ?`,
+          `SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS
+           WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?`,
           [table, column]
         );
         if (prev && prev[0] && prev[0].COLUMN_TYPE && prev[0].COLUMN_TYPE.toLowerCase().includes('enum')) {
