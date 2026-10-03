@@ -5,6 +5,7 @@ import ErrorBoundary from './components/ErrorBoundary';
 import ProtectedRoute from './components/ProtectedRoute';
 import useAuthStore from './store/authStore';
 import api from './api/client';
+import axios from 'axios';
 import GlobalSearch from './components/GlobalSearch';
 
 const HRMS_ORIGIN = import.meta.env.VITE_HRMS_URL
@@ -59,11 +60,29 @@ function AuthCheck({ children }) {
     let settled = false;
     const finish = () => { if (!settled) { settled = true; setChecking(false); } };
 
+    // Logout must revoke server-side, not just clear localStorage. Clearing
+    // locally leaves the JWT valid until it expires on its own, which is what
+    // caused "Token has been revoked" on the next sign-in with a new account.
+    const revokeCurrentSession = async () => {
+      const stale = localStorage.getItem('token');
+      if (stale && stale !== 'null' && stale !== '') {
+        try {
+          await axios.post(`${api.defaults.baseURL}/auth/logout`, {}, {
+            headers: { Authorization: `Bearer ${stale}` },
+          });
+        } catch { /* already invalid or offline — clear locally regardless */ }
+      }
+      logout();
+    };
+
     const authenticateWithToken = async (ssoToken) => {
       if (!ssoToken) { finish(); return; }
-      const currentToken = sessionStorage.getItem('token');
+      // Must read localStorage — authStore persists the token there. Reading
+      // sessionStorage always returned null, so a stale session from a previous
+      // account was never cleared before the new one was applied.
+      const currentToken = localStorage.getItem('token');
       if (currentToken && currentToken !== ssoToken) {
-        logout();
+        await revokeCurrentSession();
       }
       window.history.replaceState({}, '', window.location.pathname);
       try {
@@ -85,7 +104,7 @@ function AuthCheck({ children }) {
 
     const validateStoredSession = () => {
       if (isAuthenticated && token) {
-        api.get('/auth/profile').catch(() => logout()).finally(finish);
+        api.get('/auth/profile').catch(() => revokeCurrentSession()).finally(finish);
       } else {
         finish();
       }
