@@ -107,7 +107,10 @@ module.exports = {
     lowStockThreshold: parseInt(process.env.LOW_STOCK_THRESHOLD, 10) || 10,
     expiryWarningDays: parseInt(process.env.EXPIRY_WARNING_DAYS, 10) || 30,
     frontendUrl: process.env.FRONTEND_URL || 'http://localhost:3001',
-    posFrontendUrl: process.env.POS_FRONTEND_URL || 'http://localhost:5173',
+    // Left null when unset: callers fall back to the incoming request origin.
+    // A localhost default here would silently produce localhost PayMongo
+    // redirect URLs in production, which PayMongo rejects.
+    posFrontendUrl: process.env.POS_FRONTEND_URL || null,
   },
   paymongo: {
     secretKey: process.env.PAYMONGO_SECRET_KEY,

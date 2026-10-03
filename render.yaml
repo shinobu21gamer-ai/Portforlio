@@ -42,5 +42,12 @@ services:
       #   sync: false
       # - key: PAYMONGO_WEBHOOK_SECRET
       #   sync: false
+      #
+      # POS_FRONTEND_URL is normally NOT needed: PayMongo redirects default to the
+      # origin the request arrived on, which is correct behind Render's proxy.
+      # Only set it if the POS is served from a different public host than the API.
+      #
+      # - key: POS_FRONTEND_URL
+      #   sync: false
     healthCheckPath: /health
     autoDeploy: true

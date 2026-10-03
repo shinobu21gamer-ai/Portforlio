@@ -18,6 +18,19 @@ const assertSaleAccess = (sale, user) => {
   throw ApiError.forbidden('You do not have access to this sale');
 };
 
+// Public base URL for PayMongo's success/cancel redirects. Prefers an explicit
+// POS_FRONTEND_URL and otherwise uses the origin the request arrived on.
+// `trust proxy` is enabled in src/server.js, so req.protocol/req.get('host')
+// reflect the real https host behind Render's proxy.
+//
+// This must never fall back to a localhost default: PayMongo rejects non-HTTPS
+// success_url in live mode, and on test mode it would redirect the customer to
+// their own machine.
+function resolvePublicOrigin(req, configuredUrl) {
+  const origin = configuredUrl || `${req.protocol}://${req.get('host')}`;
+  return String(origin).replace(/\/+$/, '');
+}
+
 router.get('/test', protect, authorize('admin'), async (req, res) => {
   try {
     if (!paymongoService.isConfigured()) {
@@ -77,7 +90,7 @@ router.post('/create-checkout', protect, validate(schemas.createCheckout), async
     else if (sale.paymentMethod === 'maya') paymentMethodTypes = ['paymaya'];
 
     const config = require('../config');
-    const posUrl = config.app.posFrontendUrl || 'http://localhost:5173';
+    const posUrl = resolvePublicOrigin(req, config.app.posFrontendUrl);
     const result = await paymongoService.createCheckoutSession({
       amount: saleTotal,
       description: description || `MiniMart POS - Sale #${saleId}`,
@@ -306,3 +319,4 @@ router.post('/webhook', async (req, res, next) => {
 });
 
 module.exports = router;
+module.exports.resolvePublicOrigin = resolvePublicOrigin;
