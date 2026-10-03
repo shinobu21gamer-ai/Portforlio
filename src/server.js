@@ -771,6 +771,17 @@ const runAutoSetup = async () => {
       scheduleLowStockCheck();
       scheduleExpiryCheck();
       scheduleTokenCleanup();
+
+      // Surface payment misconfiguration at boot. Verification fails closed, so
+      // a missing webhook secret silently rejects every PayMongo event with a
+      // 400 and sales paid online stay "pending" with no visible cause.
+      if (config.paymongo?.secretKey && !config.paymongo.webhookSecret) {
+        console.warn(
+          '[PAYMONGO] PAYMONGO_WEBHOOK_SECRET is not set. Online payments will appear to ' +
+          'hang on "pending" because webhook signature verification rejects every event. ' +
+          'Set it from the PayMongo dashboard (Webhooks → Secret) to enable them.'
+        );
+      }
       scheduleContractExpiryCheck();
 
     cron.schedule('*/30 * * * *', async () => {
@@ -788,6 +799,15 @@ const runAutoSetup = async () => {
         for (const sale of expiredSales) {
           const t = await sequelize.transaction();
           try {
+            // Re-check under a row lock. The list above was read without one, so
+            // a sale cancelled by the user (or a double-submit) between the read
+            // and here would otherwise have its stock restored a second time.
+            const lockedSale = await Sale.findByPk(sale.id, { transaction: t, lock: t.LOCK.UPDATE });
+            if (!lockedSale || lockedSale.status !== 'pending' || lockedSale.paymentStatus !== 'pending') {
+              await t.rollback();
+              continue;
+            }
+
             const items = await SaleItem.findAll({ where: { saleId: sale.id }, transaction: t });
             for (const item of items) {
               const product = await Product.findByPk(item.productId, { transaction: t, lock: true });

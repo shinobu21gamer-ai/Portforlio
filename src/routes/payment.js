@@ -145,6 +145,15 @@ router.get('/verify/:saleId', protect, async (req, res, next) => {
     let isPaid = false;
     try {
       const session = await paymongoService.retrieveCheckoutSession(sessionId);
+
+      // Bind the session to this sale. create-checkout stamps metadata.saleId;
+      // without checking it, a caller who can read sale A could present a paid
+      // session belonging to sale B and mark A completed.
+      const sessionSaleId = session.attributes?.metadata?.saleId;
+      if (sessionSaleId && String(sessionSaleId) !== String(sale.id)) {
+        throw ApiError.badRequest('Payment session does not belong to this sale');
+      }
+
       const sessionStatus = session.attributes?.status;
       const paymentStatus = session.attributes?.payments?.[0]?.attributes?.status;
       const piId = session.attributes?.payment_intent?.id;

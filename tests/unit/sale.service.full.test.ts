@@ -385,6 +385,28 @@ describe('sale.service - cancelPendingOnline', () => {
     const result = await saleService.cancelPendingOnline(sale.id, user);
     expect(result.status).toBe('cancelled');
   });
+
+  it('restores stock only once when cancel is called concurrently', async () => {
+    const sale = await saleService.createPending(
+      { items: [{ productId, quantity: 4 }], paymentMethod: 'gcash', shippingFee: 0 },
+      userId
+    );
+
+    const beforeStock = await stockOf();
+    expect(beforeStock).toBe(46);
+
+    const user = await User.findByPk(userId, { include: [{ model: Role, as: 'role' }] });
+
+    // Both paths pass the "is it pending?" check before either commits, which is
+    // how a user cancel racing the expiry cron could restore the same stock twice.
+    const results = await Promise.allSettled([
+      saleService.cancelPendingOnline(sale.id, user),
+      saleService.cancelPendingOnline(sale.id, user),
+    ]);
+
+    // Regardless of which one wins, stock must be restored exactly once.
+    expect(await stockOf()).toBe(50);
+  });
 });
 
 describe('sale.service - finalizeAfterPayment', () => {

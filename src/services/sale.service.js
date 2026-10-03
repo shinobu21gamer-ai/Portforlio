@@ -526,6 +526,16 @@ async cancel(id, userId) {
 
     const t = await sequelize.transaction();
     try {
+      // Claim the sale under a row lock before restoring stock. The checks above
+      // read without a lock, so a concurrent cancel (user + expiry cron) could
+      // both pass them and restore the same stock twice.
+      const lockedSale = await Sale.findByPk(id, { transaction: t, lock: t.LOCK.UPDATE });
+      if (!lockedSale) throw ApiError.notFound('Sale not found');
+      if (lockedSale.status !== 'pending' || lockedSale.paymentStatus !== 'pending') {
+        await t.rollback();
+        return this.getById(id);
+      }
+
       for (const item of sale.items) {
         const qty = parseInt(item.quantity, 10);
         const product = await Product.findByPk(item.productId, { transaction: t, lock: true });
