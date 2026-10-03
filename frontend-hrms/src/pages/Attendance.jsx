@@ -3,18 +3,10 @@ import { useAttendance, useClockIn, useClockOut, useEmployees, useShiftAssignmen
 
 import LoadingSkeleton from '../components/LoadingSkeleton';
 import { useToast } from '../components/Toast';
-import { formatDate, getWeekRange, getMonthRange } from '../utils/helpers';
+import { formatDate, getWeekRange, getMonthRange, formatTime } from '../utils/helpers';
 import { useIsAdmin } from '../hooks/useRole';
 import api from '../api/client';
 import useDebounce from '../hooks/useDebounce';
-
-function formatTime(timeStr) {
-  if (!timeStr) return '';
-  const [h, m] = timeStr.split(':').map(Number);
-  const ampm = h >= 12 ? 'PM' : 'AM';
-  const hour = h % 12 || 12;
-  return `${hour}:${String(m).padStart(2, '0')} ${ampm}`;
-}
 
 export default function Attendance() {
   const today = new Date().toISOString().split('T')[0];

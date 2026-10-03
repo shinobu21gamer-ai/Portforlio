@@ -5,6 +5,7 @@ import api from '../api/client';
 import LoadingSkeleton from '../components/LoadingSkeleton';
 import Swal from 'sweetalert2';
 import { icons } from '../components/ActionButton';
+import { formatTime, maskId } from '../utils/helpers';
 
 export default function MyProfile() {
   const { data: emp, isLoading } = useMyProfile();
@@ -39,7 +40,7 @@ export default function MyProfile() {
       qc.invalidateQueries({ queryKey: ['my-profile'] });
     } catch (err) {
       const errors = err.response?.data?.errors;
-      const msg = errors && errors.length ? errors.join('. ') : (err.response?.data?.message || 'Failed to update');
+      const msg = (errors && errors.length ? errors.join('. ') : err.response?.data?.message) || 'Failed to update';
       Swal.fire({ icon: 'error', title: 'Failed', text: msg });
     } finally {
       setSaving(false);
@@ -85,14 +86,14 @@ export default function MyProfile() {
             <strong>Address</strong><span>{emp.address || '—'}</span>
             <strong>Department</strong><span>{emp.department?.name || '—'}</span>
             <strong>Position</strong><span>{emp.position?.title || '—'}</span>
-            <strong>Schedule</strong><span>{emp.schedule ? `${emp.schedule.name} (${emp.schedule.startTime} - ${emp.schedule.endTime})` : '—'}</span>
-            <strong>Employment Type</strong><span style={{ textTransform: 'capitalize' }}>{emp.employmentType}</span>
+            <strong>Schedule</strong><span>{emp.schedule ? `${emp.schedule.name} (${formatTime(emp.schedule.startTime)} - ${formatTime(emp.schedule.endTime)})` : '—'}</span>
+            <strong>Employment Type</strong><span style={{ textTransform: 'capitalize' }}>{String(emp.employmentType || '').replace(/-/g, ' ')}</span>
             <strong>Status</strong><span><span className={`badge ${emp.status === 'active' ? 'success' : 'error'}`}>{emp.status}</span></span>
             <strong>Hire Date</strong><span>{emp.hireDate ? new Date(emp.hireDate).toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' }) : '—'}</span>
             <strong>Salary</strong><span>{emp.salary != null ? `₱${Number(emp.salary).toLocaleString()}` : '—'}</span>
             <strong>Emergency Contact</strong><span>{emp.emergencyContactName ? `${emp.emergencyContactName} (${emp.emergencyContactRelation || ''}) - ${emp.emergencyContactPhone}` : '—'}</span>
-            <strong>Bank</strong><span>{emp.bankName ? `${emp.bankName} - ${emp.bankAccountNumber}` : '—'}</span>
-            <strong>Government IDs</strong><span className="text-xs">{[emp.tinNumber && `TIN: ${emp.tinNumber}`, emp.sssNumber && `SSS: ${emp.sssNumber}`, emp.philHealthNumber && `PH: ${emp.philHealthNumber}`, emp.pagIbigNumber && `HDMF: ${emp.pagIbigNumber}`].filter(Boolean).join(' | ') || '—'}</span>
+            <strong>Bank</strong><span>{emp.bankName ? `${emp.bankName} - ${maskId(emp.bankAccountNumber)}` : '—'}</span>
+            <strong>Government IDs</strong><span className="text-xs mono">{[emp.tinNumber && `TIN: ${maskId(emp.tinNumber)}`, emp.sssNumber && `SSS: ${maskId(emp.sssNumber)}`, emp.philHealthNumber && `PH: ${maskId(emp.philHealthNumber)}`, emp.pagIbigNumber && `HDMF: ${maskId(emp.pagIbigNumber)}`].filter(Boolean).join('  |  ') || '—'}</span>
           </div>
         )}
       </div>

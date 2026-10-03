@@ -11,6 +11,24 @@ export function formatDate(d) {
   return new Date(d).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
+// Formats a SQL TIME ("09:00", "18:00:00") as "9:00 AM".
+export function formatTime(timeStr) {
+  if (!timeStr) return '';
+  const [h, m] = String(timeStr).split(':').map(Number);
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  const hour = h % 12 || 12;
+  return `${hour}:${String(m || 0).padStart(2, '0')} ${ampm}`;
+}
+
+// Masks a sensitive identifier for on-screen display, keeping the last `visible`
+// characters. Returns an em dash when there is nothing to show.
+export function maskId(value, visible = 4) {
+  const s = String(value || '').trim();
+  if (!s) return '—';
+  if (s.length <= visible) return '*'.repeat(s.length);
+  return `${'*'.repeat(s.length - visible)}${s.slice(-visible)}`;
+}
+
 export function getWeekRange(date = new Date()) {
   const d = new Date(date);
   const day = d.getDay();
