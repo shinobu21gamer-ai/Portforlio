@@ -386,25 +386,44 @@ describe('sale.service - cancelPendingOnline', () => {
     expect(result.status).toBe('cancelled');
   });
 
-  it('restores stock only once when cancel is called concurrently', async () => {
+  it('restores stock only once when cancel is called twice', async () => {
     const sale = await saleService.createPending(
       { items: [{ productId, quantity: 4 }], paymentMethod: 'gcash', shippingFee: 0 },
       userId
     );
 
-    const beforeStock = await stockOf();
-    expect(beforeStock).toBe(46);
+    expect(await stockOf()).toBe(46);
 
     const user = await User.findByPk(userId, { include: [{ model: Role, as: 'role' }] });
 
-    // Both paths pass the "is it pending?" check before either commits, which is
-    // how a user cancel racing the expiry cron could restore the same stock twice.
-    const results = await Promise.allSettled([
-      saleService.cancelPendingOnline(sale.id, user),
-      saleService.cancelPendingOnline(sale.id, user),
-    ]);
+    await saleService.cancelPendingOnline(sale.id, user);
+    await saleService.cancelPendingOnline(sale.id, user);
 
-    // Regardless of which one wins, stock must be restored exactly once.
+    // Idempotent: a second cancel must not restore the stock a second time.
+    expect(await stockOf()).toBe(50);
+  });
+
+  // Covers the observable contract: stock is never restored twice. Note this
+  // does NOT prove the in-transaction guard specifically — SQLite serializes
+  // writes, so the row-lock interleaving (user cancel racing the expiry cron)
+  // cannot be reproduced here and these tests pass with the guard removed.
+  // The guard is correct by construction; verifying it needs MySQL.
+  it('does not restore stock when the sale was cancelled by another writer', async () => {
+    const sale = await saleService.createPending(
+      { items: [{ productId, quantity: 6 }], paymentMethod: 'gcash', shippingFee: 0 },
+      userId
+    );
+    expect(await stockOf()).toBe(44);
+
+    const user = await User.findByPk(userId, { include: [{ model: Role, as: 'role' }] });
+
+    // Competing writer cancels and restores the stock itself.
+    await Product.increment('stockQuantity', { by: 6, where: { id: productId } });
+    await Sale.update({ status: 'cancelled', paymentStatus: 'cancelled' }, { where: { id: sale.id } });
+
+    await saleService.cancelPendingOnline(sale.id, user);
+
+    // Must still be 50 — this call added nothing on top of the competing restore.
     expect(await stockOf()).toBe(50);
   });
 });
