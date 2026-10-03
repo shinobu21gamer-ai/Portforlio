@@ -273,6 +273,18 @@ const scheduleTokenCleanup = () => {
   });
 };
 
+const scheduleContractExpiryCheck = () => {
+  cron.schedule('0 6 * * *', async () => {
+    try {
+      const contractService = require('./services/hrms/contract.service');
+      const result = await contractService.checkExpired();
+      console.log(`Contract expiry check completed: ${result.expired} contracts expired`);
+    } catch (error) {
+      console.error('Contract expiry check failed:', error.message);
+    }
+  });
+};
+
 // â”€â”€â”€ Start Server â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 let srv;
 
@@ -303,6 +315,24 @@ const runAutoSetup = async () => {
         }
       } catch (e) {
         console.log(`Column ${table}.${column} already exists or skip: ${e.message}`);
+      }
+    };
+
+    const safeModifyEnum = async (table, column, enumDef) => {
+      // SQLite ignores ENUM; this runs only for MySQL (isSQLite false) to widen ENUM
+      if (isSQLite) return;
+      try {
+        const [prev] = await db.query(
+          `SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = ? AND COLUMN_NAME = ?`,
+          [table, column]
+        );
+        if (prev && prev[0] && prev[0].COLUMN_TYPE && prev[0].COLUMN_TYPE.toLowerCase().includes('enum')) {
+          const fullEnum = `ENUM(${enumDef})`;
+          await db.query(`ALTER TABLE ${table} MODIFY COLUMN ${column} ${fullEnum}`);
+          console.log(`Modified ENUM ${table}.${column}`);
+        }
+      } catch (e) {
+        console.log(`ENUM modify ${table}.${column} skipped: ${e.message}`);
       }
     };
 
@@ -352,6 +382,9 @@ const runAutoSetup = async () => {
       await safeAddColumn('interviews', 'longitude', 'DECIMAL(10,7)');
       await safeAddColumn('positions', 'role_slug', 'VARCHAR(50)');
       await safeAddColumn('sales', 'discount_id', 'INTEGER');
+
+      await safeAddColumn('payrolls', 'paid_at', 'DATETIME');
+      await safeModifyEnum('notifications', 'type', "'low_stock','expiring_product','new_purchase','new_sale','payment_received','system','stock_adjustment','refund','hrms_leave_request','hrms_leave_approved','hrms_leave_rejected','hrms_interview_scheduled','hrms_application_status','hrms_employee_approved','hrms_contract_terminated','hrms_contract_expired','hrms_payroll_generated','hrms_payroll_paid'");
 
       await db.sync();
       console.log('Database synced');
@@ -732,6 +765,7 @@ const runAutoSetup = async () => {
       scheduleLowStockCheck();
       scheduleExpiryCheck();
       scheduleTokenCleanup();
+      scheduleContractExpiryCheck();
 
     cron.schedule('*/30 * * * *', async () => {
       try {

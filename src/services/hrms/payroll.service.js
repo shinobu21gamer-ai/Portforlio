@@ -1,5 +1,5 @@
 const { Op } = require('sequelize');
-const { Payroll, Payslip, Employee, Attendance, Department, sequelize } = require('../../models');
+const { Payroll, Payslip, Employee, Attendance, Department, sequelize, Notification } = require('../../models');
 const ApiError = require('../../utils/ApiError');
 const { getPagination, getPaginationMeta, escapeLike } = require('../../utils/helpers');
 const { logActivity } = require('../../utils/audit');
@@ -198,7 +198,8 @@ const SSS_TABLES = {
 };
 
 function computeSSS(monthlySalary, year) {
-  const table = SSS_TABLES[year] || SSS_TABLES[2025];
+  if (!SSS_TABLES[year]) throw new Error(`SSS table not defined for year ${year}; supported: ${Object.keys(SSS_TABLES).join(', ')}`);
+  const table = SSS_TABLES[year];
   const bracket = table.find(b => monthlySalary >= b.min && monthlySalary < b.max);
   return bracket ? bracket.employee : table[table.length - 1].employee;
 }
@@ -297,7 +298,22 @@ function compute13thMonth(totalBasicEarnedYTD, monthsWorked) {
 }
 
 // ─── Helper: compute payslip for one employee ─────────────
-function computePayslipForEmployee(emp, empAtt, periodSalary, periodWorkingDays, totalWorkingDays, isSemiMonthly, is13thMonthPeriod, totalBasicYTD, bonusAmount = 0) {
+function countWorkingDays(startDate, endDate) {
+  let totalWorkingDays = 0;
+  const d = new Date(startDate + 'T00:00:00');
+  const endD = new Date(endDate + 'T00:00:00');
+  while (d <= endD) {
+    const dow = d.getDay();
+    if (dow !== 0 && dow !== 6) {
+      const dateStr = d.toISOString().split('T')[0];
+      if (getHolidayType(dateStr) === 'none') totalWorkingDays++;
+    }
+    d.setDate(d.getDate() + 1);
+  }
+  return totalWorkingDays;
+}
+
+function computePayslipForEmployee(emp, empAtt, periodSalary, periodWorkingDays, totalWorkingDays, isSemiMonthly, is13thMonthPeriod, totalBasicYTD, bonusAmount = 0, year = new Date().getFullYear()) {
   const basicSalary = parseFloat(emp.salary);
   const hourlyRate = periodSalary / (isSemiMonthly ? Math.ceil(periodWorkingDays) : totalWorkingDays) / 8;
 
@@ -331,7 +347,6 @@ function computePayslipForEmployee(emp, empAtt, periodSalary, periodWorkingDays,
   const bonusPay = parseFloat(bonusAmount) || 0;
 
   // Government deductions (use full monthly salary for SSS/PhilHealth/Pag-IBIG)
-  const year = new Date().getFullYear();
   const sss = computeSSS(basicSalary, year);
   const philhealth = computePhilHealth(basicSalary);
   const pagibig = computePagIBIG(basicSalary);
@@ -381,7 +396,11 @@ function gatherAttendance(attendanceRecords, startDate, endDate) {
         avgHolidayType: 'none', hasRestDay: false,
       };
     }
-    byEmployee[empId].daysWorked++;
+    // 'late', 'undertime' and 'half-day' all still count as a worked day; only a
+    // genuine absence (or approved leave) must not, or the employee is paid in full.
+    if (rec.status !== 'absent' && rec.status !== 'on-leave') {
+      byEmployee[empId].daysWorked++;
+    }
     byEmployee[empId].totalHours += parseFloat(rec.totalHours) || 0;
     byEmployee[empId].overtime += parseFloat(rec.overtime) || 0;
     byEmployee[empId].nightShiftHours += parseFloat(rec.nightShiftHours) || 0;
@@ -484,14 +503,7 @@ class PayrollService {
 
       const attendanceByEmployee = gatherAttendance(attendanceRecords, startDate, endDate);
 
-      let totalWorkingDays = 0;
-      const d = new Date(startDate + 'T00:00:00');
-      const endD = new Date(endDate + 'T00:00:00');
-      while (d <= endD) {
-        const day = d.getDay();
-        if (day !== 0 && day !== 6) totalWorkingDays++;
-        d.setDate(d.getDate() + 1);
-      }
+      let totalWorkingDays = countWorkingDays(startDate, endDate);
 
       const isDecember = month === 12;
       const periodWorkingDays = isSemiMonthly => isSemiMonthly ? Math.ceil(totalWorkingDays / 2) : totalWorkingDays;
@@ -528,7 +540,7 @@ class PayrollService {
         }
 
         const payslipData = computePayslipForEmployee(
-          emp, empAtt, periodSalary, pwd, totalWorkingDays, isSemiMonth, is13thMonthPeriod, totalBasicYTD, data.bonuses?.[emp.id]
+          emp, empAtt, periodSalary, pwd, totalWorkingDays, isSemiMonth, is13thMonthPeriod, totalBasicYTD, data.bonuses?.[emp.id], year
         );
 
         await Payslip.create({
@@ -558,7 +570,7 @@ class PayrollService {
     }
   }
 
-  async process(id) {
+  async process(id, userId = null) {
     const payroll = await Payroll.findByPk(id);
     if (!payroll) throw ApiError.notFound('Payroll not found');
     if (payroll.status !== 'draft') throw ApiError.badRequest('Only draft payrolls can be processed');
@@ -569,7 +581,7 @@ class PayrollService {
       await payroll.update({ status: 'processed' }, { transaction: t });
     });
 
-    await logActivity(null, 'payroll-processed', 'HRMS', { referenceType: 'Payroll', referenceId: id, description: `Processed payroll for ${payroll.period}` });
+    await logActivity(userId, 'payroll-processed', 'HRMS', { referenceType: 'Payroll', referenceId: id, description: `Processed payroll for ${payroll.period}` });
 
     try {
       const { sendEmail } = require('../../utils/mailer');
@@ -589,7 +601,7 @@ class PayrollService {
     return this.getById(id);
   }
 
-  async pay(id) {
+  async pay(id, userId = null) {
     const payroll = await Payroll.findByPk(id);
     if (!payroll) throw ApiError.notFound('Payroll not found');
     if (payroll.status === 'paid') throw ApiError.badRequest('Payroll already paid');
@@ -601,7 +613,24 @@ class PayrollService {
       await Payslip.update({ status: 'paid', paidDate: today }, { where: { payrollId: id }, transaction: t });
       await payroll.update({ status: 'paid', paidAt: new Date() }, { transaction: t });
     });
-    await logActivity(null, 'payroll-paid', 'HRMS', { referenceType: 'Payroll', referenceId: id, description: `Paid payroll for ${payroll.period}` });
+    await logActivity(userId, 'payroll-paid', 'HRMS', { referenceType: 'Payroll', referenceId: id, description: `Paid payroll for ${payroll.period}` });
+
+    const slips = await Payslip.findAll({
+      where: { payrollId: id },
+      include: [{ association: 'employee', attributes: ['userId', 'firstName'] }],
+    });
+    for (const slip of slips) {
+      if (slip.employee?.userId) {
+        await Notification.create({
+          userId: slip.employee.userId,
+          type: 'hrms_payroll_paid',
+          title: 'Payroll Paid',
+          message: `Your payroll for ${payroll.period} has been paid. Net pay: ₱${parseFloat(slip.netPay).toFixed(2)}`,
+          data: { payrollId: id, period: payroll.period, netPay: parseFloat(slip.netPay) },
+        });
+      }
+    }
+
     return this.getById(id);
   }
 
@@ -661,14 +690,7 @@ class PayrollService {
     });
     const attendanceByEmployee = gatherAttendance(attendanceRecords, startDate, endDate);
 
-    let totalWorkingDays = 0;
-    const d = new Date(startDate + 'T00:00:00');
-    const endD = new Date(endDate + 'T00:00:00');
-    while (d <= endD) {
-      const day = d.getDay();
-      if (day !== 0 && day !== 6) totalWorkingDays++;
-      d.setDate(d.getDate() + 1);
-    }
+    const totalWorkingDays = countWorkingDays(startDate, endDate);
 
     const isDecember = month === 12;
     const previewPayslips = [];
@@ -688,7 +710,7 @@ class PayrollService {
       const is13thMonthPeriod = isDecember && !isSemiMonth;
 
       const p = computePayslipForEmployee(
-        emp, empAtt, periodSalary, pwd, totalWorkingDays, isSemiMonth, is13thMonthPeriod, basicSalary
+        emp, empAtt, periodSalary, pwd, totalWorkingDays, isSemiMonth, is13thMonthPeriod, basicSalary, 0, year
       );
 
       previewPayslips.push({

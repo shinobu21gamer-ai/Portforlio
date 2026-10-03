@@ -65,12 +65,12 @@ router.delete('/employees/:id', protect, authorize('admin', 'hr'), empCtrl.delet
 router.put('/employees/:id/approve', protect, authorize('admin'), empCtrl.approve);
 router.put('/employees/:id/reject', protect, authorize('admin'), empCtrl.reject);
 router.put('/employees/:id/terminate', protect, authorize('admin'), validate(schemas.terminateEmployee), empCtrl.terminate);
-router.put('/employees/:id/pos-access', protect, authorize('admin', 'hr', 'manager'), empCtrl.assignPosAccess);
+router.put('/employees/:id/pos-access', protect, authorize('admin', 'hr'), empCtrl.assignPosAccess);
 router.put('/employees/:id/pos-revoke', protect, authorize('admin', 'hr', 'manager'), empCtrl.revokePosAccess);
 router.get('/pos-staff', protect, authorize('admin', 'hr', 'manager', 'cashier'), empCtrl.getPosStaff);
 
 // ─── Attendance ───────────────────────────────────────
-router.get('/attendance/today', protect, attCtrl.getTodaySummary);
+router.get('/attendance/today', protect, authorize('admin', 'hr', 'manager'), attCtrl.getTodaySummary);
 router.get('/attendance/calendar', protect, authorize('admin', 'hr', 'manager'), attCtrl.getCalendar);
 router.get('/attendance', protect, authorize('admin', 'hr', 'manager'), attCtrl.getAll);
 router.get('/attendance/export', protect, authorize('admin', 'hr', 'manager'), attCtrl.exportCSV);
@@ -91,10 +91,10 @@ router.put('/schedules/:id', protect, authorize('admin', 'hr'), validate(schemas
 router.delete('/schedules/:id', protect, authorize('admin', 'hr'), schCtrl.delete);
 
 // ─── Payroll ──────────────────────────────────────────
-router.get('/payrolls', protect, authorize('admin', 'hr', 'manager'), payCtrl.getAll);
+router.get('/payrolls', protect, authorize('admin', 'hr'), payCtrl.getAll);
 router.get('/payrolls/preview', protect, authorize('admin', 'hr'), payCtrl.previewGet);
-router.post('/payrolls/preview', protect, authorize('admin', 'hr'), payCtrl.preview);
-router.get('/payrolls/:id', protect, authorize('admin', 'hr', 'manager'), payCtrl.getById);
+router.post('/payrolls/preview', protect, authorize('admin', 'hr'), validate(schemas.generatePayroll), payCtrl.preview);
+router.get('/payrolls/:id', protect, authorize('admin', 'hr'), payCtrl.getById);
 router.post('/payrolls', protect, authorize('admin', 'hr'), validate(schemas.generatePayroll), payCtrl.generate);
 router.put('/payrolls/:id/process', protect, authorize('admin', 'hr'), payCtrl.process);
 router.put('/payrolls/:id/pay', protect, authorize('admin'), payCtrl.pay);
@@ -158,7 +158,6 @@ router.delete('/leaves/:id', protect, authorize('admin', 'hr'), leaveCtrl.delete
 
 // ─── Leave Balances ─────────────────────────────────
 router.get('/leaves/balance/:employeeId', protect, authorize('admin', 'hr', 'manager'), leaveCtrl.getBalance);
-router.put('/leaves/balance/:employeeId', protect, authorize('admin'), leaveCtrl.updateBalance);
 router.get('/me/leaves/balance', protect, leaveCtrl.getMyBalance);
 
 // ─── Employee Documents ───────────────────────────────

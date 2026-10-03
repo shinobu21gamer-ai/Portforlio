@@ -27,6 +27,7 @@ module.exports = (sequelize, DataTypes) => {
         'hrms_application_status',
         'hrms_employee_approved',
         'hrms_contract_terminated',
+        'hrms_contract_expired',
         'hrms_payroll_generated',
         'hrms_payroll_paid'
       ),

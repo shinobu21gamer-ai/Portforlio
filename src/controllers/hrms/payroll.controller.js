@@ -7,8 +7,8 @@ class PayrollController {
   async generate(req, res, next) { try { sendSuccess(res, await payrollService.generate(req.body), 'Payroll generated', 201); } catch (e) { next(e); } }
   async preview(req, res, next) { try { sendSuccess(res, await payrollService.preview(req.body)); } catch (e) { next(e); } }
   async previewGet(req, res, next) { try { sendSuccess(res, await payrollService.preview(req.query)); } catch (e) { next(e); } }
-  async process(req, res, next) { try { sendSuccess(res, await payrollService.process(req.params.id), 'Payroll processed'); } catch (e) { next(e); } }
-  async pay(req, res, next) { try { sendSuccess(res, await payrollService.pay(req.params.id), 'Payroll paid'); } catch (e) { next(e); } }
+  async process(req, res, next) { try { sendSuccess(res, await payrollService.process(req.params.id, req.user?.id), 'Payroll processed'); } catch (e) { next(e); } }
+  async pay(req, res, next) { try { sendSuccess(res, await payrollService.pay(req.params.id, req.user?.id), 'Payroll paid'); } catch (e) { next(e); } }
   async getPayslips(req, res, next) { try { sendSuccess(res, await payrollService.getPayslips(req.params.id)); } catch (e) { next(e); } }
   async exportCSV(req, res, next) {
     try {
