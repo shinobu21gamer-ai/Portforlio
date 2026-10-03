@@ -217,6 +217,7 @@ export default function App() {
                   <Route path="/reset-password" element={<ResetPassword />} />
 
                   <Route path="/" element={<ProtectedRoute><Pos /></ProtectedRoute>} />
+                  <Route path="/pos" element={<ProtectedRoute><Pos /></ProtectedRoute>} />
                   <Route path="/payment" element={<ProtectedRoute><Payment /></ProtectedRoute>} />
                   <Route path="/payment/success" element={<ProtectedRoute><Payment success /></ProtectedRoute>} />
                   <Route path="/payment/cancel" element={<ProtectedRoute><Payment cancel /></ProtectedRoute>} />

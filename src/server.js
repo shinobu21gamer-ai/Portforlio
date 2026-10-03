@@ -26,15 +26,15 @@ app.use(helmet({
     directives: {
       defaultSrc: ["'self'"],
       scriptSrc: ["'self'"],
-      styleSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
       imgSrc: ["'self'", 'data:', 'blob:'],
-      fontSrc: ["'self'"],
+      fontSrc: ["'self'", 'https://fonts.gstatic.com'],
       connectSrc: ["'self'"],
-      frameAncestors: ["'none'"],
+      frameAncestors: ["'self'"],
     },
   },
   crossOriginEmbedderPolicy: false,
-  frameguard: { action: 'deny' },
+  frameguard: { action: 'sameorigin' },
   referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
 }));
 

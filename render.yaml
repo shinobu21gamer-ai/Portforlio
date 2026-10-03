@@ -25,5 +25,7 @@ services:
         generateValue: true
       - key: JWT_REFRESH_SECRET
         generateValue: true
+      - key: CORS_ORIGIN
+        value: "*"
     healthCheckPath: /health
     autoDeploy: true

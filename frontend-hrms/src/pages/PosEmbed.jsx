@@ -14,7 +14,7 @@ export default function PosEmbed({ page, onClose }) {
   const iframeRef = useRef(null);
 
   const posBase = import.meta.env.VITE_POS_URL || window.location.origin;
-  const posUrl = `${posBase}${page || ''}`;
+  const posUrl = `${posBase}${page || '/pos'}`;
   const posOrigin = (() => { try { return new URL(posBase, window.location.origin).origin; } catch { return window.location.origin; } })();
 
   const sendToken = useCallback(() => {
