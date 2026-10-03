@@ -606,4 +606,50 @@ describe('contract.service - checkExpired', () => {
     const emp = await Employee.findByPk(employeeId);
     expect(emp.status).toBe('active');
   });
+
+  it('deactivates the user account when the last contract expires', async () => {
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    const contract = await contractService.create({
+      employeeId,
+      contractType: 'regular',
+      startDate,
+      endDate: yesterday.toISOString().split('T')[0],
+    });
+
+    await contract.update({ status: 'active' });
+
+    const emp = await Employee.findByPk(employeeId);
+    await User.update({ isActive: true }, { where: { id: emp.userId } });
+
+    await contractService.checkExpired();
+
+    // An expired employee must lose login access too, matching terminate()
+    const user = await User.findByPk(emp.userId);
+    expect(user.isActive).toBe(false);
+  });
+
+  it('creates an hrms_contract_expired notification', async () => {
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    const contract = await contractService.create({
+      employeeId,
+      contractType: 'regular',
+      startDate,
+      endDate: yesterday.toISOString().split('T')[0],
+    });
+
+    await contract.update({ status: 'active' });
+
+    await contractService.checkExpired();
+
+    const { Notification } = models;
+    const emp = await Employee.findByPk(employeeId);
+    const notif = await Notification.findOne({
+      where: { userId: emp.userId, type: 'hrms_contract_expired' },
+    });
+    expect(notif).not.toBeNull();
+  });
 });

@@ -1,4 +1,4 @@
-const { Contract, Employee, Notification } = require('../../models');
+const { Contract, Employee, Notification, User } = require('../../models');
 const ApiError = require('../../utils/ApiError');
 const { getPagination, getPaginationMeta, escapeLike, sanitizeObject } = require('../../utils/helpers');
 const { Op } = require('sequelize');
@@ -240,6 +240,11 @@ class ContractService {
         });
         if (!otherActive) {
           await emp.update({ status: 'inactive', terminationType: 'end-of-contract', terminationDate: today });
+          // Mirror terminate(): an employee with no active contract must also lose
+          // login access, otherwise the account stays usable after expiry.
+          if (emp.userId) {
+            await User.update({ isActive: false }, { where: { id: emp.userId } });
+          }
         }
         if (emp.userId) {
           await Notification.create({

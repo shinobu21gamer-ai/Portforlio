@@ -19,3 +19,6 @@ Thumbs.db
 desktop.ini
 coverage/
 .cache/
+
+# Local dev secrets (JWT keys) - never commit
+.dev-secrets.json

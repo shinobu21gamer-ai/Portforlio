@@ -23,15 +23,6 @@ class LeaveController {
     try { sendSuccess(res, await leaveService.getLeaveBalance(req.params.employeeId)); } catch (e) { next(e); }
   }
 
-  async updateBalance(req, res, next) {
-    try {
-      const { leaveType, totalDays } = req.body;
-      const emp = await Employee.findByPk(req.params.employeeId);
-      if (!emp) throw ApiError.notFound('Employee not found');
-      sendSuccess(res, { message: 'Balance updated manually. Note: balances are auto-calculated from approved leaves.' });
-    } catch (e) { next(e); }
-  }
-
   async getMyBalance(req, res, next) {
     try {
       const emp = await Employee.findOne({ where: { userId: req.user.id } });
