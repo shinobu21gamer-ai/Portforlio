@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import PosLayout from '../layouts/PosLayout';
 import { useProducts, useCategories, useCustomers } from '../hooks/useApi';
 import useCartStore from '../store/cartStore';
+import useAuthStore from '../store/authStore';
 import { useToast } from '../components/Toast';
 import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
