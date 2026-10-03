@@ -26,8 +26,8 @@ app.use(helmet({
     directives: {
       defaultSrc: ["'self'"],
       scriptSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
-      imgSrc: ["'self'", 'data:', 'blob:'],
+      styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com', 'https://unpkg.com'],
+      imgSrc: ["'self'", 'data:', 'blob:', 'https://unpkg.com', 'https://*.tile.openstreetmap.org'],
       fontSrc: ["'self'", 'https://fonts.gstatic.com'],
       connectSrc: ["'self'"],
       frameAncestors: ["'self'"],
@@ -199,10 +199,12 @@ app.get('/', (req, res) => {
 // â”€â”€â”€ HRMS Frontend Static Files (served at /hrms) â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const hrmsDist = path.join(__dirname, '..', 'frontend-hrms', 'dist');
 if (fs.existsSync(hrmsDist)) {
+  app.use('/hrms/assets', express.static(path.join(hrmsDist, 'assets'), { immutable: true, maxAge: '1y' }));
   app.use('/hrms', express.static(hrmsDist, { index: 'index.html' }));
   app.get('/hrms/*', (req, res, next) => {
     if (req.originalUrl.startsWith('/api')) return next();
-    res.sendFile(path.join(hrmsDist, 'index.html'), (err) => { if (err) next(); });
+    if (path.extname(req.path)) return res.status(404).send('Not found');
+    res.sendFile(path.join(hrmsDist, 'index.html'), { headers: { 'Cache-Control': 'no-store, must-revalidate' } }, (err) => { if (err) next(); });
   });
   console.log('HRMS frontend served at /hrms');
 } else {
@@ -212,12 +214,14 @@ if (fs.existsSync(hrmsDist)) {
 // â”€â”€â”€ POS Frontend Static Files (served at /) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const frontendDist = path.join(__dirname, '..', 'frontend', 'dist');
 if (fs.existsSync(frontendDist)) {
-  app.use(express.static(frontendDist));
+  app.use('/assets', express.static(path.join(frontendDist, 'assets'), { immutable: true, maxAge: '1y' }));
+  app.use(express.static(frontendDist, { index: false }));
   app.get('*', (req, res, next) => {
     if (req.originalUrl.startsWith('/api') || req.originalUrl.startsWith('/uploads') || req.originalUrl.startsWith('/api-docs') || req.originalUrl.startsWith('/health')) {
       return next();
     }
-    res.sendFile(path.join(frontendDist, 'index.html'), (err) => {
+    if (path.extname(req.path)) return res.status(404).send('Not found');
+    res.sendFile(path.join(frontendDist, 'index.html'), { headers: { 'Cache-Control': 'no-store, must-revalidate' } }, (err) => {
       if (err) next();
     });
   });
