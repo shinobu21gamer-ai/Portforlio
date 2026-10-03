@@ -166,14 +166,6 @@ export default function JobPortal() {
             <div className="jp-hero-badge">We're Hiring</div>
             <h1 className="jp-hero-title">Build Your Future<br/>With Us</h1>
             <p className="jp-hero-sub">Join a team that values growth, innovation, and meaningful work.<br/>Explore open positions and take the next step in your career.</p>
-            {!isAuthenticated && (
-              <div className="jp-hero-actions">
-                <Link to="/login" className="jp-btn-primary jp-hero-btn">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/></svg>
-                  Employee Login
-                </Link>
-              </div>
-            )}
             <div className="jp-hero-stats">
             <div className="jp-hero-stat">
               <span className="jp-hero-stat-value">{jobs.length}</span>
