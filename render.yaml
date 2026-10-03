@@ -27,5 +27,20 @@ services:
         generateValue: true
       - key: CORS_ORIGIN
         value: "*"
+      # PayMongo (optional - only needed for online payments).
+      # Set these in the Render dashboard as encrypted secrets, or uncomment and
+      # fill them in. Do NOT commit real keys here.
+      #
+      # PAYMONGO_WEBHOOK_SECRET is the one that is easy to miss: without it,
+      # webhook signature verification fails closed and every PayMongo event is
+      # rejected with a 400, so online-paid sales sit at "pending" forever. Get
+      # it from PayMongo dashboard -> Developers -> Webhooks -> Secret.
+      #
+      # - key: PAYMONGO_SECRET_KEY
+      #   sync: false
+      # - key: PAYMONGO_PUBLIC_KEY
+      #   sync: false
+      # - key: PAYMONGO_WEBHOOK_SECRET
+      #   sync: false
     healthCheckPath: /health
     autoDeploy: true
