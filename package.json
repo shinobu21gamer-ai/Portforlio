@@ -16,7 +16,7 @@
     "test": "npm run test:unit && npm run test:integration",
     "test:unit": "vitest run",
     "test:unit:watch": "vitest",
-    "test:integration": "node tests/integration/php-migration.integration.test.js",
+    "test:integration": "vitest run tests/integration tests/unit",
     "test:integration:watch": "vitest",
     "test:migration": "node tests/integration/php-migration.integration.test.js",
     "test:e2e": "playwright test",

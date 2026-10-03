@@ -63,6 +63,42 @@ jobs:
           files: ./coverage/lcov.info
           flags: integration
 
+  # The unit suite runs sync({force:true}), which rebuilds every table, so it can
+  # never catch a broken migration — new columns and ENUM values always appear to
+  # work. This job runs the migration helpers against a real pre-existing schema.
+  # MariaDB is NOT used here on purpose: it accepts slightly different ENUM DDL
+  # than the MySQL the app targets in production.
+  migration-test:
+    name: Schema Migration (MySQL)
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ALLOW_EMPTY_PASSWORD: 'yes'
+          MYSQL_DATABASE: hrms_migration_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Run migration test against MySQL
+        run: npm run test:migration
+        env:
+          TEST_MYSQL_PORT: '3306'
+          TEST_MYSQL_DB: hrms_migration_test
+          TEST_MYSQL_USER: root
+          TEST_MYSQL_PASSWORD: ''
+
   build-frontends:
     name: Build Frontends
     runs-on: ubuntu-latest

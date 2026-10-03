@@ -139,6 +139,15 @@ async function enumValues(db, table, column) {
     console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}${detail ? ' — ' + detail : ''}`);
   };
 
+  // Record which engine actually ran the checks. CI pins MySQL 8; local dev
+  // here is MariaDB. The two accept different ENUM DDL in places, so a green
+  // run on one is not automatically a green run on the other.
+  const [verRows] = await db.query('SELECT VERSION() AS v');
+  const serverVersion = verRows[0].v;
+  const isMariaDB = /maria/i.test(serverVersion);
+  check('running against a known engine', true,
+    `${serverVersion}${isMariaDB ? '  (MariaDB — CI covers MySQL 8)' : ''}`);
+
   try {
     // ── 1. Reproduce the production failure on the pre-fix schema ──
     await dropAndBuildPreFixSchema(db);
