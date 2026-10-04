@@ -56,11 +56,16 @@ function RoleRedirect() {
   if (slug === 'cashier' || slug === 'manager' || slug === 'inventory_staff') {
     return <Navigate to="/pos" replace />;
   }
-  // The HR layout and every route inside it are gated to admin/hr/manager.
-  // An employee landing here was shown that sidebar and got "Access Denied"
-  // on every click, so send them to their own pages instead.
-  if (slug !== 'admin' && slug !== 'hr' && slug !== 'manager') {
+  // The HR layout and every route inside it is gated to admin/hr/manager, and
+  // /my-profile is gated to employee/cashier/inventory_staff. So an employee —
+  // or an account with a missing or unrecognised role — has no landing page.
+  // Send them to the login screen rather than bouncing between two routes that
+  // would each render "Access Denied".
+  if (slug === 'employee') {
     return <Navigate to="/my-profile" replace />;
+  }
+  if (!slug || !['admin', 'hr', 'manager'].includes(slug)) {
+    return <Navigate to="/login" replace />;
   }
   return (
     <HrmsLayout>
