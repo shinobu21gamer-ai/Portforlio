@@ -299,7 +299,16 @@ export default function Payment({ success: successProp, cancel: cancelProp }) {
         }
       }, 300);
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Sale failed');
+      // A dropped connection is not the same as a rejected sale: the request may
+      // well have succeeded server-side and only the response was lost. Saying
+      // "Sale failed" there invites the cashier to press Pay again and create a
+      // duplicate sale, so call that case out explicitly and keep the cart.
+      const isNetworkError = !err.response;
+      toast.error(
+        isNetworkError
+          ? 'Connection lost — could not confirm the sale. Check the receipt/reports before retrying, as it may still have been saved.'
+          : (err.response?.data?.message || 'Sale could not be completed')
+      );
     } finally {
       setLoading(false);
     }
