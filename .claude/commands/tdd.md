@@ -322,5 +322,5 @@ Never skip the RED phase. Never write code before tests.
 This command invokes the `tdd-guide` agent located at:
 `~/.claude/agents/tdd-guide.md`
 
-And can reference the `tdd-workflow` skill at:
-`~/.claude/skills/tdd-workflow/`
+The TDD methodology now lives in the `test-driven-development` skill from the
+superpowers plugin (see the skills list).
