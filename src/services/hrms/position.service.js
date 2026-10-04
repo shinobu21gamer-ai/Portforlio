@@ -2,6 +2,7 @@ const { Position, Department, Employee } = require('../../models');
 const ApiError = require('../../utils/ApiError');
 const { getPagination, getPaginationMeta, escapeLike, sanitizeObject } = require('../../utils/helpers');
 const { Op, fn, col, where: sequelizeWhere } = require('sequelize');
+const { logActivity } = require('../../utils/audit');
 
 class PositionService {
   async getAll(query) {
@@ -30,7 +31,7 @@ class PositionService {
     return pos;
   }
 
-  async create(data) {
+  async create(data, actorId = null) {
     const sanitized = sanitizeObject(data);
     const dept = await Department.findByPk(sanitized.departmentId);
     if (!dept) throw ApiError.notFound('Department not found');
@@ -41,10 +42,17 @@ class PositionService {
       },
     });
     if (existing) throw ApiError.badRequest('Position with this title already exists in this department');
-    return Position.create(sanitized);
+    const pos = await Position.create(sanitized);
+    await logActivity(actorId, 'position-created', 'HRMS', {
+      referenceType: 'Position',
+      referenceId: pos.id,
+      description: `Created position "${pos.title}" in ${dept.name}`,
+      newData: { title: pos.title, departmentId: pos.departmentId, minSalary: pos.minSalary, maxSalary: pos.maxSalary },
+    });
+    return pos;
   }
 
-  async update(id, data) {
+  async update(id, data, actorId = null) {
     const pos = await Position.findByPk(id);
     if (!pos) throw ApiError.notFound('Position not found');
     if (data.departmentId) {
@@ -63,16 +71,31 @@ class PositionService {
       });
       if (existing) throw ApiError.badRequest('Position with this title already exists in this department');
     }
+    const oldData = { title: pos.title, departmentId: pos.departmentId, minSalary: pos.minSalary, maxSalary: pos.maxSalary, roleSlug: pos.roleSlug };
     await pos.update(sanitizeObject(data));
+    await logActivity(actorId, 'position-updated', 'HRMS', {
+      referenceType: 'Position',
+      referenceId: id,
+      description: `Updated position "${pos.title}"`,
+      oldData,
+      newData: { title: pos.title, departmentId: pos.departmentId, minSalary: pos.minSalary, maxSalary: pos.maxSalary, roleSlug: pos.roleSlug },
+    });
     return pos;
   }
 
-  async delete(id) {
+  async delete(id, actorId = null) {
     const pos = await Position.findByPk(id);
     if (!pos) throw ApiError.notFound('Position not found');
     const empCount = await Employee.count({ where: { positionId: id } });
     if (empCount > 0) throw ApiError.badRequest('Cannot delete position with employees');
+    const oldData = { title: pos.title, departmentId: pos.departmentId, minSalary: pos.minSalary, maxSalary: pos.maxSalary, roleSlug: pos.roleSlug };
     await pos.destroy();
+    await logActivity(actorId, 'position-deleted', 'HRMS', {
+      referenceType: 'Position',
+      referenceId: id,
+      description: `Deleted position "${pos.title}"`,
+      oldData,
+    });
     return { message: 'Position deleted' };
   }
 }

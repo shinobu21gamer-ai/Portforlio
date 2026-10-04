@@ -1,6 +1,9 @@
 const { ActivityLog } = require('../models');
 
-async function logActivity(userId, action, module, options = {}) {
+// The optional transaction is honoured: an audit row written outside the
+// caller's transaction would survive a rollback and claim an action that never
+// happened. Several call sites already pass a transaction expecting this.
+async function logActivity(userId, action, module, options = {}, transaction = null) {
   try {
     await ActivityLog.create({
       userId,
@@ -15,7 +18,7 @@ async function logActivity(userId, action, module, options = {}) {
       userAgent: options.userAgent || null,
       oldData: options.oldData || null,
       newData: options.newData || null,
-    });
+    }, { transaction });
   } catch (e) {
     console.error('Audit log failed:', e.message);
   }

@@ -1,5 +1,6 @@
 const { Schedule, ShiftAssignment, Employee } = require('../../models');
 const ApiError = require('../../utils/ApiError');
+const { logActivity } = require('../../utils/audit');
 const { getPagination, getPaginationMeta, escapeLike, sanitizeObject } = require('../../utils/helpers');
 const { Op } = require('sequelize');
 
@@ -25,31 +26,50 @@ class ScheduleService {
     return schedule;
   }
 
-  async create(data) {
+  async create(data, actorId = null) {
     const sanitized = sanitizeObject(data);
-    return Schedule.create(sanitized);
+    const sched = await Schedule.create(sanitized);
+    await logActivity(actorId, 'schedule-created', 'HRMS', {
+      referenceType: 'Schedule', referenceId: sched.id,
+      description: `Created schedule ${sched.name}`,
+      newData: { name: sched.name, startTime: sched.startTime, endTime: sched.endTime },
+    });
+    return sched;
   }
 
-  async update(id, data) {
+  async update(id, data, actorId = null) {
     const schedule = await Schedule.findByPk(id);
     if (!schedule) throw ApiError.notFound('Schedule not found');
+    const oldData = { name: schedule.name, startTime: schedule.startTime, endTime: schedule.endTime };
     await schedule.update(sanitizeObject(data));
+    await logActivity(actorId, 'schedule-updated', 'HRMS', {
+      referenceType: 'Schedule', referenceId: id,
+      description: `Updated schedule ${schedule.name}`,
+      oldData,
+      newData: { name: schedule.name, startTime: schedule.startTime, endTime: schedule.endTime },
+    });
     return schedule;
   }
 
-  async delete(id) {
+  async delete(id, actorId = null) {
     const schedule = await Schedule.findByPk(id);
     if (!schedule) throw ApiError.notFound('Schedule not found');
+    const oldData = { name: schedule.name, startTime: schedule.startTime, endTime: schedule.endTime };
     const { sequelize } = require('../../models');
     await sequelize.transaction(async (t) => {
       await Employee.update({ scheduleId: null }, { where: { scheduleId: id }, transaction: t });
       await ShiftAssignment.destroy({ where: { scheduleId: id }, transaction: t });
       await schedule.destroy({ transaction: t });
     });
+    await logActivity(actorId, 'schedule-deleted', 'HRMS', {
+      referenceType: 'Schedule', referenceId: id,
+      description: `Deleted schedule ${oldData.name} (employees unassigned)`,
+      oldData,
+    });
     return { message: 'Schedule deleted' };
   }
 
-  async assign(data) {
+  async assign(data, actorId = null) {
     const schedule = await Schedule.findByPk(data.scheduleId);
     if (!schedule) throw ApiError.notFound('Schedule not found');
 
@@ -82,13 +102,25 @@ class ScheduleService {
       }
     } catch (e) { console.error('[EMAIL] Schedule assignment email failed:', e.message); }
 
+    await logActivity(actorId, 'schedule-assigned', 'HRMS', {
+      referenceType: 'Employee', referenceId: data.employeeId,
+      description: `Assigned schedule ${schedule.name} to ${emp.firstName} ${emp.lastName}${data.date ? ` for ${data.date}` : ' (permanent)'}`,
+      newData: { scheduleId: data.scheduleId, date: data.date || null },
+    });
+
     return { assigned: 1 };
   }
 
-  async deleteAssignment(id) {
+  async deleteAssignment(id, actorId = null) {
     const assignment = await ShiftAssignment.findByPk(id);
     if (!assignment) throw ApiError.notFound('Assignment not found');
+    const oldData = { employeeId: assignment.employeeId, scheduleId: assignment.scheduleId, date: assignment.date };
     await assignment.destroy();
+    await logActivity(actorId, 'schedule-assignment-deleted', 'HRMS', {
+      referenceType: 'ShiftAssignment', referenceId: id,
+      description: `Removed shift assignment for employee #${assignment.employeeId}`,
+      oldData,
+    });
     return { message: 'Assignment deleted' };
   }
 
@@ -105,10 +137,16 @@ class ScheduleService {
     return employees;
   }
 
-  async removePermanentAssignment(employeeId) {
+  async removePermanentAssignment(employeeId, actorId = null) {
     const emp = await Employee.findByPk(employeeId);
     if (!emp) throw ApiError.notFound('Employee not found');
+    const oldData = { scheduleId: emp.scheduleId };
     await emp.update({ scheduleId: null });
+    await logActivity(actorId, 'schedule-permanent-assignment-removed', 'HRMS', {
+      referenceType: 'Employee', referenceId: employeeId,
+      description: `Removed permanent schedule from ${emp.firstName} ${emp.lastName}`,
+      oldData,
+    });
     return { message: 'Schedule removed' };
   }
 
