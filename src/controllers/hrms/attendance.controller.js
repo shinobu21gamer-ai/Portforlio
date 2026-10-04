@@ -13,6 +13,23 @@ class AttendanceController {
       sendSuccess(res, await attendanceService.clockIn({ ...req.body, employeeId: employee.id }), 'Clocked in', 201);
     } catch (e) { next(e); }
   }
+  async bulkClockIn(req, res, next) {
+    try {
+      const result = await attendanceService.bulkClockIn(req.body.employeeIds);
+      // 207 when the batch was only partly applied, so the UI can tell the
+      // difference between "done" and "done except these".
+      const partial = result.failed.length > 0;
+      sendSuccess(
+        res,
+        result,
+        partial
+          ? `Clocked in ${result.succeeded.length} of ${result.total}; ${result.failed.length} failed`
+          : `Clocked in ${result.succeeded.length} employee(s)`,
+        partial ? 207 : 200
+      );
+    } catch (e) { next(e); }
+  }
+
   async clockOut(req, res, next) {
     try {
       const employee = await Employee.findOne({ where: { email: req.user.email } });

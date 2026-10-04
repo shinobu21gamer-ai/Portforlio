@@ -107,6 +107,17 @@ const hrmsSchemas = {
     checkGeofence: Joi.boolean().optional(),
     notes: hf().optional().allow(''),
   }),
+  // HR clocking in other employees. Separate from clockIn because that route
+  // deliberately ignores any employeeId and always acts on the caller, so the
+  // self-service path can never be used to clock in someone else.
+  bulkClockIn: Joi.object({
+    employeeIds: Joi.array()
+      .items(Joi.number().integer().positive())
+      .min(1)
+      .max(100)
+      .required(),
+  }),
+
   clockOut: Joi.object({
     employeeId: Joi.number().integer().positive().optional(),
     notes: hf().optional().allow(''),

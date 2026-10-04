@@ -223,6 +223,31 @@ class AttendanceService {
     }
   }
 
+  // HR clocking in other employees. Each employee gets its own transaction so
+  // one rejection (already clocked in, inactive, missing) does not roll back
+  // the rest of the batch. Geofencing is deliberately skipped: the person
+  // clocking in is not physically at the branch.
+  async bulkClockIn(employeeIds) {
+    const succeeded = [];
+    const failed = [];
+
+    for (const employeeId of employeeIds) {
+      try {
+        await this.clockIn({ employeeId });
+        succeeded.push(employeeId);
+      } catch (error) {
+        const emp = await Employee.findByPk(employeeId, { attributes: ['firstName', 'lastName', 'employeeNo'] });
+        failed.push({
+          employeeId,
+          name: emp ? `${emp.firstName} ${emp.lastName}` : `Employee #${employeeId}`,
+          reason: error.message,
+        });
+      }
+    }
+
+    return { succeeded, failed, total: employeeIds.length };
+  }
+
   async clockOut(data) {
     const t = await sequelize.transaction({ isolationLevel: 'REPEATABLE READ' });
     try {

@@ -128,6 +128,17 @@ export function useClockIn() {
   const qc = useQueryClient();
   return useMutation({ mutationFn: (data) => api.post('/attendance/clock-in', data).then(r => r.data.data), onSuccess: () => qc.invalidateQueries({ queryKey: ['attendance'] }) });
 }
+export function useBulkClockIn() {
+  const qc = useQueryClient();
+  // One request for the whole selection. The previous code looped the
+  // self-service endpoint, which always acts on the caller regardless of the
+  // employeeId sent, so HR clocked themselves in and every other selected
+  // employee failed with "Already clocked in".
+  return useMutation({
+    mutationFn: (employeeIds) => api.post('/attendance/bulk-clock-in', { employeeIds }).then(r => r.data.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['attendance'] }),
+  });
+}
 export function useClockOut() {
   const qc = useQueryClient();
   return useMutation({ mutationFn: (data) => api.post('/attendance/clock-out', data).then(r => r.data.data), onSuccess: () => qc.invalidateQueries({ queryKey: ['attendance'] }) });
