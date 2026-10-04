@@ -2,6 +2,7 @@ const { Op } = require('sequelize');
 const { Attendance, Employee, ShiftAssignment, User, sequelize } = require('../../models');
 const ApiError = require('../../utils/ApiError');
 const { getPagination, getPaginationMeta, escapeLike, sanitizeObject } = require('../../utils/helpers');
+const { logActivity } = require('../../utils/audit');
 
 const getLocalDate = () => {
   const now = new Date();
@@ -227,7 +228,7 @@ class AttendanceService {
   // one rejection (already clocked in, inactive, missing) does not roll back
   // the rest of the batch. Geofencing is deliberately skipped: the person
   // clocking in is not physically at the branch.
-  async bulkClockIn(employeeIds) {
+  async bulkClockIn(employeeIds, actorId = null) {
     const succeeded = [];
     const failed = [];
 
@@ -245,12 +246,23 @@ class AttendanceService {
       }
     }
 
+    // HR acting on other people's attendance is exactly the kind of action an
+    // audit trail exists for, so record who did it and who it affected.
+    if (succeeded.length > 0) {
+      await logActivity(actorId, 'attendance-bulk-clock-in', 'HRMS', {
+        referenceType: 'Attendance',
+        referenceId: succeeded[0],
+        description: `Clocked in ${succeeded.length} employee(s): ${succeeded.join(', ')}`,
+        newData: { succeeded, failed: failed.map(f => f.employeeId) },
+      });
+    }
+
     return { succeeded, failed, total: employeeIds.length };
   }
 
   // HR clocking out other employees. Mirrors bulkClockIn: one transaction per
   // employee so a single rejection does not roll back the batch.
-  async bulkClockOut(employeeIds) {
+  async bulkClockOut(employeeIds, actorId = null) {
     const succeeded = [];
     const failed = [];
 
@@ -266,6 +278,15 @@ class AttendanceService {
           reason: error.message,
         });
       }
+    }
+
+    if (succeeded.length > 0) {
+      await logActivity(actorId, 'attendance-bulk-clock-out', 'HRMS', {
+        referenceType: 'Attendance',
+        referenceId: succeeded[0],
+        description: `Clocked out ${succeeded.length} employee(s): ${succeeded.join(', ')}`,
+        newData: { succeeded, failed: failed.map(f => f.employeeId) },
+      });
     }
 
     return { succeeded, failed, total: employeeIds.length };

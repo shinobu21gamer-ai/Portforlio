@@ -15,7 +15,7 @@ class AttendanceController {
   }
   async bulkClockIn(req, res, next) {
     try {
-      const result = await attendanceService.bulkClockIn(req.body.employeeIds);
+      const result = await attendanceService.bulkClockIn(req.body.employeeIds, req.user?.id);
       // 207 when the batch was only partly applied, so the UI can tell the
       // difference between "done" and "done except these".
       const partial = result.failed.length > 0;
@@ -32,7 +32,7 @@ class AttendanceController {
 
   async bulkClockOut(req, res, next) {
     try {
-      const result = await attendanceService.bulkClockOut(req.body.employeeIds);
+      const result = await attendanceService.bulkClockOut(req.body.employeeIds, req.user?.id);
       const partial = result.failed.length > 0;
       sendSuccess(
         res,

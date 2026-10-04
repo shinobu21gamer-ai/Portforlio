@@ -3,6 +3,7 @@ const { Sequelize, Op } = require('sequelize');
 const { JobPosting, JobApplication, Department, Position, Interview, Employee, Contract, Attendance, Notification } = require('../../models');
 const ApiError = require('../../utils/ApiError');
 const { getPagination, getPaginationMeta, sanitizeObject, generateEmployeeNo, escapeLike } = require('../../utils/helpers');
+const { logActivity } = require('../../utils/audit');
 
 const VALID_TRANSITIONS = {
   'pending': ['reviewed', 'rejected'],
@@ -93,17 +94,27 @@ class JobPostingService {
     return { message: 'Job posting deleted' };
   }
 
-  async approve(id) {
+  async approve(id, actorId = null) {
     const job = await JobPosting.findByPk(id);
     if (!job) throw ApiError.notFound('Job posting not found');
     await job.update({ status: 'open', approvedAt: new Date() });
+    await logActivity(actorId, 'job-approved', 'HRMS', {
+      referenceType: 'JobPosting',
+      referenceId: id,
+      description: `Approved job posting "${job.title}"`,
+    });
     return job;
   }
 
-  async reject(id) {
+  async reject(id, actorId = null) {
     const job = await JobPosting.findByPk(id);
     if (!job) throw ApiError.notFound('Job posting not found');
     await job.update({ status: 'rejected' });
+    await logActivity(actorId, 'job-rejected', 'HRMS', {
+      referenceType: 'JobPosting',
+      referenceId: id,
+      description: `Rejected job posting "${job.title}"`,
+    });
     return job;
   }
 
@@ -143,7 +154,7 @@ class JobPostingService {
     return { applications: rows, pagination: getPaginationMeta(count, page, limit) };
   }
 
-  async updateApplicationStatus(id, status, notes) {
+  async updateApplicationStatus(id, status, notes, actorId = null) {
     const app = await JobApplication.findByPk(id, {
       include: [{ association: 'job' }],
     });
@@ -269,6 +280,15 @@ class JobPostingService {
     }
 
     await app.update({ status, notes: notes || app.notes });
+
+    // Status transitions are the audit trail for hiring; 'hired' in particular
+    // creates an Employee, a User account and a contract in one action.
+    await logActivity(actorId, `application-${status}`, 'HRMS', {
+      referenceType: 'JobApplication',
+      referenceId: id,
+      description: `Application #${id} (${app.firstName} ${app.lastName}) moved to ${status} for "${app.job?.title || 'unknown position'}"`,
+      newData: hiredDetails ? { hired: true, employeeNo: hiredDetails.employeeNo } : undefined,
+    });
 
     try {
       if (app.email) {

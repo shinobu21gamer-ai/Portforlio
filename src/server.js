@@ -834,6 +834,18 @@ const runAutoSetup = async () => {
         console.log('[MAILER] SMTP configured:', config.smtp.host + ':' + config.smtp.port);
       }
 
+      // Templates refuse to emit a localhost link, so without an explicit
+      // public origin every HRMS email that includes a portal link fails to
+      // build and is caught by its caller. Say so once, at boot, rather than
+      // leaving it to be discovered from a missing welcome email.
+      if (!config.app.frontendUrl) {
+        console.warn(
+          '[MAILER] FRONTEND_URL is not set. Emails carrying portal links ' +
+          '(payslip, contract, leave, applicant status, password reset) will be ' +
+          'built without a usable link. Set FRONTEND_URL to the public site origin.'
+        );
+      }
+
       // Surface accumulated delivery failures in the deploy logs.
       setInterval(() => mailer.reportFailuresIfAny(), 15 * 60 * 1000).unref();
       scheduleContractExpiryCheck();

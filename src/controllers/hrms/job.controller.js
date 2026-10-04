@@ -12,10 +12,10 @@ class JobController {
   async close(req, res, next) { try { sendSuccess(res, await jobService.close(req.params.id)); } catch (e) { next(e); } }
   async delete(req, res, next) { try { sendSuccess(res, await jobService.delete(req.params.id)); } catch (e) { next(e); } }
   async apply(req, res, next) { try { const data = { ...req.body, jobId: parseInt(req.body.jobId) }; if (req.file) data.resumePath = `/uploads/resumes/${req.file.filename}`; sendSuccess(res, await jobService.apply(data), 'Applied', 201); } catch (e) { next(e); } }
-  async approve(req, res, next) { try { sendSuccess(res, await jobService.approve(req.params.id), 'Approved'); } catch (e) { next(e); } }
-  async reject(req, res, next) { try { sendSuccess(res, await jobService.reject(req.params.id), 'Rejected'); } catch (e) { next(e); } }
+  async approve(req, res, next) { try { sendSuccess(res, await jobService.approve(req.params.id, req.user?.id), 'Approved'); } catch (e) { next(e); } }
+  async reject(req, res, next) { try { sendSuccess(res, await jobService.reject(req.params.id, req.user?.id), 'Rejected'); } catch (e) { next(e); } }
   async getApplications(req, res, next) { try { sendSuccess(res, await jobService.getApplications(req.query)); } catch (e) { next(e); } }
-  async updateApplicationStatus(req, res, next) { try { sendSuccess(res, await jobService.updateApplicationStatus(req.params.id, req.body.status, req.body.notes)); } catch (e) { next(e); } }
+  async updateApplicationStatus(req, res, next) { try { sendSuccess(res, await jobService.updateApplicationStatus(req.params.id, req.body.status, req.body.notes, req.user?.id)); } catch (e) { next(e); } }
   async downloadResume(req, res, next) {
     try {
       const filename = path.basename(req.params.filename);
