@@ -414,6 +414,46 @@ describe('leave.service - adminApprove', () => {
     expect(attendanceRecords).toBe(3); // 3 weekdays
   });
 
+  // The insert was batched into one bulkCreate with ignoreDuplicates, which
+  // relies on the unique index on (employee_id, date) rather than a per-day
+  // existence check. This pins that behaviour: a pre-existing record on a day
+  // inside the leave range must be left alone, not duplicated or overwritten.
+  it('does not overwrite an existing attendance record on a leave day', async () => {
+    const leave = await leaveService.create({
+      employeeId,
+      leaveType: 'sick',
+      startDate,
+      endDate,
+      reason: 'Sick',
+    });
+
+    // Pre-create one weekday inside the range with a different status.
+    const weekdays = [];
+    for (let d = new Date(startDate); d <= new Date(endDate); d.setDate(d.getDate() + 1)) {
+      const dow = d.getDay();
+      if (dow !== 0 && dow !== 6) weekdays.push(d.toISOString().split('T')[0]);
+    }
+    const targetDate = weekdays[0];
+    await Attendance.create({
+      employeeId,
+      date: targetDate,
+      status: 'present',
+      totalHours: 8,
+      notes: 'Clocked in normally',
+    });
+
+    await leaveService.hrReview(leave.id, 1, 'OK');
+    await leaveService.adminApprove(leave.id, 2);
+
+    const existing = await Attendance.findOne({ where: { employeeId, date: targetDate } });
+    expect(existing.status).toBe('present');
+    expect(existing.notes).toBe('Clocked in normally');
+
+    // The remaining weekdays still get on-leave rows.
+    const onLeave = await Attendance.count({ where: { employeeId, status: 'on-leave' } });
+    expect(onLeave).toBe(weekdays.length - 1);
+  });
+
   it('skips weekends when creating attendance', async () => {
     const leave = await leaveService.create({
       employeeId,

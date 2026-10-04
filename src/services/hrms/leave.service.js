@@ -246,19 +246,29 @@ class LeaveService {
 
       const start = new Date(leave.startDate);
       const end = new Date(leave.endDate);
+
+      // Collect the weekdays first, then insert in one statement. This was a
+      // findOne + create per day (2 queries per weekday, so ~10 for a typical
+      // week-long leave). Attendance has a unique index on
+      // (employee_id, date), so ignoreDuplicates preserves the original
+      // "skip days that already have a record" behaviour in a single write.
+      const weekdayRows = [];
       for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-        const dateStr = d.toISOString().split('T')[0];
         const dayOfWeek = d.getDay();
         if (dayOfWeek === 0 || dayOfWeek === 6) continue;
-        const existing = await Attendance.findOne({ where: { employeeId: leave.employeeId, date: dateStr }, transaction: t });
-        if (!existing) {
-          await Attendance.create({
-            employeeId: leave.employeeId,
-            date: dateStr,
-            status: 'on-leave',
-            notes: `Approved ${leave.leaveType} leave`,
-          }, { transaction: t });
-        }
+        weekdayRows.push({
+          employeeId: leave.employeeId,
+          date: d.toISOString().split('T')[0],
+          status: 'on-leave',
+          notes: `Approved ${leave.leaveType} leave`,
+        });
+      }
+
+      if (weekdayRows.length > 0) {
+        await Attendance.bulkCreate(weekdayRows, {
+          transaction: t,
+          ignoreDuplicates: true,
+        });
       }
 
       await t.commit();
@@ -299,12 +309,20 @@ class LeaveService {
 
     const t = await sequelize.transaction({ isolationLevel: 'REPEATABLE READ' });
     try {
-      const start = new Date(leave.startDate);
-      const end = new Date(leave.endDate);
-      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-        const dateStr = d.toISOString().split('T')[0];
-        await Attendance.destroy({ where: { employeeId: leave.employeeId, date: dateStr, status: 'on-leave' }, transaction: t });
-      }
+      const startDate = new Date(leave.startDate).toISOString().split('T')[0];
+      const endDate = new Date(leave.endDate).toISOString().split('T')[0];
+
+      // One ranged delete instead of one per calendar day. The old loop also
+      // issued deletes for weekends, which can never match since on-leave rows
+      // are only ever created for weekdays.
+      await Attendance.destroy({
+        where: {
+          employeeId: leave.employeeId,
+          status: 'on-leave',
+          date: { [Op.between]: [startDate, endDate] },
+        },
+        transaction: t,
+      });
       await t.commit();
 
       const emp = await Employee.findByPk(leave.employeeId);
