@@ -390,6 +390,9 @@ const runAutoSetup = async () => {
       await safeAddColumn('sales', 'discount_id', 'INTEGER');
 
       await safeAddColumn('payrolls', 'paid_at', 'DATETIME');
+      await safeAddColumn('purchases', 'payment_source', "VARCHAR(20)");
+      await safeAddColumn('purchases', 'change_given', 'DECIMAL(15,2) DEFAULT 0');
+      await safeAddColumn('purchases', 'last_paid_at', 'DATETIME');
       await safeModifyEnum('notifications', 'type', "'low_stock','expiring_product','new_purchase','new_sale','payment_received','system','stock_adjustment','refund','hrms_leave_request','hrms_leave_approved','hrms_leave_rejected','hrms_interview_scheduled','hrms_application_status','hrms_employee_approved','hrms_contract_terminated','hrms_contract_expired','hrms_payroll_generated','hrms_payroll_paid'");
 
       await db.sync();
@@ -593,6 +596,7 @@ const runAutoSetup = async () => {
         { name: 'Maintenance', slug: 'maintenance', description: 'Equipment and facility maintenance' },
         { name: 'Marketing', slug: 'marketing', description: 'Advertising and promotions' },
         { name: 'Transportation', slug: 'transportation', description: 'Delivery and logistics' },
+        { name: 'Cost of Goods', slug: 'cost-of-goods', description: 'Payments to suppliers for purchased inventory' },
         { name: 'Miscellaneous', slug: 'miscellaneous', description: 'Other expenses' },
       ];
       for (const ec of expenseCategories) {

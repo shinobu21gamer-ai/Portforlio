@@ -137,8 +137,11 @@ export default function Purchases() {
     try {
       const payload = { amount };
       if (paySource === 'petty_cash') payload.fundId = Number(payFundId);
+      else if (paySource) payload.paymentSource = paySource;
       await payMut.mutateAsync({ id: payModal.id, data: payload });
-      toast.success('Payment recorded');
+      const outstanding = parseFloat(payModal.total) - parseFloat(payModal.paidAmount || 0);
+      const change = Math.max(0, parseFloat(payAmount) - outstanding);
+      toast.success(change > 0 ? `Payment recorded · ${peso(change)} change given` : 'Payment recorded');
       setPayModal(null);
       setPayAmount('');
       setPaySource('');
@@ -283,7 +286,10 @@ export default function Purchases() {
               )}
               <div className="field"><label>Payment Source</label>
                 <select className="input-block" value={paySource} onChange={e => { setPaySource(e.target.value); setPayFundId(''); }}>
-                  <option value="">Cash / Other</option>
+                  <option value="cash">Cash</option>
+                  <option value="bank_transfer">Bank Transfer</option>
+                  <option value="credit">Credit (Charge)</option>
+                  <option value="other">Other</option>
                   {activeFunds.length > 0 && <option value="petty_cash">Petty Cash Fund</option>}
                 </select>
               </div>

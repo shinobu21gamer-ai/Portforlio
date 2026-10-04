@@ -1,6 +1,6 @@
 const { Op } = require('sequelize');
 const {
-  Purchase, PurchaseItem, Product, Supplier, StockMovement, Notification, PettyCashFund, PettyCashTransaction, sequelize,
+  Purchase, PurchaseItem, Product, Supplier, StockMovement, Notification, PettyCashFund, PettyCashTransaction, Expense, ExpenseCategory, sequelize,
 } = require('../models');
 const ApiError = require('../utils/ApiError');
 const {
@@ -260,6 +260,10 @@ class PurchaseService {
     const total = parseFloat(purchase.total);
     const remaining = total - currentPaid;
     const actualAmount = Math.min(amount, remaining);
+    // Cash handed back to the supplier. Previously discarded, which quietly
+    // broke cash reconciliation against the recorded purchase.
+    const changeGiven = Math.max(0, parseFloat((amount - actualAmount).toFixed(2)));
+    const paymentSource = data.fundId ? 'petty_cash' : (data.paymentSource || 'cash');
 
     const t = await sequelize.transaction();
     try {
@@ -289,7 +293,32 @@ class PurchaseService {
       let paymentStatus = 'partial';
       if (newPaid >= total) paymentStatus = 'paid';
 
-      await purchase.update({ paidAmount: newPaid, paymentStatus }, { transaction: t });
+      await purchase.update({
+        paidAmount: newPaid,
+        paymentStatus,
+        paymentSource,
+        changeGiven: parseFloat(purchase.changeGiven || 0) + changeGiven,
+        lastPaidAt: new Date(),
+      }, { transaction: t });
+
+      // Petty cash already leaves a trail via PettyCashTransaction. Any other
+      // source paid real money to a supplier but used to record nothing beyond
+      // the paid amount, so these payments were invisible in reporting.
+      if (paymentSource !== 'petty_cash') {
+        const category = await ExpenseCategory.findOne({ where: { slug: 'cost-of-goods' }, transaction: t });
+        if (category) {
+          await Expense.create({
+            expenseCategoryId: category.id,
+            userId: userId || purchase.userId,
+            amount: actualAmount,
+            description: `Purchase Order #${purchase.orderNo}`,
+            reference: purchase.orderNo,
+            expenseDate: new Date().toISOString().split('T')[0],
+            paymentMethod: paymentSource === 'bank_transfer' ? 'bank_transfer' : 'cash',
+            notes: changeGiven > 0 ? `Change given: ${changeGiven}` : null,
+          }, { transaction: t });
+        }
+      }
 
       await t.commit();
       return this.getById(id);

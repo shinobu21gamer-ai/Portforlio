@@ -68,6 +68,27 @@ module.exports = (sequelize, DataTypes) => {
       defaultValue: 0,
       field: 'paid_amount',
     },
+    // How the supplier was paid. 'petty_cash' draws from a PettyCashFund;
+    // 'cash' and the e-wallet/bank options are recorded here only, so the
+    // purchase alone does not explain where the money came from.
+    paymentSource: {
+      type: DataTypes.ENUM('cash', 'petty_cash', 'bank_transfer', 'credit', 'other'),
+      allowNull: true,
+      field: 'payment_source',
+    },
+    // Cash handed back when the amount tendered exceeded the balance due.
+    // Without this, overpayment was silently discarded and the cash
+    // drawer no longer reconciled against recorded purchases.
+    changeGiven: {
+      type: DataTypes.DECIMAL(15, 2),
+      defaultValue: 0,
+      field: 'change_given',
+    },
+    lastPaidAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      field: 'last_paid_at',
+    },
     notes: {
       type: DataTypes.TEXT,
       allowNull: true,

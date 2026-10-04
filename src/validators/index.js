@@ -249,6 +249,16 @@ const schemas = {
     notes: htmlField().optional().allow(''),
   }),
 
+  payPurchase: Joi.object({
+    amount: Joi.number().positive().required(),
+    fundId: Joi.number().integer().positive().optional().allow(null),
+    // Recorded on the purchase so the payment method is auditable; petty_cash
+    // is derived from fundId and must not be sent directly.
+    paymentSource: Joi.string()
+      .valid('cash', 'bank_transfer', 'credit', 'other')
+      .optional(),
+  }),
+
   // ─── Inventory ──────────────────────────────────────────
   stockIn: Joi.object({
     productId: Joi.number().integer().positive().required(),
