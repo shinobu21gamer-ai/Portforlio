@@ -116,6 +116,10 @@ module.exports = (sequelize, DataTypes) => {
   User.associate = (models) => {
     User.belongsTo(models.Role, { foreignKey: 'role_id', as: 'role', onDelete: 'SET NULL' });
     User.belongsTo(models.User, { foreignKey: 'reports_to_id', as: 'reportsTo', onDelete: 'SET NULL' });
+    // branch_id existed as a column with no association, so nothing could join
+    // a user to their branch. Needed for attendance geofencing, which resolves
+    // the employee's branch from the linked user account.
+    User.belongsTo(models.Branch, { foreignKey: 'branch_id', as: 'branch', onDelete: 'SET NULL' });
     User.hasMany(models.User, { foreignKey: 'reports_to_id', as: 'directReports' });
     User.hasOne(models.Employee, { foreignKey: 'user_id', as: 'employee', onDelete: 'SET NULL' });
     User.hasMany(models.ActivityLog, { foreignKey: 'user_id', as: 'activityLogs', onDelete: 'CASCADE' });

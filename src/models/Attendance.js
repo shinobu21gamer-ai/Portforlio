@@ -11,6 +11,13 @@ module.exports = (sequelize, DataTypes) => {
       defaultValue: 'present',
     },
     totalHours: { type: DataTypes.DECIMAL(5, 2), defaultValue: 0, field: 'total_hours' },
+    // Where the employee was when they clocked in, and how far that was from
+    // the branch. Recorded even when the branch does not enforce a geofence, so
+    // a suspicious clock-in is still reviewable after the fact.
+    clockInLat: { type: DataTypes.DECIMAL(10, 7), allowNull: true, field: 'clock_in_lat' },
+    clockInLng: { type: DataTypes.DECIMAL(10, 7), allowNull: true, field: 'clock_in_lng' },
+    geofenceDistanceMeters: { type: DataTypes.INTEGER, allowNull: true, field: 'geofence_distance_meters' },
+    isGeofenceVerified: { type: DataTypes.BOOLEAN, allowNull: true, field: 'is_geofence_verified' },
     overtime: { type: DataTypes.DECIMAL(5, 2), defaultValue: 0 },
     nightShiftHours: { type: DataTypes.DECIMAL(5, 2), defaultValue: 0, field: 'night_shift_hours' },
     mealBreakMinutes: { type: DataTypes.INTEGER, defaultValue: 60, field: 'meal_break_minutes' },

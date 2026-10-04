@@ -100,6 +100,11 @@ const hrmsSchemas = {
 
   clockIn: Joi.object({
     employeeId: Joi.number().integer().positive().optional(),
+    latitude: Joi.number().min(-90).max(90).optional().allow(null),
+    longitude: Joi.number().min(-180).max(180).optional().allow(null),
+    // Set when the client could not resolve a position, so the server knows to
+    // demand one if the branch enforces a geofence.
+    checkGeofence: Joi.boolean().optional(),
     notes: hf().optional().allow(''),
   }),
   clockOut: Joi.object({

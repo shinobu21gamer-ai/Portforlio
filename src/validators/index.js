@@ -402,6 +402,8 @@ const schemas = {
     email: Joi.string().email().max(150).optional().allow(''),
     latitude: Joi.number().min(-90).max(90).optional().allow(null),
     longitude: Joi.number().min(-180).max(180).optional().allow(null),
+    geofenceRadiusMeters: Joi.number().integer().min(10).max(100000).optional().allow(null),
+    enforceGeofence: Joi.boolean().optional(),
   }),
 
   updateBranch: Joi.object({
@@ -414,6 +416,8 @@ const schemas = {
     email: Joi.string().email().max(150).optional().allow(''),
     latitude: Joi.number().min(-90).max(90).optional().allow(null),
     longitude: Joi.number().min(-180).max(180).optional().allow(null),
+    geofenceRadiusMeters: Joi.number().integer().min(10).max(100000).optional().allow(null),
+    enforceGeofence: Joi.boolean().optional(),
     isActive: Joi.boolean().optional(),
   }),
 

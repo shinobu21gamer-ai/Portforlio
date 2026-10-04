@@ -410,6 +410,13 @@ const runAutoSetup = async () => {
       await safeAddColumn('purchases', 'payment_source', "VARCHAR(20)");
       await safeAddColumn('purchases', 'change_given', 'DECIMAL(15,2) DEFAULT 0');
       await safeAddColumn('purchases', 'last_paid_at', 'DATETIME');
+      // Geofencing support (opt-in per branch).
+      await safeAddColumn('branches', 'geofence_radius_meters', 'INTEGER');
+      await safeAddColumn('branches', 'enforce_geofence', 'BOOLEAN DEFAULT 0');
+      await safeAddColumn('attendances', 'clock_in_lat', 'DECIMAL(10,7)');
+      await safeAddColumn('attendances', 'clock_in_lng', 'DECIMAL(10,7)');
+      await safeAddColumn('attendances', 'geofence_distance_meters', 'INTEGER');
+      await safeAddColumn('attendances', 'is_geofence_verified', 'BOOLEAN');
       // Indexes for existing databases (see safeAddIndex for why this is needed).
       await safeAddIndex('leave_requests', 'idx_leave_employee_start', ['employee_id', 'start_date']);
       await safeAddIndex('leave_requests', 'idx_leave_status', ['status']);

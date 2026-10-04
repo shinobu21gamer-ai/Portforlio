@@ -1,5 +1,5 @@
 const { Op } = require('sequelize');
-const { Attendance, Employee, ShiftAssignment, sequelize } = require('../../models');
+const { Attendance, Employee, ShiftAssignment, User, sequelize } = require('../../models');
 const ApiError = require('../../utils/ApiError');
 const { getPagination, getPaginationMeta, escapeLike, sanitizeObject } = require('../../utils/helpers');
 
@@ -7,6 +7,15 @@ const getLocalDate = () => {
   const now = new Date();
   return new Date(now.getTime() + (8 * 60 * 60 * 1000)).toISOString().split('T')[0];
 };
+
+// Great-circle distance in metres. Haversine, so no new dependency.
+// Returns null when either point is missing rather than guessing a location.
+function distanceMeters(lat1, lng1, lat2, lng2) {
+  const toRad = (d) => (d * Math.PI) / 180;
+  const a = Math.sin(toRad(lat2 - lat1) / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(toRad(lng2 - lng1) / 2) ** 2;
+  return Math.round(2 * 6371000 * Math.asin(Math.min(1, Math.sqrt(a))));
+}
 
 function computeNightShiftHours(clockIn, clockOut) {
   const inTime = new Date(clockIn);
@@ -144,6 +153,53 @@ class AttendanceService {
       const holidayType = getHolidayType(today);
       const isRestDay = new Date(today + 'T00:00:00').getDay() === 0;
 
+      // Geofencing is opt-in per branch. The employee's branch comes via
+      // User.branchId (Employee has no branchId of its own). Location is
+      // recorded whenever the client supplies it, even if the branch does not
+      // enforce a fence, so an odd clock-in is still reviewable afterwards.
+      let geo = { lat: null, lng: null, distance: null, verified: null };
+      const lat = Number(data.latitude);
+      const lng = Number(data.longitude);
+      const hasCoords = Number.isFinite(lat) && Number.isFinite(lng);
+
+      // The branch lookup is unconditional: if enforcement only ran when the client
+      // happened to send coordinates, an enforcing branch would be trivially
+      // bypassed by omitting them.
+      {
+        const user = await User.findOne({
+          where: { email: emp.email },
+          include: [{ association: 'branch' }],
+          transaction: t,
+        });
+        const branch = user && user.branch;
+        const radius = branch ? parseInt(branch.geofenceRadiusMeters, 10) : null;
+        const enforcing = Boolean(branch && branch.enforceGeofence && radius > 0 && branch.latitude != null && branch.longitude != null);
+
+        if (enforcing) {
+          if (!hasCoords) {
+            throw ApiError.badRequest(
+              `Clock-in requires location for ${branch.name}. Enable location on this device and try again.`
+            );
+          }
+          const distance = distanceMeters(lat, lng, parseFloat(branch.latitude), parseFloat(branch.longitude));
+          if (distance > radius) {
+            const km = (distance / 1000).toFixed(2);
+            throw ApiError.forbidden(
+              `You are ${km} km from ${branch.name}, outside the ${radius} m clock-in area.`
+            );
+          }
+          geo = { lat, lng, distance, verified: true };
+        } else if (hasCoords && branch && branch.latitude != null && branch.longitude != null) {
+          // Not enforced, but record where they actually were.
+          geo = {
+            lat,
+            lng,
+            distance: distanceMeters(lat, lng, parseFloat(branch.latitude), parseFloat(branch.longitude)),
+            verified: null,
+          };
+        }
+      }
+
       const record = await Attendance.create({
         employeeId: data.employeeId,
         date: today,
@@ -152,6 +208,10 @@ class AttendanceService {
         lateMinutes,
         holidayType,
         isRestDay,
+        clockInLat: geo.lat,
+        clockInLng: geo.lng,
+        geofenceDistanceMeters: geo.distance,
+        isGeofenceVerified: geo.verified,
         notes: data.notes || null,
       }, { transaction: t });
 

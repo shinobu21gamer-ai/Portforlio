@@ -208,7 +208,33 @@ export function useCreateMyLeave() {
 }
 export function useMyClockIn() {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: () => api.post('/attendance/clock-in').then(r => r.data.data), onSuccess: () => { qc.invalidateQueries({ queryKey: ['my-attendance'] }); qc.invalidateQueries({ queryKey: ['attendance'] }); } });
+  // Sends the browser's position so a branch with geofencing enabled can verify
+  // it. Resolves to nulls when the user denies permission or the device has no
+  // fix; the server then rejects the clock-in only if that branch enforces a
+  // fence, and otherwise just records no location.
+  return useMutation({
+    mutationFn: async () => {
+      let coords = { latitude: null, longitude: null };
+      if (typeof navigator !== 'undefined' && navigator.geolocation) {
+        coords = await new Promise((resolve) => {
+          const timer = setTimeout(() => resolve({ latitude: null, longitude: null }), 5000);
+          navigator.geolocation.getCurrentPosition(
+            (pos) => {
+              clearTimeout(timer);
+              resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude });
+            },
+            () => { clearTimeout(timer); resolve({ latitude: null, longitude: null }); },
+            { enableHighAccuracy: true, timeout: 5000, maximumAge: 60000 }
+          );
+        });
+      }
+      return api.post('/attendance/clock-in', coords).then(r => r.data.data);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['my-attendance'] });
+      qc.invalidateQueries({ queryKey: ['attendance'] });
+    },
+  });
 }
 export function useMyClockOut() {
   const qc = useQueryClient();

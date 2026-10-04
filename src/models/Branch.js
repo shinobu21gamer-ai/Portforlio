@@ -47,6 +47,19 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.DECIMAL(10, 7),
       allowNull: true,
     },
+    // Geofencing for clock-in. Opt-in per branch: a null radius, or
+    // enforceGeofence false, means clock-in is not location-checked. Defaulting
+    // this on would lock out every existing employee the moment it deployed.
+    geofenceRadiusMeters: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      field: 'geofence_radius_meters',
+    },
+    enforceGeofence: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+      field: 'enforce_geofence',
+    },
     isActive: {
       type: DataTypes.BOOLEAN,
       defaultValue: true,
