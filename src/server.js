@@ -782,6 +782,23 @@ const runAutoSetup = async () => {
           'Set it from the PayMongo dashboard (Webhooks → Secret) to enable them.'
         );
       }
+
+      // Email fails silently by design (callers ignore the send result), so make
+      // an unconfigured mail server obvious at boot instead.
+      const mailer = require('./utils/mailer');
+      if (!mailer.isConfigured()) {
+        console.warn(
+          '[MAILER] SMTP is not configured — no email will be sent. Password resets, ' +
+          'payslips, receipts and contract notices will be dropped silently. Set ' +
+          'SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS and EMAIL_FROM. For Gmail, ' +
+          'SMTP_PASS must be an App Password, not the account password.'
+        );
+      } else {
+        console.log('[MAILER] SMTP configured:', config.smtp.host + ':' + config.smtp.port);
+      }
+
+      // Surface accumulated delivery failures in the deploy logs.
+      setInterval(() => mailer.reportFailuresIfAny(), 15 * 60 * 1000).unref();
       scheduleContractExpiryCheck();
 
     cron.schedule('*/30 * * * *', async () => {

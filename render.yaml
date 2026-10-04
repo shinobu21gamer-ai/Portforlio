@@ -49,5 +49,27 @@ services:
       #
       # - key: POS_FRONTEND_URL
       #   sync: false
+      #
+      # Email (optional - password resets, payslips, receipts, contract notices).
+      # Unset means sendEmail() drops every message and callers ignore the result,
+      # so mail fails silently. The server logs "[MAILER] SMTP is not configured"
+      # at boot when these are missing.
+      #
+      # For Gmail, SMTP_PASS must be an App Password (Google Account -> Security ->
+      # 2-Step Verification -> App passwords), NOT the account password — a normal
+      # password is rejected with "534-5.7.9 Invalid login".
+      #
+      # Note the variable is EMAIL_FROM (not MAIL_FROM).
+      #
+      # - key: SMTP_HOST
+      #   value: smtp.gmail.com
+      # - key: SMTP_PORT
+      #   value: 587
+      # - key: SMTP_USER
+      #   sync: false
+      # - key: SMTP_PASS
+      #   sync: false
+      # - key: EMAIL_FROM
+      #   sync: false
     healthCheckPath: /health
     autoDeploy: true
