@@ -58,7 +58,7 @@ class EmployeeService {
     return emp;
   }
 
-  async create(data) {
+  async create(data, actorId = null) {
     const sanitized = sanitizeObject(data);
     const existingEmail = await Employee.findOne({ where: { email: sanitized.email } });
     if (existingEmail) throw ApiError.badRequest('Email already exists');
@@ -91,6 +91,15 @@ class EmployeeService {
         await employee.update({ userId: user.id }, { transaction: t });
       }
 
+      // Record the employee record itself; approve/reject/terminate log their
+      // own transitions separately. Inside the transaction so a rollback cannot
+      // leave an audit row claiming a hire that did not happen.
+      await logActivity(actorId, 'employee-created', 'HRMS', {
+        referenceType: 'Employee', referenceId: employee.id,
+        description: `Created employee ${employee.firstName} ${employee.lastName} (${employee.employeeNo})`,
+        newData: { employeeNo: employee.employeeNo, status: employee.status, departmentId: employee.departmentId, positionId: employee.positionId },
+      }, t);
+
       await t.commit();
 
       return this.getById(employee.id);
@@ -100,7 +109,7 @@ class EmployeeService {
     }
   }
 
-  async update(id, data) {
+  async update(id, data, actorId = null) {
     const t = await sequelize.transaction({ isolationLevel: 'REPEATABLE READ' });
     try {
       const emp = await Employee.findByPk(id, { transaction: t, lock: t.LOCK.UPDATE });
@@ -130,6 +139,15 @@ class EmployeeService {
         if (!pos) throw ApiError.notFound('Position not found');
       }
 
+      const oldData = {
+        departmentId: emp.departmentId,
+        positionId: emp.positionId,
+        salary: emp.salary,
+        paymentFrequency: emp.paymentFrequency,
+        employmentType: emp.employmentType,
+        status: emp.status,
+      };
+
       await emp.update(sanitized, { transaction: t });
 
       const activeContract = await Contract.findOne({ where: { employeeId: id, status: 'active' }, transaction: t, lock: t.LOCK.UPDATE });
@@ -140,6 +158,20 @@ class EmployeeService {
         await activeContract.update(contractUpdate, { transaction: t });
       }
 
+      await logActivity(actorId, 'employee-updated', 'HRMS', {
+        referenceType: 'Employee', referenceId: id,
+        description: `Updated employee ${emp.firstName} ${emp.lastName} (${emp.employeeNo})`,
+        oldData,
+        newData: {
+          departmentId: emp.departmentId,
+          positionId: emp.positionId,
+          salary: emp.salary,
+          paymentFrequency: emp.paymentFrequency,
+          employmentType: emp.employmentType,
+          status: emp.status,
+        },
+      }, t);
+
       await t.commit();
 
       return this.getById(id);
@@ -149,16 +181,22 @@ class EmployeeService {
     }
   }
 
-  async delete(id) {
+  async delete(id, actorId = null) {
     const t = await sequelize.transaction({ isolationLevel: 'REPEATABLE READ' });
     try {
       const emp = await Employee.findByPk(id, { transaction: t, lock: t.LOCK.UPDATE });
       if (!emp) throw ApiError.notFound('Employee not found');
+      const oldData = { employeeNo: emp.employeeNo, status: emp.status, departmentId: emp.departmentId, positionId: emp.positionId };
       if (emp.userId) {
         const user = await User.findByPk(emp.userId, { transaction: t });
         if (user) await user.update({ isActive: false }, { transaction: t });
       }
       await emp.destroy({ transaction: t });
+      await logActivity(actorId, 'employee-deleted', 'HRMS', {
+        referenceType: 'Employee', referenceId: id,
+        description: `Deleted employee ${emp.firstName} ${emp.lastName} (${emp.employeeNo})`,
+        oldData,
+      }, t);
       await t.commit();
       return { message: 'Employee deleted' };
     } catch (error) {
@@ -167,7 +205,7 @@ class EmployeeService {
     }
   }
 
-  async approve(id) {
+  async approve(id, actorId = null) {
     const t = await sequelize.transaction({ isolationLevel: 'REPEATABLE READ' });
     try {
       const emp = await Employee.findByPk(id, {
@@ -182,7 +220,7 @@ class EmployeeService {
       if (!emp) throw ApiError.notFound('Employee not found');
       const oldData = { status: emp.status };
       await emp.update({ status: 'active', approvedAt: new Date() }, { transaction: t });
-      await logActivity(null, 'employee-approved', 'HRMS', { referenceType: 'Employee', referenceId: id, description: `Approved employee ${emp.firstName} ${emp.lastName}`, oldData, newData: { status: 'active' } }, t);
+      await logActivity(actorId, 'employee-approved', 'HRMS', { referenceType: 'Employee', referenceId: id, description: `Approved employee ${emp.firstName} ${emp.lastName}`, oldData, newData: { status: 'active' } }, t);
 
       await t.commit();
 
@@ -215,7 +253,7 @@ class EmployeeService {
     }
   }
 
-  async reject(id) {
+  async reject(id, actorId = null) {
     const t = await sequelize.transaction({ isolationLevel: 'REPEATABLE READ' });
     try {
       const emp = await Employee.findByPk(id, { transaction: t, lock: t.LOCK.UPDATE });
@@ -226,7 +264,7 @@ class EmployeeService {
         const user = await User.findByPk(emp.userId, { transaction: t });
         if (user) await user.update({ isActive: false }, { transaction: t });
       }
-      await logActivity(null, 'employee-rejected', 'HRMS', { referenceType: 'Employee', referenceId: id, description: `Rejected employee ${emp.firstName} ${emp.lastName}`, oldData, newData: { status: 'inactive' } }, t);
+      await logActivity(actorId, 'employee-rejected', 'HRMS', { referenceType: 'Employee', referenceId: id, description: `Rejected employee ${emp.firstName} ${emp.lastName}`, oldData, newData: { status: 'inactive' } }, t);
 
       await t.commit();
 
@@ -247,7 +285,7 @@ class EmployeeService {
     }
   }
 
-  async terminate(id, data = {}) {
+  async terminate(id, data = {}, actorId = null) {
     const emp = await Employee.findByPk(id);
     if (!emp) throw ApiError.notFound('Employee not found');
     if (emp.status === 'inactive') throw ApiError.badRequest('Employee is already terminated');
@@ -281,7 +319,7 @@ class EmployeeService {
 
       await t.commit();
 
-      await logActivity(null, 'employee-terminated', 'HRMS', { referenceType: 'Employee', referenceId: id, description: `Terminated employee ${emp.firstName} ${emp.lastName} (${emp.employeeNo})` });
+      await logActivity(actorId, 'employee-terminated', 'HRMS', { referenceType: 'Employee', referenceId: id, description: `Terminated employee ${emp.firstName} ${emp.lastName} (${emp.employeeNo})` });
 
       await Notification.create({
         userId: emp.userId,
@@ -322,7 +360,7 @@ class EmployeeService {
     return this.getById(emp.id);
   }
 
-  async assignPosAccess(id, data) {
+  async assignPosAccess(id, data, actorId = null) {
     const t = await sequelize.transaction({ isolationLevel: 'REPEATABLE READ' });
     try {
       const emp = await Employee.findByPk(id, { include: [{ association: 'user', include: [{ association: 'role' }] }], transaction: t, lock: t.LOCK.UPDATE });
@@ -341,7 +379,7 @@ class EmployeeService {
       if (!user) throw ApiError.notFound('User account not found');
 
       await user.update({ roleId: role.id }, { transaction: t });
-      await logActivity(null, 'employee-pos-access', 'HRMS', {
+      await logActivity(actorId, 'employee-pos-access', 'HRMS', {
         referenceType: 'Employee', referenceId: id,
         description: `Assigned POS role "${roleSlug}" to ${emp.firstName} ${emp.lastName}`,
         newData: { roleSlug, userId: user.id },
@@ -356,7 +394,7 @@ class EmployeeService {
     }
   }
 
-  async revokePosAccess(id) {
+  async revokePosAccess(id, actorId = null) {
     const t = await sequelize.transaction({ isolationLevel: 'REPEATABLE READ' });
     try {
       const emp = await Employee.findByPk(id, { include: [{ association: 'user', include: [{ association: 'role' }] }], transaction: t, lock: t.LOCK.UPDATE });
@@ -370,7 +408,7 @@ class EmployeeService {
       if (!user) throw ApiError.notFound('User account not found');
 
       await user.update({ roleId: employeeRole.id }, { transaction: t });
-      await logActivity(null, 'employee-pos-revoke', 'HRMS', {
+      await logActivity(actorId, 'employee-pos-revoke', 'HRMS', {
         referenceType: 'Employee', referenceId: id,
         description: `Revoked POS access from ${emp.firstName} ${emp.lastName}`,
         newData: { userId: user.id },
