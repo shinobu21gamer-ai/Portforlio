@@ -106,11 +106,13 @@ module.exports = {
     taxRate: parseFloat(process.env.TAX_RATE) || 0.12,
     lowStockThreshold: parseInt(process.env.LOW_STOCK_THRESHOLD, 10) || 10,
     expiryWarningDays: parseInt(process.env.EXPIRY_WARNING_DAYS, 10) || 30,
-    frontendUrl: process.env.FRONTEND_URL || 'http://localhost:3001',
-    // Left null when unset: callers fall back to the incoming request origin.
-    // A localhost default here would silently produce localhost PayMongo
-    // redirect URLs in production, which PayMongo rejects.
+    // Both left null when unset: callers fall back to the incoming request origin.
+    // A localhost default here silently puts dead localhost links inside every
+    // outbound email (reset, payslip, contract, applicant status) in production.
+    frontendUrl: process.env.FRONTEND_URL || null,
     posFrontendUrl: process.env.POS_FRONTEND_URL || null,
+    // HRMS is served under /hrms on the same origin as the API.
+    hrmsBasePath: process.env.HRMS_BASE_PATH || '/hrms',
   },
   paymongo: {
     secretKey: process.env.PAYMONGO_SECRET_KEY,

@@ -114,6 +114,29 @@ const generateEmployeeNo = async (sequelize) => {
   return `EMP-${String(lastNum + 1).padStart(4, '0')}`;
 };
 
+/**
+ * Public origin for links that leave the server: password resets, payslips,
+ * contract notices, applicant status emails, PayMongo redirects.
+ *
+ * FRONTEND_URL / POS_FRONTEND_URL are optional; when unset the origin of the
+ * incoming request is used. `trust proxy` is enabled in src/server.js, so
+ * req.protocol and req.get('host') are correct behind Render's proxy.
+ *
+ * This must never fall back to a localhost default: emails would still be sent,
+ * but every link inside them would point at the reader's own machine.
+ */
+const resolvePublicOrigin = (req, configuredUrl) => {
+  const fromRequest = req ? `${req.protocol}://${req.get('host')}` : null;
+  const origin = configuredUrl || fromRequest;
+  if (!origin) {
+    throw new Error(
+      'Cannot build a public URL: no FRONTEND_URL configured and no request context. ' +
+      'Set FRONTEND_URL to the public site origin.'
+    );
+  }
+  return String(origin).replace(/\/+$/, '');
+};
+
 module.exports = {
   generateSKU,
   generateBarcode,
@@ -128,4 +151,5 @@ module.exports = {
   escapeHtml,
   generateEmployeeNo,
   escapeLike,
+  resolvePublicOrigin,
 };

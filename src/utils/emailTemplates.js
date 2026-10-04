@@ -2,6 +2,26 @@ const config = require('../config');
 const { escapeHtml } = require('./helpers');
 const appName = config.app.name || 'MiniMart POS';
 
+// Public origin for links inside emails. Callers may pass an explicit origin
+// (derived from the incoming request); otherwise FRONTEND_URL is used.
+//
+// These URLs used to fall back to 'http://localhost:3001', which meant emails
+// were delivered but every link inside them pointed at the recipient's own
+// machine. config.app.frontendUrl is now null when unset, so a missing value
+// surfaces as a build-time error rather than a silently dead link.
+function publicUrl(req) {
+  const configured = config.app.frontendUrl;
+  const fromRequest = req ? `${req.protocol}://${req.get('host')}` : null;
+  const origin = configured || fromRequest;
+  if (!origin) {
+    throw new Error(
+      'Cannot build email links: FRONTEND_URL is not set and no request context was passed. ' +
+      'Set FRONTEND_URL to the public site origin.'
+    );
+  }
+  return String(origin).replace(/\/+$/, '');
+}
+
 function formatDate(value) {
   if (!value) return '';
   try {
@@ -80,7 +100,7 @@ function passwordResetSuccessEmail(userName) {
 }
 
 function payrollProcessedEmail(userName, period, netPay) {
-  const hrmsUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
+  const hrmsUrl = publicUrl();
   const content = `
     <h2 style="margin:0 0 16px;font-size:18px;color:#333;">Payroll Processed</h2>
     <p>Hi <strong>${escapeHtml(userName)}</strong>,</p>
@@ -94,7 +114,7 @@ function payrollProcessedEmail(userName, period, netPay) {
 }
 
 function leaveRequestEmail(userName, leaveType, status, startDate, endDate) {
-  const hrmsUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
+  const hrmsUrl = publicUrl();
   const colorMap = { 'approved': '#16a34a', 'rejected': '#dc2626', 'submitted': '#2563eb', 'reviewed': '#f59e0b' };
   const labelMap = { 'approved': 'Approved', 'rejected': 'Rejected', 'submitted': 'Submitted', 'reviewed': 'Reviewed by HR' };
   const color = colorMap[status] || '#6b7280';
@@ -119,7 +139,7 @@ function leaveStatusEmail(userName, leaveType, status, startDate, endDate) {
 }
 
 function contractRenewalEmail(userName, contractType, startDate, endDate, salary) {
-  const hrmsUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
+  const hrmsUrl = publicUrl();
   const content = `
     <h2 style="margin:0 0 16px;font-size:18px;color:#2563eb;">Contract Renewed</h2>
     <p>Hi <strong>${escapeHtml(userName)}</strong>,</p>
@@ -135,7 +155,7 @@ function contractRenewalEmail(userName, contractType, startDate, endDate, salary
 }
 
 function contractExpiryEmail(userName, contractType, endDate) {
-  const hrmsUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
+  const hrmsUrl = publicUrl();
   const content = `
     <h2 style="margin:0 0 16px;font-size:18px;color:#333;">Contract Expiring Soon</h2>
     <p>Hi <strong>${escapeHtml(userName)}</strong>,</p>
@@ -145,7 +165,7 @@ function contractExpiryEmail(userName, contractType, endDate) {
 }
 
 function employeeApprovedEmail(userName, employeeNo, tempPassword, details = {}) {
-  const hrmsUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
+  const hrmsUrl = publicUrl();
   const { startDate, department, position, schedule } = details;
   const content = `
     <h2 style="margin:0 0 16px;font-size:18px;color:#16a34a;">Welcome — You're Approved!</h2>
@@ -197,7 +217,7 @@ function employeeTerminatedEmail(userName, terminationType, terminationDate) {
 }
 
 function contractApprovedEmail(userName, contractType, startDate, endDate, salary) {
-  const hrmsUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
+  const hrmsUrl = publicUrl();
   const content = `
     <h2 style="margin:0 0 16px;font-size:18px;color:#16a34a;">Contract Approved</h2>
     <p>Hi <strong>${escapeHtml(userName)}</strong>,</p>
@@ -232,8 +252,7 @@ function contractTerminatedEmail(userName) {
 }
 
 function applicationStatusEmail(userName, jobTitle, status, details = {}) {
-  const hrmsUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
-  const posUrl = process.env.POS_URL || 'http://localhost:5173';
+  const hrmsUrl = publicUrl();
   const careersUrl = hrmsUrl;
   const colorMap = {
     'accepted': '#16a34a', 'hired': '#16a34a',
@@ -311,7 +330,7 @@ function applicationStatusEmail(userName, jobTitle, status, details = {}) {
 }
 
 function scheduleAssignmentEmail(userName, scheduleName, startTime, endTime, date) {
-  const hrmsUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
+  const hrmsUrl = publicUrl();
   const content = `
     <h2 style="margin:0 0 16px;font-size:18px;color:#333;">Schedule Assignment</h2>
     <p>Hi <strong>${escapeHtml(userName)}</strong>,</p>

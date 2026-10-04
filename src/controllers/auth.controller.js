@@ -46,7 +46,7 @@ class AuthController {
 
   async forgotPassword(req, res, next) {
     try {
-      const data = await authService.forgotPassword(req.body.email);
+      const data = await authService.forgotPassword(req.body.email, req);
       sendSuccess(res, data, 'If the email exists, a reset link has been sent');
     } catch (error) {
       next(error);

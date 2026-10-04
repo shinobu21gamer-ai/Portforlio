@@ -50,6 +50,13 @@ services:
       # - key: POS_FRONTEND_URL
       #   sync: false
       #
+      # FRONTEND_URL is normally NOT needed: links inside emails (password reset,
+      # payslips, contract notices, applicant status) are derived from the origin
+      # the request arrived on. Set it only if emails should point elsewhere.
+      #
+      # - key: FRONTEND_URL
+      #   sync: false
+      #
       # Email (optional - password resets, payslips, receipts, contract notices).
       # Unset means sendEmail() drops every message and callers ignore the result,
       # so mail fails silently. The server logs "[MAILER] SMTP is not configured"

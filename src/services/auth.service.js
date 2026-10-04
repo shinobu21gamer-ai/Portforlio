@@ -164,7 +164,7 @@ class AuthService {
     return { message: 'Password changed successfully' };
   }
 
-  async forgotPassword(email) {
+  async forgotPassword(email, req = null) {
     const user = await User.findOne({ where: { email } });
     if (!user) return { message: 'If the email exists, a reset link has been sent.' };
 
@@ -183,7 +183,13 @@ class AuthService {
     try {
       const { sendEmail } = require('../utils/mailer');
       const { passwordResetEmail } = require('../utils/emailTemplates');
-      const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:3001'}/reset-password?token=${resetToken}`;
+      const { resolvePublicOrigin } = require('../utils/helpers');
+      const config = require('../config');
+      // Derive the reset link from the request origin so it is correct on any
+      // host. It previously fell back to http://localhost:3001, so in
+      // production the email arrived with a dead link inside it.
+      const frontendOrigin = resolvePublicOrigin(req, config.app.frontendUrl);
+      const resetUrl = `${frontendOrigin}/reset-password?token=${resetToken}`;
       await sendEmail({
         to: email,
         subject: `Password Reset - ${process.env.APP_NAME || 'MiniMart POS'}`,
