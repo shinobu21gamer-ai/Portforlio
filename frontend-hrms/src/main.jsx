@@ -8,7 +8,14 @@ import 'leaflet/dist/leaflet.css';
 import 'sweetalert2/dist/sweetalert2.min.css';
 
 const queryClient = new QueryClient({
-  defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false, refetchOnMount: false, staleTime: 60000, gcTime: 300000 } },
+  defaultOptions: {
+    // refetchOnMount was false and staleTime 60s, so revisiting a page served a
+    // cached response and the only way to see fresh data was a full reload.
+    // Now refetch on mount and on window focus; staleTime stays above 0 to
+    // collapse duplicate fetches, and queries needing live data opt into
+    // refetchInterval.
+    queries: { retry: 1, refetchOnWindowFocus: true, refetchOnMount: true, staleTime: 10000, gcTime: 300000 },
+  },
 });
 
 ReactDOM.createRoot(document.getElementById('root')).render(

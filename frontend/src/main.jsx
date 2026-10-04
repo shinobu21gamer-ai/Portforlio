@@ -7,7 +7,11 @@ import './index.css';
 
 const queryClient = new QueryClient({
   defaultOptions: {
-    queries: { retry: 1, refetchOnWindowFocus: false, staleTime: 30000 },
+    // Refetch when returning to the tab and when navigating back to a page, so
+    // stock, prices and totals reflect the current state without a manual
+    // reload. staleTime stays above 0 to collapse duplicate fetches within a
+    // short window; queries that need live data opt into refetchInterval.
+    queries: { retry: 1, refetchOnWindowFocus: true, refetchOnMount: true, staleTime: 10000 },
   },
 });
 
