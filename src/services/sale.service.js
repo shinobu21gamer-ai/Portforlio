@@ -201,11 +201,13 @@ class SaleService {
           ? parseFloat(discount.maxDiscountAmount)
           : null;
       } else if (discountType || discountValue > 0) {
-        // Manual discount without a server-resolved promo code: require admin/manager role
+        // Manual discount without a server-resolved promo code: require admin/manager role.
+        // Reject rather than silently zeroing it — a cashier attempting this used
+        // to get a successful full-price sale with no error and no audit trail,
+        // so the attempt disappeared entirely.
         const canManualDiscount = await this.canApplyManualDiscount(userId);
         if (!canManualDiscount) {
-          discountType = null;
-          discountValue = 0;
+          throw ApiError.forbidden('Manual discounts require a manager or admin role');
         }
       }
 

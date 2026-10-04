@@ -42,6 +42,9 @@ export default function Payment({ success: successProp, cancel: cancelProp }) {
   const clearCart = useCartStore(s => s.clearCart);
   const addItem = useCartStore(s => s.addItem);
   const user = useAuthStore(s => s.user);
+  // Mirrors saleService.canApplyManualDiscount: the server rejects manual
+  // discounts for anyone below manager, so don't offer the option at all.
+  const canManualDiscount = user?.role?.slug === 'admin' || user?.role?.slug === 'manager';
 
   const debouncedCustomerSearch = useDebounce(customerSearch, 300);
   const { data: customersData } = useCustomers({ search: debouncedCustomerSearch || undefined });
@@ -614,7 +617,7 @@ export default function Payment({ success: successProp, cancel: cancelProp }) {
                 <button type="button" onClick={handleRemovePromo} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, color: 'var(--muted-fg)', padding: 0 }}>×</button>
               </div>
             )}
-            {!promoApplied && (
+            {!promoApplied && canManualDiscount && (
               <div className="flex-between text-sm mb-sm">
                 <span>Manual Discount</span>
                 <select
