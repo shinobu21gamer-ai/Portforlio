@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { useAttendance, useBulkClockIn, useClockOut, useEmployees, useShiftAssignments } from '../hooks/useApi';
+import { useAttendance, useBulkClockIn, useBulkClockOut, useEmployees, useShiftAssignments } from '../hooks/useApi';
 
 import LoadingSkeleton from '../components/LoadingSkeleton';
 import { useToast } from '../components/Toast';
@@ -35,7 +35,7 @@ export default function Attendance() {
   const { data: empData } = useEmployees({ limit: 100, status: 'active' });
   const { data: shiftData } = useShiftAssignments({ date });
   const clockInMut = useBulkClockIn();
-  const clockOutMut = useClockOut();
+  const clockOutMut = useBulkClockOut();
 
   const employees = empData?.employees || [];
   const records = attData?.attendance || [];
@@ -100,11 +100,19 @@ export default function Attendance() {
 
   const handleClockOut = async () => {
     if (selected.length === 0) { toast.error('Select employees first'); return; }
-    const results = await Promise.allSettled(selected.map(id => clockOutMut.mutateAsync({ employeeId: id })));
-    const ok = results.filter(r => r.status === 'fulfilled').length;
-    const fail = results.filter(r => r.status === 'rejected').length;
-    setSelected([]);
-    toast.success(`Clocked out: ${ok}${fail ? `, failed: ${fail}` : ''}`);
+    try {
+      const result = await clockOutMut.mutateAsync(selected);
+      setSelected([]);
+      if (result.failed.length === 0) {
+        toast.success(`Clocked out ${result.succeeded.length} employee(s)`);
+      } else {
+        const names = result.failed.slice(0, 3).map(f => `${f.name} (${f.reason})`).join('; ');
+        const more = result.failed.length > 3 ? ` +${result.failed.length - 3} more` : '';
+        toast.error(`Clocked out ${result.succeeded.length} of ${result.total}. Failed: ${names}${more}`);
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Clock-out failed');
+    }
   };
 
   const navigateDate = (dir) => {

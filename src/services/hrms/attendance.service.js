@@ -248,6 +248,29 @@ class AttendanceService {
     return { succeeded, failed, total: employeeIds.length };
   }
 
+  // HR clocking out other employees. Mirrors bulkClockIn: one transaction per
+  // employee so a single rejection does not roll back the batch.
+  async bulkClockOut(employeeIds) {
+    const succeeded = [];
+    const failed = [];
+
+    for (const employeeId of employeeIds) {
+      try {
+        await this.clockOut({ employeeId });
+        succeeded.push(employeeId);
+      } catch (error) {
+        const emp = await Employee.findByPk(employeeId, { attributes: ['firstName', 'lastName', 'employeeNo'] });
+        failed.push({
+          employeeId,
+          name: emp ? `${emp.firstName} ${emp.lastName}` : `Employee #${employeeId}`,
+          reason: error.message,
+        });
+      }
+    }
+
+    return { succeeded, failed, total: employeeIds.length };
+  }
+
   async clockOut(data) {
     const t = await sequelize.transaction({ isolationLevel: 'REPEATABLE READ' });
     try {

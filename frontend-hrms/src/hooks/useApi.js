@@ -139,6 +139,17 @@ export function useBulkClockIn() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['attendance'] }),
   });
 }
+
+export function useBulkClockOut() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (employeeIds) => api.post('/attendance/bulk-clock-out', { employeeIds }).then(r => r.data.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['attendance'] });
+      qc.invalidateQueries({ queryKey: ['my-attendance'] });
+    },
+  });
+}
 export function useClockOut() {
   const qc = useQueryClient();
   return useMutation({ mutationFn: (data) => api.post('/attendance/clock-out', data).then(r => r.data.data), onSuccess: () => qc.invalidateQueries({ queryKey: ['attendance'] }) });

@@ -79,6 +79,7 @@ router.post('/attendance/clock-in', protect, validate(schemas.clockIn), attCtrl.
 // acts on other people's attendance records; the self-service route above stays
 // open to everyone and always acts on the caller.
 router.post('/attendance/bulk-clock-in', protect, authorize('admin', 'hr', 'manager'), validate(schemas.bulkClockIn), attCtrl.bulkClockIn);
+router.post('/attendance/bulk-clock-out', protect, authorize('admin', 'hr', 'manager'), validate(schemas.bulkClockOut), attCtrl.bulkClockOut);
 router.post('/attendance/clock-out', protect, validate(schemas.clockOut), attCtrl.clockOut);
 router.put('/attendance/:id', protect, authorize('admin', 'hr'), validate(schemas.updateAttendance), attCtrl.update);
 

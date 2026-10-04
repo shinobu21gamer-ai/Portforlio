@@ -118,6 +118,16 @@ const hrmsSchemas = {
       .required(),
   }),
 
+  // Mirror of bulkClockIn, for the same reason: the self-service clock-out
+  // route always acts on the caller.
+  bulkClockOut: Joi.object({
+    employeeIds: Joi.array()
+      .items(Joi.number().integer().positive())
+      .min(1)
+      .max(100)
+      .required(),
+  }),
+
   clockOut: Joi.object({
     employeeId: Joi.number().integer().positive().optional(),
     notes: hf().optional().allow(''),

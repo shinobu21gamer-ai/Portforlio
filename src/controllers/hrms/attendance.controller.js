@@ -30,6 +30,21 @@ class AttendanceController {
     } catch (e) { next(e); }
   }
 
+  async bulkClockOut(req, res, next) {
+    try {
+      const result = await attendanceService.bulkClockOut(req.body.employeeIds);
+      const partial = result.failed.length > 0;
+      sendSuccess(
+        res,
+        result,
+        partial
+          ? `Clocked out ${result.succeeded.length} of ${result.total}; ${result.failed.length} failed`
+          : `Clocked out ${result.succeeded.length} employee(s)`,
+        partial ? 207 : 200
+      );
+    } catch (e) { next(e); }
+  }
+
   async clockOut(req, res, next) {
     try {
       const employee = await Employee.findOne({ where: { email: req.user.email } });
