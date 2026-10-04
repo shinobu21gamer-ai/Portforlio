@@ -24,7 +24,6 @@ export default function PosLayout({ children, active, showCart = false, cartFoot
   const isAdmin = user?.role?.slug === 'admin' || user?.role === 'admin';
   const isManager = user?.role?.slug === 'manager' || user?.role === 'manager';
   const isAdminOrManager = isAdmin || isManager;
-  const isInventoryStaff = user?.role?.slug === 'inventory_staff';
 
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('minimart_theme') === 'dark');
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -41,22 +40,28 @@ export default function PosLayout({ children, active, showCart = false, cartFoot
 
   const navItems = useMemo(() => [
     { to: '/', label: 'POS', icon: 'pos', roles: [] },
-    ...(isAdminOrManager ? [{ to: '/finance', label: 'Finances', icon: 'finance', roles: ['admin', 'manager'] }] : []),
+    { to: '/finance', label: 'Finances', icon: 'finance', roles: ['admin', 'manager'] },
     { to: '/products', label: 'Products', icon: 'products', roles: ['admin', 'manager', 'inventory_staff'] },
     { to: '/categories', label: 'Categories', icon: 'categories', roles: ['admin', 'manager', 'inventory_staff'] },
-    ...(isAdminOrManager ? [{ to: '/customers', label: 'Customers', icon: 'customers', roles: ['admin', 'manager'] }] : []),
+    { to: '/customers', label: 'Customers', icon: 'customers', roles: ['admin', 'manager'] },
     { to: '/inventory', label: 'Inventory', icon: 'inventory', roles: ['admin', 'manager', 'inventory_staff'] },
     { to: '/suppliers', label: 'Suppliers', icon: 'suppliers', roles: ['admin', 'manager', 'inventory_staff'] },
     { to: '/purchases', label: 'Purchases', icon: 'purchases', roles: ['admin', 'manager', 'inventory_staff'] },
-    ...(isAdminOrManager ? [
-      { to: '/discounts', label: 'Discounts', icon: 'discounts', roles: ['admin', 'manager'] },
-    ] : []),
-    ...(isAdmin ? [
-      { to: '/branches', label: 'Branches', icon: 'branches', roles: ['admin'] },
-      { to: '/users', label: 'Users', icon: 'users', roles: ['admin'] },
-      { to: '/settings', label: 'Settings', icon: 'settings', roles: ['admin'] }
-    ] : []),
-  ], [isAdmin, isManager, isInventoryStaff, isAdminOrManager]);
+    { to: '/discounts', label: 'Discounts', icon: 'discounts', roles: ['admin', 'manager'] },
+    { to: '/branches', label: 'Branches', icon: 'branches', roles: ['admin'] },
+    { to: '/users', label: 'Users', icon: 'users', roles: ['admin'] },
+    { to: '/settings', label: 'Settings', icon: 'settings', roles: ['admin'] },
+  ], []);
+
+  // Filter by the roles each route already enforces in App.jsx. Previously every
+  // item was rendered regardless of role, so a cashier saw Products, Categories,
+  // Inventory, Suppliers and Purchases, and clicking one silently redirected
+  // back to "/" with no explanation — buttons that appeared broken.
+  const userRole = user?.role?.slug || (typeof user?.role === 'string' ? user.role : null);
+  const visibleNavItems = useMemo(
+    () => navItems.filter(item => item.roles.length === 0 || (userRole && item.roles.includes(userRole))),
+    [navItems, userRole]
+  );
 
   const ICONS = {
     pos: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>,
@@ -100,7 +105,7 @@ export default function PosLayout({ children, active, showCart = false, cartFoot
           <div className="sidebar-top" onClick={() => setSidebarOpen(false)}>
             <div className="sidebar-logo">M</div>
 
-            {navItems.map(item => (
+            {visibleNavItems.map(item => (
               <NavLink
                 key={item.to}
                 to={item.to}

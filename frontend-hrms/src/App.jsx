@@ -56,6 +56,12 @@ function RoleRedirect() {
   if (slug === 'cashier' || slug === 'manager' || slug === 'inventory_staff') {
     return <Navigate to="/pos" replace />;
   }
+  // The HR layout and every route inside it are gated to admin/hr/manager.
+  // An employee landing here was shown that sidebar and got "Access Denied"
+  // on every click, so send them to their own pages instead.
+  if (slug !== 'admin' && slug !== 'hr' && slug !== 'manager') {
+    return <Navigate to="/my-profile" replace />;
+  }
   return (
     <HrmsLayout>
       <Suspense fallback={<PageLoader />}><Dashboard /></Suspense>
