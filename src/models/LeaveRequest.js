@@ -27,6 +27,18 @@ module.exports = (sequelize, DataTypes) => {
     tableName: 'leave_requests',
     underscored: true,
     paranoid: true,
+    // This table had no indexes at all, yet every read path filters or joins on
+    // these columns: the leave list (status), per-employee history
+    // (employee_id + date range), and the payroll/attendance overlap checks.
+    // On SQLite that means a full table scan per request.
+    indexes: [
+      { fields: ['employee_id', 'start_date'] },
+      { fields: ['status'] },
+      { fields: ['start_date', 'end_date'] },
+      // paranoid adds deleted_at; filtering it out of the default list keeps
+      // the common "active rows" query cheap.
+      { fields: ['deleted_at'] },
+    ],
   });
 
   LeaveRequest.associate = (models) => {

@@ -31,6 +31,16 @@ module.exports = (sequelize, DataTypes) => {
     tableName: 'payslips',
     underscored: true,
     paranoid: true,
+    // Both foreign keys were unindexed. payroll_id is hit every time a payroll
+    // is opened (getById includes all payslips); employee_id is hit by the
+    // payslip history on every /me/payslips request.
+    indexes: [
+      { fields: ['payroll_id'] },
+      { fields: ['employee_id'] },
+      // Payroll listing joins payslips to search by employee name.
+      { fields: ['employee_id', 'created_at'] },
+      { fields: ['deleted_at'] },
+    ],
   });
 
   Payslip.associate = (models) => {

@@ -323,6 +323,23 @@ const runAutoSetup = async () => {
       }
     };
 
+    // sequelize.sync() only creates indexes when it CREATES a table; it never
+    // adds them to an existing one. On an already-deployed SQLite file that
+    // means model-level `indexes: []` entries silently never appear, so indexes
+    // are created explicitly here. Idempotent: skipped if already present.
+    const safeAddIndex = async (table, name, columns) => {
+      try {
+        const [existing] = await db.query(`PRAGMA index_list(${table})`);
+        if ((existing || []).some(i => i.name === name)) return false;
+        await db.query(`CREATE INDEX ${name} ON ${table} (${columns.join(', ')})`);
+        console.log(`Created index ${name} on ${table}(${columns.join(', ')})`);
+        return true;
+      } catch (e) {
+        console.log(`Index ${name} skipped: ${e.message}`);
+        return false;
+      }
+    };
+
     const safeModifyEnum = async (table, column, enumDef) => {
       // SQLite ignores ENUM; this runs only for MySQL (isSQLite false) to widen ENUM
       if (isSQLite) return;
@@ -393,6 +410,15 @@ const runAutoSetup = async () => {
       await safeAddColumn('purchases', 'payment_source', "VARCHAR(20)");
       await safeAddColumn('purchases', 'change_given', 'DECIMAL(15,2) DEFAULT 0');
       await safeAddColumn('purchases', 'last_paid_at', 'DATETIME');
+      // Indexes for existing databases (see safeAddIndex for why this is needed).
+      await safeAddIndex('leave_requests', 'idx_leave_employee_start', ['employee_id', 'start_date']);
+      await safeAddIndex('leave_requests', 'idx_leave_status', ['status']);
+      await safeAddIndex('leave_requests', 'idx_leave_date_range', ['start_date', 'end_date']);
+      await safeAddIndex('leave_requests', 'idx_leave_deleted_at', ['deleted_at']);
+      await safeAddIndex('payslips', 'idx_payslip_payroll_id', ['payroll_id']);
+      await safeAddIndex('payslips', 'idx_payslip_employee_id', ['employee_id']);
+      await safeAddIndex('payslips', 'idx_payslip_employee_created', ['employee_id', 'created_at']);
+      await safeAddIndex('payslips', 'idx_payslip_deleted_at', ['deleted_at']);
       await safeModifyEnum('notifications', 'type', "'low_stock','expiring_product','new_purchase','new_sale','payment_received','system','stock_adjustment','refund','hrms_leave_request','hrms_leave_approved','hrms_leave_rejected','hrms_interview_scheduled','hrms_application_status','hrms_employee_approved','hrms_contract_terminated','hrms_contract_expired','hrms_payroll_generated','hrms_payroll_paid'");
 
       await db.sync();
