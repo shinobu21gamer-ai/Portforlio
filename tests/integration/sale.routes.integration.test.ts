@@ -39,6 +39,7 @@ let baseUrl = '';
 let adminToken = '';
 let cashierToken = '';
 let cashierId = 0;
+let cashierRoleId = 0;
 let productId = 0;
 
 const settingsFile = path.resolve(__dirname, '../../data/settings.json');
@@ -55,12 +56,15 @@ beforeAll(async () => {
   await sequelize.authenticate();
   await sequelize.sync({ force: true });
 
-  // --- minimal seed: roles + permission + two users + one product ---
+  // --- minimal seed: roles + permissions + two users + one product ---
   const perm = await Permission.create({ name: 'Create Sales', slug: 'sales.create', module: 'sales' });
+  const usersManagePerm = await Permission.create({ name: 'Manage Users', slug: 'users.manage', module: 'users' });
   const adminRole = await Role.create({ name: 'Admin', slug: 'admin', isActive: true });
   const cashierRole = await Role.create({ name: 'Cashier', slug: 'cashier', isActive: true });
+  cashierRoleId = cashierRole.id;
   await cashierRole.addPermission(perm);
   await adminRole.addPermission(perm);
+  await adminRole.addPermission(usersManagePerm);
 
   const mkUser = (email: string, role: any) =>
     User.create({
@@ -418,6 +422,58 @@ describe('PUT /api/v1/settings (onboarding dismissal key)', () => {
       )
       .catch((e) => e.response);
     expect(res.status).toBe(422);
+  });
+});
+
+describe('POST /api/v1/users (admin create, hierarchy fields)', () => {
+  it('creates a user with role and reports-to (regression: register schema used to strip roleId)', async () => {
+    // create the "manager" the new user reports to first
+    const manager = await api.post(
+      `${baseUrl}/users`,
+      { firstName: 'Route', lastName: 'Manager', email: `route-manager-${Date.now()}@example.com`, password: 'Passw0rd!123', roleId: cashierRoleId },
+      { headers: { Authorization: `Bearer ${adminToken}` } },
+    );
+    const mgrId = (manager.data.data?.id || manager.data.data) as number;
+
+    const res = await api.post(
+      `${baseUrl}/users`,
+      {
+        firstName: 'Route',
+        lastName: 'Sub',
+        email: `route-sub-${Date.now()}@example.com`,
+        password: 'Passw0rd!123',
+        roleId: cashierRoleId,
+        reportsToId: mgrId,
+      },
+      { headers: { Authorization: `Bearer ${adminToken}` } },
+    );
+    expect(res.status).toBe(201);
+    const created = res.data.data;
+    expect(created.role).toBeDefined();
+    expect(created.reportsTo?.id).toBe(mgrId);
+  });
+
+  it('rejects a user create without roleId (422, field message)', async () => {
+    const res = await api
+      .post(
+        `${baseUrl}/users`,
+        { firstName: 'No', lastName: 'Role', email: `no-role-${Date.now()}@example.com`, password: 'Passw0rd!123' },
+        { headers: { Authorization: `Bearer ${adminToken}` } },
+      )
+      .catch((e) => e.response);
+    expect(res.status).toBe(422);
+    expect(JSON.stringify(res.data.errors || res.data.message)).toMatch(/roleId/i);
+  });
+
+  it('forbids cashiers from creating users (403)', async () => {
+    const res = await api
+      .post(
+        `${baseUrl}/users`,
+        { firstName: 'Sneak', lastName: 'User', email: `sneak-${Date.now()}@example.com`, password: 'Passw0rd!123', roleId: cashierRoleId },
+        { headers: { Authorization: `Bearer ${cashierToken}` } },
+      )
+      .catch((e) => e.response);
+    expect(res.status).toBe(403);
   });
 });
 

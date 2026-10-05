@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo, useEffect } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 
 function SortIndicator({ field, sortBy, sortOrder }) {
   const isActive = sortBy === field;
@@ -94,6 +94,26 @@ export default function DataTable({
 
   const visHeaders = columns.filter(c => visibleCols.includes(c.key));
 
+  // Keyboard navigation: ArrowUp/Down + Home/End move focus between rows
+  // (delegated, so custom renderRow output works too as long as rows are
+  // focusable); sortable headers are focusable and toggle on Enter/Space.
+  const onTableKeyDown = (e) => {
+    const row = e.target.closest('tr[data-dt-row]');
+    if (!row) return;
+    const rows = Array.from(tableRef.current.querySelectorAll('tbody tr[data-dt-row]'));
+    const i = rows.indexOf(row);
+    if (i === -1) return;
+    let target = null;
+    if (e.key === 'ArrowDown') target = rows[i + 1];
+    else if (e.key === 'ArrowUp') target = rows[i - 1];
+    else if (e.key === 'Home') target = rows[0];
+    else if (e.key === 'End') target = rows[rows.length - 1];
+    if (target) { e.preventDefault(); target.focus(); }
+  };
+  const onHeaderKeyDown = (e, field) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSort(field); }
+  };
+
   const total = pagination?.total || pagination?.totalItems || filteredData.length;
   const page = pagination?.page || 1;
   const totalPages = pagination?.totalPages || 1;
@@ -177,7 +197,7 @@ export default function DataTable({
         </div>
       </div>
       <div className="table-wrap" ref={tableRef}>
-        <table className="data-table">
+        <table className="data-table" onKeyDown={onTableKeyDown} aria-rowcount={filteredData.length}>
           <thead>
             <tr>
               {visHeaders.map(c =>
@@ -185,6 +205,10 @@ export default function DataTable({
                   <th
                     key={c.key}
                     onClick={() => onSort(c.sortKey || c.key)}
+                    onKeyDown={(e) => onHeaderKeyDown(e, c.sortKey || c.key)}
+                    tabIndex={0}
+                    role="columnheader"
+                    aria-sort={sortBy === (c.sortKey || c.key) ? (sortOrder === 'ASC' ? 'ascending' : 'descending') : 'none'}
                     className={sortBy === (c.sortKey || c.key) ? 'sort-active' : ''}
                     style={{
                       cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap',
@@ -210,10 +234,30 @@ export default function DataTable({
                 </div>
               </td></tr>
             ) : renderRow ? (
-              filteredData.map((row, idx) => renderRow(row, idx, visHeaders))
+              // Clone each rendered <tr> to inject row keyboard support
+              // (focusable + arrow-key navigation) without editing every page.
+              filteredData.map((row, idx) => {
+                const el = renderRow(row, idx, visHeaders);
+                if (el && el.type === 'tr') {
+                  return React.cloneElement(el, {
+                    'data-dt-row': true,
+                    tabIndex: 0,
+                    'aria-rowindex': idx + 1,
+                    style: { outlineOffset: -2, ...(el.props?.style || {}) },
+                  });
+                }
+                return el;
+              })
             ) : (
               filteredData.map((row, idx) => (
-                <tr key={row.id || idx} className={idx % 2 === 1 ? 'dt-row-alt' : ''}>
+                <tr
+                  key={row.id || idx}
+                  data-dt-row
+                  tabIndex={0}
+                  aria-rowindex={idx + 1}
+                  className={idx % 2 === 1 ? 'dt-row-alt' : ''}
+                  style={{ outlineOffset: -2 }}
+                >
                   {visHeaders.map(c => (
                     <td key={c.key}>{typeof c.accessor === 'function' ? c.accessor(row, idx) : row[c.key]}</td>
                   ))}

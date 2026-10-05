@@ -34,6 +34,24 @@ const schemas = {
     phone: Joi.string().min(7).max(20).optional().allow(''),
   }),
 
+  // Admin-created users carry the hierarchy fields (role, branch, reports-to).
+  // NOTE: POST /users must NOT reuse `register` — stripUnknown would silently
+  // drop roleId and every user create would 400 with "User.roleId cannot be null".
+  createUser: Joi.object({
+    firstName: htmlField().min(2).max(100).required(),
+    lastName: htmlField().min(2).max(100).required(),
+    email: Joi.string().email().max(150).required(),
+    password: Joi.string().min(8).max(128)
+      .pattern(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
+      .required()
+      .messages({ 'string.pattern.base': 'Password must contain at least one uppercase letter, one lowercase letter, and one number' }),
+    phone: Joi.string().min(7).max(20).optional().allow(''),
+    roleId: Joi.number().integer().positive().required(),
+    branchId: Joi.number().integer().positive().optional().allow(null),
+    reportsToId: Joi.number().integer().positive().optional().allow(null),
+    isActive: Joi.boolean().optional(),
+  }),
+
   login: Joi.object({
     email: Joi.string().email().required(),
     password: Joi.string().required(),

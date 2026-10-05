@@ -1,4 +1,5 @@
 const axios = require('axios');
+const ApiError = require('../utils/ApiError');
 const config = require('../config');
 
 const PAYMONGO_BASE = 'https://api.paymongo.com/v1';
@@ -15,7 +16,7 @@ function isConfigured() {
 
 async function createPaymentIntent({ amount, description, metadata = {} }) {
   const auth = getAuthHeader();
-  if (!auth) throw new Error('PayMongo is not configured. Set PAYMONGO_SECRET_KEY in .env');
+  if (!auth) throw ApiError.serviceUnavailable('Online payments are not configured. Ask an admin to set PAYMONGO_SECRET_KEY.');
 
   const res = await axios.post(`${PAYMONGO_BASE}/payment_intents`, {
     data: {
@@ -35,7 +36,7 @@ async function createPaymentIntent({ amount, description, metadata = {} }) {
 
 async function createCheckoutSession({ amount, description, lineItems = [], paymentMethodTypes = ['gcash', 'paymaya', 'card'], metadata = {}, successUrl, cancelUrl }) {
   const auth = getAuthHeader();
-  if (!auth) throw new Error('PayMongo is not configured. Set PAYMONGO_SECRET_KEY in .env');
+  if (!auth) throw ApiError.serviceUnavailable('Online payments are not configured. Ask an admin to set PAYMONGO_SECRET_KEY.');
 
   const formattedItems = lineItems.length > 0 ? lineItems.map(item => ({
     currency: 'PHP',
@@ -76,7 +77,7 @@ async function createCheckoutSession({ amount, description, lineItems = [], paym
 
 async function retrieveCheckoutSession(sessionId) {
   const auth = getAuthHeader();
-  if (!auth) throw new Error('PayMongo is not configured');
+  if (!auth) throw ApiError.serviceUnavailable('Online payments are not configured.');
 
   const res = await axios.get(`${PAYMONGO_BASE}/checkout_sessions/${sessionId}`, {
     headers: { Authorization: auth },
@@ -87,7 +88,7 @@ async function retrieveCheckoutSession(sessionId) {
 
 async function retrievePaymentIntent(id) {
   const auth = getAuthHeader();
-  if (!auth) throw new Error('PayMongo is not configured');
+  if (!auth) throw ApiError.serviceUnavailable('Online payments are not configured.');
 
   const res = await axios.get(`${PAYMONGO_BASE}/payment_intents/${id}`, {
     headers: { Authorization: auth },
