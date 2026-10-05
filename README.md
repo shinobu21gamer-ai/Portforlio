@@ -269,10 +269,15 @@ Import `postman_collection.json` into Postman for a complete set of API requests
 |-----------------------|----------------------|-------------|
 | NODE_ENV              | Environment          | development |
 | PORT                  | Server port          | 5000        |
-| AUTO_SETUP            | Sync + seed on boot  | -           |
+| AUTO_SETUP            | Dev only: seed demo accounts + demo data on boot (never effective in production) | - |
+| INITIAL_ADMIN_EMAIL / INITIAL_ADMIN_PASSWORD | Production first-run admin (password 12+ chars). Unset → a one-time generated password is printed to the deploy logs once. Only used when the users table is empty. | admin@minimart.com / - |
 | DB_DIALECT            | Database engine      | sqlite      |
-| DB_STORAGE            | SQLite file path     | ./database.sqlite |
+| DB_STORAGE            | SQLite file path (point at a persistent volume in production) | ./database.sqlite |
 | DB_HOST / DB_PORT / DB_NAME / DB_USER / DB_PASSWORD | MySQL settings (when DB_DIALECT=mysql) | - |
+| UPLOAD_DIR            | Base uploads directory (products/resumes/documents); point at a persistent volume in production | ./uploads |
+| SETTINGS_FILE         | Runtime settings file (settings.defaults.json is the committed baseline) | ./data/settings.json |
+| EMAIL_DISABLED        | `true` explicitly disables outbound email in production (otherwise SMTP_HOST is required) | - |
+| SMTP_HOST / SMTP_PORT / SMTP_USER / SMTP_PASS / EMAIL_FROM | Outbound email (password resets, payslips, receipts) | - |
 | JWT_SECRET            | JWT signing secret   | required in production |
 | JWT_REFRESH_SECRET    | Refresh token secret | required in production |
 | JWT_EXPIRES_IN        | Token expiry         | 7d          |

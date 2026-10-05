@@ -76,6 +76,14 @@ export default function Login() {
       const { user, token, refreshToken } = json.data;
       login(user, token, refreshToken);
 
+      // Forced first-login password change (e.g. production first-run admin):
+      // don't land on a page that will immediately 403 — go straight to the
+      // change-password screen.
+      if (user?.mustChangePassword) {
+        window.location.href = `${import.meta.env.BASE_URL}change-password`;
+        return;
+      }
+
       // Persist/forget the remembered email (the checkbox reflects intent).
       try {
         if (remember) localStorage.setItem(REMEMBER_KEY, email.trim());

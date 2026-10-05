@@ -72,6 +72,14 @@ if (isProd && dbDialect === 'mysql') {
   if (!process.env.DB_PASSWORD) errors.push('DB_PASSWORD is required in production (mysql)');
 }
 
+// Email is used for password resets, payslips, receipts and contract/notice
+// mails. In production an unconfigured mailer used to drop every message
+// silently, so fail boot unless the operator either configures SMTP or
+// explicitly opts out of outbound email.
+if (isProd && !process.env.SMTP_HOST && process.env.EMAIL_DISABLED !== 'true') {
+  errors.push('SMTP_HOST is required in production (set SMTP_HOST/SMTP_PORT/SMTP_USER/SMTP_PASS/EMAIL_FROM) — or set EMAIL_DISABLED=true to explicitly run without outbound email');
+}
+
 if (errors.length > 0) {
   console.error('[CONFIG] Configuration errors:');
   errors.forEach(e => console.error(`  - ${e}`));
@@ -98,7 +106,10 @@ module.exports = {
   },
   upload: {
     maxFileSize: parseInt(process.env.MAX_FILE_SIZE, 10) || 5242880,
-    path: process.env.UPLOAD_PATH || 'uploads/products',
+    // Base uploads directory. In production point this at the persistent
+    // mount (e.g. /data/uploads on Render) so uploads survive redeploys.
+    base: process.env.UPLOAD_DIR || 'uploads',
+    path: process.env.UPLOAD_PATH || path.join(process.env.UPLOAD_DIR || 'uploads', 'products'),
   },
   smtp: {
     host: process.env.SMTP_HOST,

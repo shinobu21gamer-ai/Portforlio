@@ -49,15 +49,9 @@ services:
       retries: 5
     restart: unless-stopped
 
-  nginx:
-    image: nginx:alpine
-    ports:
-      - "80:80"
-    volumes:
-      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
-    depends_on:
-      - app
-    restart: unless-stopped
+  # No nginx front needed: the Express app (port 5000) serves the API, both
+  # frontends and the public site itself. The old nginx.conf was a pure
+  # pass-through proxy (removed — Phase 3, AUDIT.md A7).
 
 volumes:
   mysql_data:

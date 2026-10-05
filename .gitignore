@@ -25,3 +25,7 @@ coverage/
 
 # Local dev secrets (JWT keys) - never commit
 .dev-secrets.json
+
+# Runtime settings (rewritten by the settings API). The committed demo
+# baseline is data/settings.defaults.json.
+data/settings.json

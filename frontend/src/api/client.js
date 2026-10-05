@@ -35,6 +35,22 @@ client.interceptors.request.use((config) => {
 client.interceptors.response.use(
   (response) => response,
   async (error) => {
+    // Forced first-login password change: the server returns
+    // 403 { errors: { code: 'MUST_CHANGE_PASSWORD' } } on every protected
+    // route (except change-password/logout) for flagged accounts. Clear the
+    // session and go to the dedicated change screen. (In-iframe: hand back
+    // to the HRMS host, which applies the same rule to its own session.)
+    if (error.response?.status === 403 && error.response?.data?.errors?.code === 'MUST_CHANGE_PASSWORD') {
+      localStorage.removeItem('token');
+      localStorage.removeItem('refreshToken');
+      localStorage.removeItem('user');
+      if (window.top !== window) {
+        window.parent.postMessage({ type: 'pos-auth-failed', error: 'Password change required' }, HRMS_ORIGIN);
+      } else {
+        window.location.href = '/change-password';
+      }
+      return Promise.reject(error);
+    }
     const originalRequest = error.config;
     if (error.response?.status === 401 && !originalRequest._retry) {
       if (isRefreshing) {

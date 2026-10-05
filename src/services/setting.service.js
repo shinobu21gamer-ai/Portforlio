@@ -3,7 +3,15 @@ const path = require('path');
 const config = require('../config');
 const ApiError = require('../utils/ApiError');
 
-const SETTINGS_FILE = path.resolve(__dirname, '../../data/settings.json');
+// Runtime settings live in data/settings.json by default, which is
+// gitignored (it is rewritten by the settings API). In production point
+// SETTINGS_FILE at the persistent volume (e.g. /data/settings.json).
+// data/settings.defaults.json is the committed dev/demo baseline and is
+// only used to seed the runtime file's first read.
+const SETTINGS_FILE = process.env.SETTINGS_FILE
+  ? path.resolve(process.env.SETTINGS_FILE)
+  : path.resolve(__dirname, '../../data/settings.json');
+const SETTINGS_DEFAULTS_FILE = path.resolve(__dirname, '../../data/settings.defaults.json');
 
 const DEFAULT_KEYS = ['storeName', 'storeAddress', 'storePhone', 'storeEmail', 'taxRate', 'currency', 'lowStockThreshold', 'receiptHeader', 'receiptFooter'];
 const ALLOWED_KEYS = new Set([...DEFAULT_KEYS, 'address', 'phone', 'email', 'gcashNumber', 'mayaNumber', 'allowPublicRegistration', 'onboardingDismissedAt']);
@@ -33,10 +41,13 @@ const filterAllowed = (data) => {
 
 const loadFromFile = () => {
   try {
-    if (fs.existsSync(SETTINGS_FILE)) {
-      const raw = fs.readFileSync(SETTINGS_FILE, 'utf8');
-      const saved = JSON.parse(raw);
+    // Prefer the runtime file; fall back to the committed dev/demo baseline
+    // so a fresh production volume still boots with sensible defaults.
+    for (const file of [SETTINGS_FILE, SETTINGS_DEFAULTS_FILE]) {
+      if (!fs.existsSync(file)) continue;
+      const saved = JSON.parse(fs.readFileSync(file, 'utf8'));
       settings = { ...DEFAULTS, ...filterAllowed(saved) };
+      return;
     }
   } catch {
     settings = { ...DEFAULTS };

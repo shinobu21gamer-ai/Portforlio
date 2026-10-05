@@ -6,7 +6,9 @@ coverage
 .env.local
 *.sqlite
 logs/*
-data/*
+# Keep the committed settings baseline in the image; exclude only the runtime
+# settings file (gitignored, rewritten by the settings API).
+data/settings.json
 uploads/resumes/*
 uploads/products/*
 uploads/*

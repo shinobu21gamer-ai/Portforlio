@@ -15,6 +15,7 @@ const HRMS_ORIGIN = import.meta.env.VITE_HRMS_URL
 import Login from './pages/Login';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
+import ChangePassword from './pages/ChangePassword';
 import Pos from './pages/Pos';
 import Payment from './pages/Payment';
 import NotFound from './pages/NotFound';
@@ -234,6 +235,7 @@ export default function App() {
                   <Route path="/login" element={<Login />} />
                   <Route path="/forgot-password" element={<ForgotPassword />} />
                   <Route path="/reset-password" element={<ResetPassword />} />
+                  <Route path="/change-password" element={<ChangePassword />} />
 
                   <Route path="/" element={<ProtectedRoute><Pos /></ProtectedRoute>} />
                   <Route path="/pos" element={<ProtectedRoute><Pos /></ProtectedRoute>} />

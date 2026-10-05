@@ -37,7 +37,11 @@ class AuthService {
   generateToken(userId, isRefresh = false) {
     const secret = isRefresh ? config.jwt.refreshSecret : config.jwt.secret;
     const expiresIn = isRefresh ? config.jwt.refreshExpiresIn : config.jwt.expiresIn;
-    return jwt.sign({ id: userId }, secret, { expiresIn });
+    // jti: a unique id per token. Without it, two logins in the same second
+    // produce byte-identical JWTs, so blacklisting one (e.g. on logout)
+    // silently revokes the other — and a forced change-password -> re-login
+    // in quick succession locked the user out (Phase 3, AUDIT.md S1).
+    return jwt.sign({ id: userId, jti: crypto.randomUUID() }, secret, { expiresIn });
   }
 
   verifyRefreshToken(token) {
@@ -200,6 +204,7 @@ class AuthService {
     await user.update({
       password: newPassword,
       passwordChangedAt: new Date(),
+      mustChangePassword: false,
     });
 
     return { message: 'Password changed successfully' };
@@ -278,6 +283,7 @@ class AuthService {
       passwordResetToken: null,
       passwordResetExpires: null,
       passwordChangedAt: new Date(),
+      mustChangePassword: false,
     });
 
     try {

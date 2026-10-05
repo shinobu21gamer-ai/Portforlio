@@ -5,6 +5,7 @@ const config = require('./config');
 const { connectDB } = require('./config/database');
 const cron = require('node-cron');
 const { app, io, server } = require('./app');
+const { ensureFirstAdmin } = require('./services/setup.service');
 
 
 // â”€â”€â”€ Scheduled Tasks â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -60,9 +61,12 @@ const scheduleContractExpiryCheck = () => {
 };
 
 // â”€â”€â”€ Start Server â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-const runAutoSetup = async () => {
+// ─── Bootstrap (all environments) ─────────────────────────────────────
+// Schema migrations, table sync, roles and permissions. Required in
+// production too, but never creates users or demo data (AUDIT.md S1).
+const runBootstrap = async () => {
   try {
-    const { Role, User, Category, ExpenseCategory, Product, Customer, Supplier, Department, Position, Schedule, Discount, Permission, Employee, Branch, JobPosting } = require('./models');
+    const { Role, Permission } = require('./models');
     const { sequelize: db } = require('./config/database');
 
     const isSQLite = config.dbDialect === 'sqlite';
@@ -129,6 +133,7 @@ const runAutoSetup = async () => {
 
     await safeAddColumn('users', 'branch_id', 'INTEGER');
     await safeAddColumn('users', 'reports_to_id', 'INTEGER');
+    await safeAddColumn('users', 'must_change_password', 'BOOLEAN DEFAULT 0');
     await safeAddColumn('products', 'branch_id', 'INTEGER');
     await safeAddColumn('products', 'supplier_id', 'INTEGER');
     await safeAddColumn('sales', 'branch_id', 'INTEGER');
@@ -225,50 +230,6 @@ const runAutoSetup = async () => {
         defaults: { name: 'Employee', slug: 'employee', description: 'Basic employee access' }
       });
 
-      await User.findOrCreate({
-        where: { email: 'admin@minimart.com' },
-        defaults:         { firstName: 'Maria', lastName: 'Santos', email: 'admin@minimart.com', password: 'admin123', roleId: adminRole.id, isActive: true }
-      });
-      await User.findOrCreate({
-        where: { email: 'hr@minimart.com' },
-        defaults:         { firstName: 'Ana', lastName: 'Reyes', email: 'hr@minimart.com', password: 'hr123', roleId: hrRole.id, isActive: true }
-      });
-      await User.findOrCreate({
-        where: { email: 'manager@minimart.com' },
-        defaults:         { firstName: 'Carlos', lastName: 'Garcia', email: 'manager@minimart.com', password: 'admin123', roleId: managerRole.id, isActive: true }
-      });
-      await User.findOrCreate({
-        where: { email: 'cashier@minimart.com' },
-        defaults: { firstName: 'Joy', lastName: 'Dela Cruz', email: 'cashier@minimart.com', password: 'cashier123', roleId: cashierRole.id, isActive: true }
-      });
-      await User.findOrCreate({
-        where: { email: 'ligma1@gmail.com' },
-        defaults: { firstName: 'Ligma', lastName: 'One', email: 'ligma1@gmail.com', password: 'employee123', roleId: employeeRole.id, isActive: true }
-      });
-      await User.findOrCreate({
-        where: { email: 'inventory@minimart.com' },
-        defaults: { firstName: 'Rico', lastName: 'Dela Peña', email: 'inventory@minimart.com', password: 'inventory123', roleId: inventoryStaffRole.id, isActive: true }
-      });
-
-      const seedAccounts = [
-        { email: 'admin@minimart.com', password: 'admin123' },
-        { email: 'hr@minimart.com', password: 'hr123' },
-        { email: 'manager@minimart.com', password: 'admin123' },
-        { email: 'cashier@minimart.com', password: 'cashier123' },
-        { email: 'ligma1@gmail.com', password: 'employee123' },
-        { email: 'inventory@minimart.com', password: 'inventory123' },
-      ];
-      const bcrypt = require('bcryptjs');
-      for (const acct of seedAccounts) {
-        const u = await User.findOne({ where: { email: acct.email } });
-        if (u) {
-          const hashed = await bcrypt.hash(acct.password, 10);
-          await User.update({ password: hashed }, { where: { id: u.id }, individualHooks: false });
-        }
-      }
-
-      console.log('Seed data ready');
-
       const permissions = [
         { name: 'View Dashboard', slug: 'dashboard.view', module: 'dashboard' },
         { name: 'View Products', slug: 'products.view', module: 'products' },
@@ -362,6 +323,65 @@ const runAutoSetup = async () => {
         }
       }
       console.log('Role permissions assigned');
+      console.log('Bootstrap complete (schema, roles, permissions)');
+      return { adminRole, hrRole, managerRole, cashierRole, employeeRole, inventoryStaffRole };
+    } catch (error) {
+      console.error('Bootstrap failed:', error.message);
+      throw error;
+    }
+  };
+
+// ─── Demo seed (non-production only) ───────────────────────────────────
+// Demo accounts + demo store data. Never runs in production (AUDIT.md S1):
+// production must never boot with known weak credentials.
+const seedDemoData = async (roles) => {
+  try {
+    const { User, Category, ExpenseCategory, Product, Customer, Supplier, Department, Position, Schedule, Discount, Employee, Branch, JobPosting } = require('./models');
+    const { adminRole, hrRole, managerRole, cashierRole, employeeRole, inventoryStaffRole } = roles;
+
+      await User.findOrCreate({
+        where: { email: 'admin@minimart.com' },
+        defaults:         { firstName: 'Maria', lastName: 'Santos', email: 'admin@minimart.com', password: 'admin123', roleId: adminRole.id, isActive: true }
+      });
+      await User.findOrCreate({
+        where: { email: 'hr@minimart.com' },
+        defaults:         { firstName: 'Ana', lastName: 'Reyes', email: 'hr@minimart.com', password: 'hr123', roleId: hrRole.id, isActive: true }
+      });
+      await User.findOrCreate({
+        where: { email: 'manager@minimart.com' },
+        defaults:         { firstName: 'Carlos', lastName: 'Garcia', email: 'manager@minimart.com', password: 'admin123', roleId: managerRole.id, isActive: true }
+      });
+      await User.findOrCreate({
+        where: { email: 'cashier@minimart.com' },
+        defaults: { firstName: 'Joy', lastName: 'Dela Cruz', email: 'cashier@minimart.com', password: 'cashier123', roleId: cashierRole.id, isActive: true }
+      });
+      await User.findOrCreate({
+        where: { email: 'ligma1@gmail.com' },
+        defaults: { firstName: 'Ligma', lastName: 'One', email: 'ligma1@gmail.com', password: 'employee123', roleId: employeeRole.id, isActive: true }
+      });
+      await User.findOrCreate({
+        where: { email: 'inventory@minimart.com' },
+        defaults: { firstName: 'Rico', lastName: 'Dela Peña', email: 'inventory@minimart.com', password: 'inventory123', roleId: inventoryStaffRole.id, isActive: true }
+      });
+
+      const seedAccounts = [
+        { email: 'admin@minimart.com', password: 'admin123' },
+        { email: 'hr@minimart.com', password: 'hr123' },
+        { email: 'manager@minimart.com', password: 'admin123' },
+        { email: 'cashier@minimart.com', password: 'cashier123' },
+        { email: 'ligma1@gmail.com', password: 'employee123' },
+        { email: 'inventory@minimart.com', password: 'inventory123' },
+      ];
+      const bcrypt = require('bcryptjs');
+      for (const acct of seedAccounts) {
+        const u = await User.findOne({ where: { email: acct.email } });
+        if (u) {
+          const hashed = await bcrypt.hash(acct.password, 10);
+          await User.update({ password: hashed }, { where: { id: u.id }, individualHooks: false });
+        }
+      }
+
+      console.log('Seed data ready');
 
       const categories = [
         { name: 'Beverages', slug: 'beverages', description: 'Drinks and refreshments' },
@@ -623,23 +643,30 @@ const runAutoSetup = async () => {
 
       console.log('All seed data ready');
     } catch (error) {
-      console.error('Auto-setup failed:', error.message);
+      console.error('Demo seed failed:', error.message);
     }
   };
 
   const startServer = async () => {
     try {
-      console.log('[DEBUG] startServer: before connectDB');
       await connectDB();
-      console.log('[DEBUG] startServer: after connectDB');
 
-      const shouldAutoSetup = config.nodeEnv === 'development' || process.env.AUTO_SETUP === 'true';
-      console.log('[DEBUG] startServer: shouldAutoSetup=', shouldAutoSetup);
-      if (shouldAutoSetup) {
-        console.log('Auto-setup running in background...');
-        runAutoSetup().catch((e) => console.error('Auto-setup crashed:', e));
-      }
-      console.log('[DEBUG] startServer: after runAutoSetup fire');
+      // Bootstrap (schema/roles/permissions) runs in every environment.
+      // Production never seeds the demo accounts (AUDIT.md S1): with an
+      // empty database it creates a single first-run admin with a strong
+      // password (env-provided or generated once) and forces a change at
+      // first login (mustChangePassword).
+      const isProd = config.nodeEnv === 'production';
+      const shouldSeedDemo = !isProd && (config.nodeEnv === 'development' || process.env.AUTO_SETUP === 'true');
+      runBootstrap()
+        .then((roles) => {
+          if (isProd) return ensureFirstAdmin();
+          if (shouldSeedDemo) {
+            console.log('Auto-setup (demo data) running in background...');
+            return seedDemoData(roles);
+          }
+        })
+        .catch((e) => console.error('Auto-setup crashed:', e.message));
 
       scheduleLowStockCheck();
       scheduleExpiryCheck();
@@ -739,7 +766,6 @@ const runAutoSetup = async () => {
         if (expiredSales.length) console.log(`Auto-cancelled ${expiredSales.length} expired pending sales`);
       } catch (err) { console.error('Pending sale expiry cron failed:', err.message); }
     });
-    console.log('[DEBUG] startServer: about to call server.listen');
 
     server.on('error', (err) => {
       console.error('Server error:', err);

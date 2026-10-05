@@ -200,7 +200,7 @@ if (config.nodeEnv === 'development') {
 // Only product images (under uploads/products) are served publicly.
 // Private HR files (uploads/resumes, uploads/documents, uploads/products/resumes)
 // must be retrieved through authenticated API routes.
-const uploadsRoot = path.join(__dirname, '..', 'uploads');
+const uploadsRoot = path.resolve(config.upload.base);
 const PRIVATE_UPLOAD_SEGMENTS = ['resumes', 'documents', 'hr'];
 app.use('/uploads/products', (req, res, next) => {
   const seg = (req.path.split('/').filter(Boolean)[0] || '').toLowerCase();

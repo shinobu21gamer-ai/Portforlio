@@ -85,6 +85,15 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: true,
       field: 'locked_until',
     },
+    // Set on first-run/seeded accounts: the user may only call
+    // /auth/change-password (and /auth/logout) until they pick their own
+    // password. Cleared by changePassword()/resetPassword().
+    mustChangePassword: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+      allowNull: false,
+      field: 'must_change_password',
+    },
   }, {
     tableName: 'users',
     underscored: true,

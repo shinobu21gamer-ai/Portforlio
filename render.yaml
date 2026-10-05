@@ -10,17 +10,55 @@ services:
       npm --prefix frontend ci && npm --prefix frontend run build
       npm --prefix frontend-hrms ci && npm --prefix frontend-hrms run build
     startCommand: node src/server.js
+    # ── Persistent storage (S2) ─────────────────────────────────────
+    # Render's app filesystem is EPHEMERAL: every deploy — and scale-to-zero
+    # on free instances — rebuilds it from git. Without a disk, the SQLite
+    # database, all uploads and the runtime settings file are wiped on every
+    # deploy/restart. The disk below mounts at /data and points DB_STORAGE,
+    # UPLOAD_DIR and SETTINGS_FILE there. Only data under /data survives.
+    # (Note: Render disks may require a paid instance on some plans — if so,
+    # the alternative is DB_DIALECT=mysql with a Render Postgres/MySQL
+    # service; the app already supports both.)
+    disk:
+      name: minimart-data
+      mountPath: /data
+      sizeGB: 1
     envVars:
       - key: NODE_ENV
         value: production
       - key: PORT
         value: 10000
-      - key: AUTO_SETUP
-        value: "true"
+      # ── First-run admin (S1) ────────────────────────────────────────
+      # AUTO_SETUP is intentionally NOT set in production: the weak demo
+      # accounts (admin@minimart.com/admin123, hr@…/hr123, …) are dev-only.
+      # On first boot with an EMPTY database the server creates exactly one
+      # admin account:
+      #   • from INITIAL_ADMIN_EMAIL + INITIAL_ADMIN_PASSWORD (12+ chars) if
+      #     you set them as encrypted secrets in the Render dashboard, or
+      #   • with a generated one-time password printed to the deploy logs
+      #     exactly once.
+      # Either way, first login is forced to change the password.
+      # Set SEED_DEMO_ACCOUNTS=true only if you explicitly want the demo
+      # store (and its demo logins) in production — not recommended.
+      #
+      # - key: INITIAL_ADMIN_EMAIL
+      #   value: you@example.com
+      # - key: INITIAL_ADMIN_PASSWORD
+      #   sync: false
       - key: DB_DIALECT
         value: sqlite
       - key: DB_STORAGE
-        value: ./database.sqlite
+        value: /data/database.sqlite
+      - key: UPLOAD_DIR
+        value: /data/uploads
+      - key: SETTINGS_FILE
+        value: /data/settings.json
+      # ── Email (S1/A6c) ──────────────────────────────────────────────
+      # Production refuses to boot without SMTP unless EMAIL_DISABLED=true
+      # is set explicitly. Until you configure SMTP below, this opts out so
+      # the deploy works; remove it once SMTP_* is set.
+      - key: EMAIL_DISABLED
+        value: "true"
       - key: JWT_SECRET
         generateValue: true
       - key: JWT_REFRESH_SECRET
@@ -63,9 +101,7 @@ services:
       #   sync: false
       #
       # Email (optional - password resets, payslips, receipts, contract notices).
-      # Unset means sendEmail() drops every message and callers ignore the result,
-      # so mail fails silently. The server logs "[MAILER] SMTP is not configured"
-      # at boot when these are missing.
+      # Configure SMTP to enable outbound email, then remove EMAIL_DISABLED.
       #
       # For Gmail, SMTP_PASS must be an App Password (Google Account -> Security ->
       # 2-Step Verification -> App passwords), NOT the account password — a normal
