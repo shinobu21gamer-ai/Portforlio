@@ -8,7 +8,9 @@ const {
   generateInvoiceNo, calculateDiscount, calculateTax, getPagination, getPaginationMeta, escapeLike,
 } = require('../utils/helpers');
 const config = require('../config');
-const { sqlLocalDateExpr, localDateBoundsForDate } = require('../utils/timezone');
+const {
+  sqlLocalDateExpr, localDateBoundsForDate, localDayBounds, localMonthBounds, localDateStr,
+} = require('../utils/timezone');
 
 class SaleService {
   async canApplyManualDiscount(userId) {
@@ -929,9 +931,25 @@ class SaleService {
   async getSalesReport(startDate, endDate) {
     // Report dates are local calendar dates (business timezone) — resolve
     // them to UTC-instant bounds instead of trusting the server's local zone.
+    //
+    // Both dates are optional: this mirrors resolveReportBounds() in
+    // finance.service.js and defaults to "start of the local month -> now".
+    // Previously an omitted startDate/endDate reached localDateBoundsForDate as
+    // undefined, which threw a plain Error("Invalid date: undefined") and
+    // surfaced as a 500 instead of a usable report or a 400. A malformed date
+    // is now an explicit 400. Found by the Phase-6 route matrix.
     const tz = config.app.timezone;
-    const start = localDateBoundsForDate(tz, startDate).start;
-    const end = localDateBoundsForDate(tz, endDate).end;
+    const now = new Date();
+    const boundsFor = (value, fallback) => {
+      if (!value) return fallback;
+      try {
+        return localDateBoundsForDate(tz, value);
+      } catch {
+        throw ApiError.badRequest(`Invalid date: ${value}. Expected YYYY-MM-DD.`);
+      }
+    };
+    const start = boundsFor(startDate, localMonthBounds(tz, now)).start;
+    const end = boundsFor(endDate, localDayBounds(tz, now)).end;
 
     let totalSales = 0;
     let totalRevenue = 0;
@@ -998,7 +1016,13 @@ class SaleService {
       totalDiscount: parseFloat(totalDiscount.toFixed(2)),
       averageOrderValue: totalSales > 0 ? parseFloat((totalRevenue / totalSales).toFixed(2)) : 0,
       dailyBreakdown,
-      period: { startDate, endDate },
+      // Echo the *resolved* window rather than the raw inputs, so an omitted
+      // startDate/endDate reports the default month-to-date range it actually
+      // used instead of serialising to {}. Matches finance.service.js.
+      period: {
+        startDate: localDateStr(tz, start),
+        endDate: localDateStr(tz, new Date(end.getTime() - 1)),
+      },
     };
   }
 }

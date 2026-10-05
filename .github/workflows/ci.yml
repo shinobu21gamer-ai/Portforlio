@@ -8,6 +8,12 @@ on:
   schedule:
     - cron: '0 2 * * *'
 
+# Supersede an older run for the same PR/branch, but never cancel a different
+# branch's verification. This keeps queued Playwright/MySQL jobs from piling up.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 env:
   NODE_ENV: test
   JWT_SECRET: test-jwt-secret-for-ci-only-32chars!!
@@ -15,10 +21,13 @@ env:
   DB_DIALECT: sqlite
   DB_STORAGE: ':memory:'
   AUTO_SETUP: 'true'
+  ALLOW_PUBLIC_REGISTRATION: 'false'
+  EMAIL_DISABLED: 'true'
+  APP_TIMEZONE: Asia/Manila
 
 jobs:
   lint:
-    name: Lint & Format
+    name: Lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -27,8 +36,8 @@ jobs:
           node-version: '20'
           cache: 'npm'
       - run: npm ci
+      # Formatting remains a local/editor concern. ESLint is the CI quality gate.
       - run: npm run lint
-      - run: npm run format:check
 
   unit-test:
     name: Unit Tests (Vitest)
@@ -40,12 +49,8 @@ jobs:
           node-version: '20'
           cache: 'npm'
       - run: npm ci
-      - run: npm run test:unit -- --coverage
-      - uses: codecov/codecov-action@v4
-        with:
-          files: ./coverage/lcov.info
-          fail_ci_if_error: true
-          flags: unit
+      # Explicit directory means integration matrices do not run in this job.
+      - run: npm run test:unit
 
   integration-test:
     name: Integration Tests (Vitest)
@@ -57,11 +62,33 @@ jobs:
           node-version: '20'
           cache: 'npm'
       - run: npm ci
-      - run: npm run test:integration -- --coverage
-      - uses: codecov/codecov-action@v4
+      - run: npm run test:integration
+
+  # The global ratchet is intentionally measured over both disjoint suites.
+  # Unit and integration jobs above give fast, non-overlapping failure signals;
+  # this job produces the combined coverage artifact and enforces the ratchet.
+  coverage:
+    name: Coverage Ratchet
+    runs-on: ubuntu-latest
+    needs: [unit-test, integration-test]
+    # Still emit an actionable combined report if either focused suite failed.
+    if: always()
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          files: ./coverage/lcov.info
-          flags: integration
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run test:coverage
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+          if-no-files-found: warn
+          retention-days: 14
 
   # The unit suite runs sync({force:true}), which rebuilds every table, so it can
   # never catch a broken migration — new columns and ENUM values always appear to
@@ -102,7 +129,7 @@ jobs:
   build-frontends:
     name: Build Frontends
     runs-on: ubuntu-latest
-    needs: [lint, unit-test]
+    needs: [lint, unit-test, integration-test, coverage]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -110,6 +137,8 @@ jobs:
           node-version: '20'
           cache: 'npm'
       - run: npm ci
+      - run: npm --prefix frontend ci
+      - run: npm --prefix frontend-hrms ci
       - run: npm run build
       - uses: actions/upload-artifact@v4
         with:
@@ -133,6 +162,8 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
+      # The Express server serves both static applications, so download both
+      # build outputs before Playwright starts npm run start:test.
       - uses: actions/download-artifact@v4
         with:
           name: pos-dist
@@ -146,18 +177,17 @@ jobs:
       - run: npm run test:e2e
         env:
           PLAYWRIGHT_BASE_URL: http://localhost:5000
-      - uses: actions/upload-artifact@v4
-        if: failure()
-        with:
-          name: playwright-report
-          path: tests/e2e/test-results/
-          retention-days: 7
-      - uses: actions/upload-artifact@v4
+          EMAIL_DISABLED: 'true'
+      - name: Upload Playwright report and results
         if: always()
+        uses: actions/upload-artifact@v4
         with:
-          name: playwright-traces
-          path: tests/e2e/test-results/traces/
-          retention-days: 3
+          name: playwright-artifacts
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: warn
+          retention-days: 7
 
   security-audit:
     name: Security Audit
@@ -178,10 +208,16 @@ jobs:
   deploy-staging:
     name: Deploy to Staging (Render)
     runs-on: ubuntu-latest
-    needs: [lint, unit-test, integration-test, build-frontends, e2e-test, security-audit]
+    needs: [lint, unit-test, integration-test, coverage, migration-test, build-frontends, e2e-test, security-audit]
     if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4
       - name: Trigger Render Deploy
+        env:
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
         run: |
-          curl -X POST "${{ secrets.RENDER_DEPLOY_HOOK_URL }}"
+          if [ -z "$RENDER_DEPLOY_HOOK_URL" ]; then
+            echo "::warning::RENDER_DEPLOY_HOOK_URL is not configured; skipping staging deploy."
+            exit 0
+          fi
+          curl -sf -X POST "$RENDER_DEPLOY_HOOK_URL"

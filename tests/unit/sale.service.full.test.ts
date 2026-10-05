@@ -6,6 +6,8 @@ process.env.DB_STORAGE = ':memory:';
 const models = require('../../src/models');
 const { sequelize, Product, Sale, SaleItem, Payment, StockMovement, Category, Role, User, Customer } = models;
 const saleService = require('../../src/services/sale.service');
+const config = require('../../src/config');
+const { localDateStr } = require('../../src/utils/timezone');
 
 let userId;
 let adminUserId;
@@ -338,8 +340,11 @@ describe('sale.service - getSalesReport', () => {
 
     const result = await saleService.getSalesReport(start.toISOString(), end.toISOString());
     expect(result.period).toBeDefined();
-    expect(result.period.startDate).toBe(start.toISOString());
-    expect(result.period.endDate).toBe(end.toISOString());
+    // getSalesReport resolves its inputs to business-timezone calendar days;
+    // reporting a raw UTC instant here used to make the response inconsistent
+    // with the daily breakdown keys (and omitted inputs serialised as {}).
+    expect(result.period.startDate).toBe(localDateStr(config.app.timezone, start));
+    expect(result.period.endDate).toBe(localDateStr(config.app.timezone, end));
     expect(result.averageOrderValue).toBeGreaterThan(0);
   });
 });

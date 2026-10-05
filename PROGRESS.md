@@ -140,7 +140,33 @@ server-side search + sort + pagination wiring (standard param names `search` / `
   `.h`/`.gypi`; second pass compiles against the extracted devdir). Not needed on Render (Dockerfile
   builds with full network).
 
-## Phase 6 — Tests & CI — not started
+## Phase 6 — Tests & CI — DONE (2026-10-05; browser execution runs in CI)
+
+### Route-matrix and service coverage
+- [x] Added a real-app route-matrix harness (`tests/utils/route-matrix-setup.ts`) that sets test env **before** loading `src`, runs Express on an ephemeral port over SQLite `:memory:`, disables registration/email/PayMongo, seeds six role users plus disposable fixtures, and mints a fresh JWT per request so logout/password routes cannot poison later assertions.
+- [x] Added reproducible route metadata generation (`scripts/generate-route-table.js` → `tests/utils/route-table.ts`, `--check` mode) for the complete **255-route** surface: 143 POS/core + 112 HRMS routes. It understands router mounts, inline tracking routes, the notification alias, and app-level routes.
+- [x] Added POS + HRMS route matrices. Both are green: **680 assertions** total (359 POS, 321 HRMS); every route gets a representative allowed/happy leg and an unauthenticated/authz 4xx leg. The HRMS suite pins the exact reviewed bare-`protect()` self-service routes so an accidental future ungated route fails loudly.
+- [x] Added `tests/unit/inventory.service.test.ts` (**19 tests**) for stock-in/out/adjust arithmetic and guards, movement/inventory ledger deltas, and 6-hour low-stock / 24-hour expiry notification dedupe windows.
+- [x] Raised the Vitest global coverage ratchet to **78% statements / 62% branches / 85% functions / 82% lines**. Full measurement: **80.53 / 64.14 / 89.03 / 85.05** (statements/branches/functions/lines).
+
+### Production defects found by the route matrix and fixed
+- [x] **`GET /api/v1/shifts/summary` was a universal 500.** `shift.service.summaryForPeriod()` passed camelCase names (`cashSalesTotal`, `voidedTotal`, `cashDifference`) to Sequelize `col()` even though the `underscored` model columns are snake_case. SQLite raised `no such column: cashSalesTotal`; production MySQL would have failed too. It now uses `cash_sales_total`, `voided_total`, and `cash_difference` and returns 200.
+- [x] **`GET /api/v1/sales/report` was a universal 500 when dates were omitted.** It sent `undefined` to `localDateBoundsForDate`, which threw a plain `Invalid date: undefined` error. The report now defaults to business-timezone month-to-date, turns malformed dates into a 400, and returns resolved local `YYYY-MM-DD` period metadata instead of serialising raw Date inputs to `{}`.
+- [x] **Employee-document failure paths were malformed 500s.** Four controller calls inverted `new ApiError(statusCode, message)` arguments, making Express attempt invalid string HTTP status codes. They now use `ApiError.badRequest` / `ApiError.notFound`; missing files correctly return 404 instead of `RangeError` 500.
+
+### E2E and CI
+- [x] Added exactly three Playwright specs plus shared seed/login/API utilities: all six demo-role HRMS logins and topbar logout, cashier cash checkout inside the POS iframe (Coca-Cola stock 48 → 47), and manager cash recovery of an API-created abandoned GCash pending sale. `playwright test --list` collects **16 tests** (8 scenarios × Chromium + Pixel mobile).
+- [x] Playwright server env now explicitly sets `EMAIL_DISABLED=true`; report directories are ignored.
+- [x] Reworked CI: lint has no format gate; unit and integration jobs are disjoint; a dedicated combined coverage job uploads artifacts even on failure; Codecov removed; concurrency enabled; frontend artifacts flow into e2e; root Playwright report/results upload on every result; migration test is a deploy prerequisite; Render deploy safely skips an unset hook and uses `curl -sf` when configured.
+- [x] README accuracy pass: real `/`, `/pos`, `/hrms` URLs; all six dev-only demo users and roles; POS Swagger vs HRMS endpoint map; pending-sale/override lifecycle; test/CI and Render guidance; payment/registration/refresh env variables.
+
+### Final verification
+- [x] `npm run lint` — **0 errors / 0 warnings**.
+- [x] `npm run test:coverage` — **26 files / 1214 tests PASS**; **80.53 / 64.14 / 89.03 / 85.05** exceeds the 78/62/85/82 ratchet.
+- [x] `npm run build` — POS and HRMS production builds PASS.
+- [x] `node scripts/generate-route-table.js --check` — 255-route table current.
+- [x] `playwright test --list` — **16 tests in 3 files** (8 scenarios × Chromium + Pixel mobile).
+- [!] Full browser execution is delegated to CI: this sandbox could not download Playwright Chromium because its TLS connection to `cdn.playwright.dev` was reset. The CI job explicitly installs Chromium with `npx playwright install --with-deps chromium` before running the same 16 tests.
 
 ---
 

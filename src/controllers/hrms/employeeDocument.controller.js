@@ -30,7 +30,7 @@ class EmployeeDocumentController {
 
   async upload(req, res, next) {
     try {
-      if (!req.file) throw new ApiError('No file uploaded', 400);
+      if (!req.file) throw ApiError.badRequest('No file uploaded');
       const doc = await db.EmployeeDocument.create({
         employeeId: req.params.employeeId,
         type: req.body.type || 'other',
@@ -51,9 +51,9 @@ class EmployeeDocumentController {
   async download(req, res, next) {
     try {
       const doc = await db.EmployeeDocument.findByPk(req.params.id);
-      if (!doc) throw new ApiError('Document not found', 404);
+      if (!doc) throw ApiError.notFound('Document not found');
       const filePath = resolveDocumentFile(doc);
-      if (!filePath) throw new ApiError('File not found on disk', 404);
+      if (!filePath) throw ApiError.notFound('File not found on disk');
       res.setHeader('Content-Disposition', `attachment; filename="${doc.originalName}"`);
       res.setHeader('Content-Type', doc.mimeType);
       fs.createReadStream(filePath).pipe(res);
@@ -63,7 +63,7 @@ class EmployeeDocumentController {
   async delete(req, res, next) {
     try {
       const doc = await db.EmployeeDocument.findByPk(req.params.id);
-      if (!doc) throw new ApiError('Document not found', 404);
+      if (!doc) throw ApiError.notFound('Document not found');
       const filePath = resolveDocumentFile(doc);
       try { if (filePath) fs.unlinkSync(filePath); } catch {}
       await doc.destroy();

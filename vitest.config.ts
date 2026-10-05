@@ -24,15 +24,15 @@ export default defineConfig({
         'src/routes/**',
         'src/controllers/**',
       ],
-      // Ratchet: these sit just under the measured floor so the gate fails only
-      // on regression. Raise them as suites land (discount + helpers are at
-      // 100%, models at 96%; the other ~40 service files are still 0%).
-      // A global 50% is not reachable until those services are covered.
+      // Phase-6 ratchet. The full unit + integration suite measures
+      // 80.53% statements / 64.14% branches / 89.03% functions / 85.05%
+      // lines (2026-10-05); leave a modest buffer for platform differences
+      // while preventing a meaningful coverage regression.
       thresholds: {
-        lines: 10,
-        functions: 20,
-        branches: 3,
-        statements: 10,
+        statements: 78,
+        branches: 62,
+        functions: 85,
+        lines: 82,
       },
     },
     alias: {

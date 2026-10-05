@@ -164,13 +164,18 @@ class ShiftService {
     const isPrivileged = ['admin', 'manager'].includes(user?.role?.slug);
     const where = { status: 'closed' };
     if (!isPrivileged) where.userId = user.id;
+    // col() takes the physical column name, not the model attribute name. The
+    // model is `underscored: true` and maps cashSalesTotal -> cash_sales_total,
+    // so passing the camelCase attribute produced
+    // "SQLITE_ERROR: no such column: cashSalesTotal" and this endpoint 500'd for
+    // every caller. Found by the Phase-6 route matrix.
     const rows = await Shift.findAll({
       where,
       attributes: [
         [fn('COUNT', col('id')), 'closedShifts'],
-        [fn('COALESCE', fn('SUM', col('cashSalesTotal')), 0), 'cashSales'],
-        [fn('COALESCE', fn('SUM', col('voidedTotal')), 0), 'voided'],
-        [fn('COALESCE', fn('SUM', col('cashDifference')), 0), 'difference'],
+        [fn('COALESCE', fn('SUM', col('cash_sales_total')), 0), 'cashSales'],
+        [fn('COALESCE', fn('SUM', col('voided_total')), 0), 'voided'],
+        [fn('COALESCE', fn('SUM', col('cash_difference')), 0), 'difference'],
       ],
       raw: true,
     });

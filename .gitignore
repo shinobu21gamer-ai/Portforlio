@@ -21,6 +21,8 @@ build/
 Thumbs.db
 desktop.ini
 coverage/
+test-results/
+playwright-report/
 .cache/
 
 # Local dev secrets (JWT keys) - never commit
