@@ -45,9 +45,20 @@ function PageLoader() {
   );
 }
 
+function hasStoredToken() {
+  try {
+    const t = localStorage.getItem('token');
+    return !!(t && t !== 'null' && t !== '');
+  } catch {
+    return false;
+  }
+}
+
 function AuthCheck({ children }) {
   const { isAuthenticated, token, logout, login } = useAuthStore();
-  const [checking, setChecking] = useState(true);
+  // Don't gate first paint on /auth/profile — a token in localStorage is enough
+  // to render POS. Revalidation still runs in the effect and can log us out.
+  const [checking, setChecking] = useState(() => !hasStoredToken());
   const [ssoError, setSsoError] = useState(null);
   const location = useLocation();
   const navigate = useNavigate();
@@ -126,7 +137,10 @@ function AuthCheck({ children }) {
       return;
     }
 
-    // Embedded in HRMS: request a token over postMessage and wait for it.
+    // Embedded in HRMS: request a token over postMessage. If the iframe already
+    // has a session (E2E seed, refresh), paint immediately instead of waiting.
+    if (hasStoredToken()) finish();
+
     const onMessage = (e) => {
       if (e.origin !== HRMS_ORIGIN) return;
       if (e.data?.type === 'pos-auth-token' && e.data.token) {
@@ -135,7 +149,7 @@ function AuthCheck({ children }) {
     };
     window.addEventListener('message', onMessage);
     try { window.parent.postMessage({ type: 'pos-ready' }, HRMS_ORIGIN); } catch { /* ignore */ }
-    const fallback = setTimeout(validateStoredSession, 4000);
+    const fallback = setTimeout(validateStoredSession, hasStoredToken() ? 0 : 4000);
 
     return () => {
       clearTimeout(fallback);

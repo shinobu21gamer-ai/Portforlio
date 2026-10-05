@@ -36,27 +36,34 @@ export async function loginApi(request: APIRequestContext, email: string, passwo
   };
 }
 
-function persistPosSession(session: { token: string; user: unknown; refreshToken: string | null }) {
-  localStorage.setItem('token', session.token);
-  localStorage.setItem('user', JSON.stringify(session.user));
-  if (session.refreshToken) localStorage.setItem('refreshToken', session.refreshToken);
-  else localStorage.removeItem('refreshToken');
-  localStorage.setItem('minimart_autoprint', '0');
-  // @ts-expect-error — window.print is a function
-  window.print = () => {};
-}
-
-/** Persist a POS session without the SSO query-param (which strips other search params). */
+/** Persist a POS session. Payload is primitives only so addInitScript can't choke on the user object. */
 export async function seedPosSession(page: Page, token: string, user: unknown, refreshToken?: string | null) {
-  await page.addInitScript(persistPosSession, { token, user, refreshToken: refreshToken ?? null });
+  const userJson = JSON.stringify(user);
+  const rt = refreshToken ?? '';
+  await page.addInitScript(({ token, userJson, rt }) => {
+    localStorage.setItem('token', token);
+    localStorage.setItem('user', userJson);
+    if (rt) localStorage.setItem('refreshToken', rt);
+    else localStorage.removeItem('refreshToken');
+    localStorage.setItem('minimart_autoprint', '0');
+    window.print = () => {};
+  }, { token, userJson, rt });
 }
 
-/** Same-origin write + navigation so Zustand reads the token on module init. */
+/** HTML same-origin write + /pos. Avoid /health (JSON) — Chromium may not commit localStorage there. */
 export async function gotoPos(page: Page, token: string, user: unknown, refreshToken?: string | null) {
-  const payload = { token, user, refreshToken: refreshToken ?? null };
-  await page.addInitScript(persistPosSession, payload);
-  // /health is JSON on the API origin — establishes localStorage without racing the SPA.
-  await page.goto('/health');
-  await page.evaluate(persistPosSession, payload);
+  const userJson = JSON.stringify(user);
+  const rt = refreshToken ?? '';
+  const persist = ({ token, userJson, rt }: { token: string; userJson: string; rt: string }) => {
+    localStorage.setItem('token', token);
+    localStorage.setItem('user', userJson);
+    if (rt) localStorage.setItem('refreshToken', rt);
+    else localStorage.removeItem('refreshToken');
+    localStorage.setItem('minimart_autoprint', '0');
+    window.print = () => {};
+  };
+  await page.addInitScript(persist, { token, userJson, rt });
+  await page.goto('/');
+  await page.evaluate(persist, { token, userJson, rt });
   await page.goto('/pos');
 }

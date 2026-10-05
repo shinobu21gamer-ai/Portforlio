@@ -164,8 +164,6 @@ export default function PosEmbed({ page, onClose }) {
         onLoad={() => { setLoaded(true); sendToken(); }}
         style={{
           width: '100%', height: '100%', border: 'none',
-          opacity: loaded ? 1 : 0,
-          transition: 'opacity 0.3s ease',
         }}
         title="Point of Sale"
       />

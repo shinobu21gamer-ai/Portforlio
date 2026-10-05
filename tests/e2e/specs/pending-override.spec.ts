@@ -22,13 +22,13 @@ test.describe('online-pay pending → cash override', () => {
     const admin = await loginApi(request, DEMO.admin.email, DEMO.admin.password);
     await seedPosSession(page, admin.token, admin.user, admin.refreshToken);
     page.on('dialog', (d) => d.accept());
-    await page.goto('/health');
-    await page.evaluate(({ token, user, refreshToken }) => {
+    await page.goto('/');
+    await page.evaluate(({ token, userJson, rt }) => {
       localStorage.setItem('token', token);
-      localStorage.setItem('user', JSON.stringify(user));
-      if (refreshToken) localStorage.setItem('refreshToken', refreshToken);
+      localStorage.setItem('user', userJson);
+      if (rt) localStorage.setItem('refreshToken', rt);
       localStorage.setItem('minimart_autoprint', '0');
-    }, { token: admin.token, user: admin.user, refreshToken: admin.refreshToken ?? null });
+    }, { token: admin.token, userJson: JSON.stringify(admin.user), rt: admin.refreshToken ?? '' });
     await page.goto(`/payment/success?saleId=${saleId}`);
 
     await expect(page.getByText(/Waiting for payment confirmation/i)).toBeVisible({ timeout: 20000 });
