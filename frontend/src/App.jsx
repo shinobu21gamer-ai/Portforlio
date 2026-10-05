@@ -104,8 +104,11 @@ function AuthCheck({ children }) {
     };
 
     const validateStoredSession = () => {
+      // Don't block the register on /auth/profile. A stored token is enough to
+      // paint POS; a failed revalidation still logs the cashier out.
       if (isAuthenticated && token) {
-        api.get('/auth/profile').catch(() => revokeCurrentSession()).finally(finish);
+        finish();
+        api.get('/auth/profile').catch(() => revokeCurrentSession());
       } else {
         finish();
       }

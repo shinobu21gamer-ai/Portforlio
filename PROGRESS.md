@@ -143,6 +143,7 @@ server-side search + sort + pagination wiring (standard param names `search` / `
 ## Phase 6 — Tests & CI — DONE (2026-10-05, E2E follow-up)
 
 - [x] 2026-10-05 **E2E POS sale 403** — GlobalSearch fetched `GET /users` on every POS load (even while closed). Cashiers lack `users.view` → 403 (+ retry). Palette now mounts only when opened, and `/users` is admin-only. Axios 401-without-refresh now `processQueue`s so parallel queries don't hang as skeletons. POS sale spec asserts catalog via API + heading before `product-card`.
+- [x] 2026-10-05 **E2E still red after 403 fix** — AuthCheck no longer blocks the register on `/auth/profile`. Session seed writes localStorage on `/health` (same origin) before `/pos`. Playwright webServer inherits `process.env` so `PATH`/`CI` survive.
 
 **Gate:** lint 0/0; **764/764** unit+integration (28 files, ratchet from P5's 515); coverage ~69/73/53/73 with thresholds 65/68/50/68; both frontends production-build clean. Playwright specs land; Chromium isn't downloadable in this sandbox (TLS to cdn.playwright.dev blocked) so E2E is the CI job.
 

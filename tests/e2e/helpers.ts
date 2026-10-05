@@ -19,6 +19,7 @@ export async function stubPrint(page: Page) {
 
 export async function loginUi(page: Page, email: string, password: string) {
   await page.goto('/hrms/login');
+  await expect(page.getByTestId('login-email')).toBeVisible({ timeout: 20000 });
   await page.getByTestId('login-email').fill(email);
   await page.getByTestId('login-password').fill(password);
   await page.getByTestId('login-submit').click();
@@ -35,15 +36,27 @@ export async function loginApi(request: APIRequestContext, email: string, passwo
   };
 }
 
+function persistPosSession(session: { token: string; user: unknown; refreshToken: string | null }) {
+  localStorage.setItem('token', session.token);
+  localStorage.setItem('user', JSON.stringify(session.user));
+  if (session.refreshToken) localStorage.setItem('refreshToken', session.refreshToken);
+  else localStorage.removeItem('refreshToken');
+  localStorage.setItem('minimart_autoprint', '0');
+  // @ts-expect-error — window.print is a function
+  window.print = () => {};
+}
+
 /** Persist a POS session without the SSO query-param (which strips other search params). */
 export async function seedPosSession(page: Page, token: string, user: unknown, refreshToken?: string | null) {
-  await page.addInitScript(({ token, user, refreshToken }) => {
-    localStorage.setItem('token', token);
-    localStorage.setItem('user', JSON.stringify(user));
-    if (refreshToken) localStorage.setItem('refreshToken', refreshToken);
-    else localStorage.removeItem('refreshToken');
-    localStorage.setItem('minimart_autoprint', '0');
-    // @ts-expect-error — window.print is a function
-    window.print = () => {};
-  }, { token, user, refreshToken: refreshToken ?? null });
+  await page.addInitScript(persistPosSession, { token, user, refreshToken: refreshToken ?? null });
+}
+
+/** Same-origin write + navigation so Zustand reads the token on module init. */
+export async function gotoPos(page: Page, token: string, user: unknown, refreshToken?: string | null) {
+  const payload = { token, user, refreshToken: refreshToken ?? null };
+  await page.addInitScript(persistPosSession, payload);
+  // /health is JSON on the API origin — establishes localStorage without racing the SPA.
+  await page.goto('/health');
+  await page.evaluate(persistPosSession, payload);
+  await page.goto('/pos');
 }

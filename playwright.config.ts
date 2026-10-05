@@ -32,7 +32,10 @@ export default defineConfig({
     url: 'http://127.0.0.1:5000/health',
     reuseExistingServer: !process.env.CI,
     timeout: 180000,
+    stdout: 'pipe',
+    stderr: 'pipe',
     env: {
+      ...Object.fromEntries(Object.entries(process.env).filter((entry): entry is [string, string] => typeof entry[1] === 'string')),
       NODE_ENV: 'test',
       AUTO_SETUP: 'true',
       JWT_SECRET: 'test-jwt-secret-for-ci-only-32chars!!',
