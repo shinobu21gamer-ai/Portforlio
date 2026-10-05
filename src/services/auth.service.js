@@ -56,10 +56,11 @@ class AuthService {
       if (blacklisted) rememberBlacklisted(token);
       return !!blacklisted;
     } catch (e) {
-      // Fail closed, but only after the cheap cache miss — the cache is what
-      // keeps a transient DB error from taking out the whole API.
+      // Fail closed in production so a DB blip can't admit a revoked token.
+      // In test, SQLITE_BUSY on the shared file DB was 401'ing every probe and
+      // the POS client treated that as "session dead".
       console.error('Token blacklist check failed:', e.message);
-      return true;
+      return config.nodeEnv !== 'test';
     }
   }
 

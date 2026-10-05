@@ -23,10 +23,11 @@ export function useDashboard() {
   return useQuery({ queryKey: ['dashboard'], queryFn: () => api.get('/dashboard').then(r => r.data.data) });
 }
 
-export function useProducts(params = {}) {
+export function useProducts(params = {}, { enabled = true } = {}) {
   return useQuery({
     queryKey: ['products', params],
     queryFn: () => api.get('/products', { params }).then(r => r.data),
+    enabled,
   });
 }
 
@@ -98,10 +99,11 @@ export function useBestSellers(params = {}) {
   });
 }
 
-export function useSales(params = {}) {
+export function useSales(params = {}, { enabled = true } = {}) {
   return useQuery({
     queryKey: ['sales', params],
     queryFn: () => api.get('/sales', { params }).then(r => r.data),
+    enabled,
   });
 }
 
@@ -207,10 +209,11 @@ export function useSalesReport(params = {}) {
   });
 }
 
-export function useCustomers(params = {}) {
+export function useCustomers(params = {}, { enabled = true } = {}) {
   return useQuery({
     queryKey: ['customers', params],
     queryFn: () => api.get('/customers', { params }).then(r => r.data),
+    enabled,
   });
 }
 
@@ -570,10 +573,11 @@ export function useDeleteNotification() {
   });
 }
 
-export function useUsers(params = {}) {
+export function useUsers(params = {}, { enabled = true } = {}) {
   return useQuery({
     queryKey: ['users', params],
     queryFn: () => api.get('/users', { params }).then(r => r.data),
+    enabled,
   });
 }
 

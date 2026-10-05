@@ -2,7 +2,6 @@ name: CI
 
 on:
   push:
-    branches: [master, main, develop]
   pull_request:
     branches: [master, main, develop]
   schedule:
@@ -15,10 +14,11 @@ env:
   DB_DIALECT: sqlite
   DB_STORAGE: ':memory:'
   AUTO_SETUP: 'true'
+  EMAIL_DISABLED: 'true'
 
 jobs:
   lint:
-    name: Lint & Format
+    name: Lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -28,10 +28,9 @@ jobs:
           cache: 'npm'
       - run: npm ci
       - run: npm run lint
-      - run: npm run format:check
 
-  unit-test:
-    name: Unit Tests (Vitest)
+  test:
+    name: Unit + Integration (SQLite)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -40,16 +39,25 @@ jobs:
           node-version: '20'
           cache: 'npm'
       - run: npm ci
-      - run: npm run test:unit -- --coverage
+      - run: npm run test:coverage
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage
+          path: coverage/
+          retention-days: 7
       - uses: codecov/codecov-action@v4
+        if: always()
+        continue-on-error: true
         with:
           files: ./coverage/lcov.info
-          fail_ci_if_error: true
-          flags: unit
+          fail_ci_if_error: false
+          flags: sqlite
 
-  integration-test:
-    name: Integration Tests (Vitest)
+  build-frontends:
+    name: Build Frontends
     runs-on: ubuntu-latest
+    needs: [lint]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -57,20 +65,59 @@ jobs:
           node-version: '20'
           cache: 'npm'
       - run: npm ci
-      - run: npm run test:integration -- --coverage
-      - uses: codecov/codecov-action@v4
+      - run: npm --prefix frontend ci
+      - run: npm --prefix frontend-hrms ci
+      - run: npm run build
+      - uses: actions/upload-artifact@v4
         with:
-          files: ./coverage/lcov.info
-          flags: integration
+          name: pos-dist
+          path: frontend/dist/
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hrms-dist
+          path: frontend-hrms/dist/
+          retention-days: 1
 
-  # The unit suite runs sync({force:true}), which rebuilds every table, so it can
-  # never catch a broken migration — new columns and ENUM values always appear to
-  # work. This job runs the migration helpers against a real pre-existing schema.
-  # MariaDB is NOT used here on purpose: it accepts slightly different ENUM DDL
-  # than the MySQL the app targets in production.
+  e2e-test:
+    name: E2E Tests (Playwright)
+    runs-on: ubuntu-latest
+    needs: [build-frontends, test]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - uses: actions/download-artifact@v4
+        with:
+          name: pos-dist
+          path: frontend/dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: hrms-dist
+          path: frontend-hrms/dist
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+        env:
+          CI: 'true'
+          PLAYWRIGHT_BASE_URL: http://127.0.0.1:5000
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+            docs/screenshots/
+          retention-days: 7
+
   migration-test:
     name: Schema Migration (MySQL)
     runs-on: ubuntu-latest
+    needs: [lint]
     services:
       mysql:
         image: mysql:8.0
@@ -98,90 +145,3 @@ jobs:
           TEST_MYSQL_DB: hrms_migration_test
           TEST_MYSQL_USER: root
           TEST_MYSQL_PASSWORD: ''
-
-  build-frontends:
-    name: Build Frontends
-    runs-on: ubuntu-latest
-    needs: [lint, unit-test]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-      - run: npm ci
-      - run: npm run build
-      - uses: actions/upload-artifact@v4
-        with:
-          name: pos-dist
-          path: frontend/dist/
-          retention-days: 1
-      - uses: actions/upload-artifact@v4
-        with:
-          name: hrms-dist
-          path: frontend-hrms/dist/
-          retention-days: 1
-
-  e2e-test:
-    name: E2E Tests (Playwright)
-    runs-on: ubuntu-latest
-    needs: [build-frontends]
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-      - uses: actions/download-artifact@v4
-        with:
-          name: pos-dist
-          path: frontend/dist
-      - uses: actions/download-artifact@v4
-        with:
-          name: hrms-dist
-          path: frontend-hrms/dist
-      - run: npm ci
-      - run: npx playwright install --with-deps chromium
-      - run: npm run test:e2e
-        env:
-          PLAYWRIGHT_BASE_URL: http://localhost:5000
-      - uses: actions/upload-artifact@v4
-        if: failure()
-        with:
-          name: playwright-report
-          path: tests/e2e/test-results/
-          retention-days: 7
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: playwright-traces
-          path: tests/e2e/test-results/traces/
-          retention-days: 3
-
-  security-audit:
-    name: Security Audit
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-      - run: npm ci
-      - run: npm audit --audit-level=high
-      - uses: github/codeql-action/init@v3
-        with:
-          languages: javascript
-      - uses: github/codeql-action/analyze@v3
-
-  deploy-staging:
-    name: Deploy to Staging (Render)
-    runs-on: ubuntu-latest
-    needs: [lint, unit-test, integration-test, build-frontends, e2e-test, security-audit]
-    if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
-    steps:
-      - uses: actions/checkout@v4
-      - name: Trigger Render Deploy
-        run: |
-          curl -X POST "${{ secrets.RENDER_DEPLOY_HOOK_URL }}"

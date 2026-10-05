@@ -45,9 +45,24 @@ function PageLoader() {
   );
 }
 
+function hasStoredToken() {
+  try {
+    const t = localStorage.getItem('token');
+    if (t && t !== 'null' && t !== '') return true;
+    const hrms = localStorage.getItem('hrms_auth');
+    if (!hrms) return false;
+    const parsed = JSON.parse(hrms);
+    return !!(parsed?.token);
+  } catch {
+    return false;
+  }
+}
+
 function AuthCheck({ children }) {
   const { isAuthenticated, token, logout, login } = useAuthStore();
-  const [checking, setChecking] = useState(true);
+  // Don't gate first paint on /auth/profile — a token in localStorage is enough
+  // to render POS. Revalidation still runs in the effect and can log us out.
+  const [checking, setChecking] = useState(() => !hasStoredToken());
   const [ssoError, setSsoError] = useState(null);
   const location = useLocation();
   const navigate = useNavigate();
@@ -104,8 +119,12 @@ function AuthCheck({ children }) {
     };
 
     const validateStoredSession = () => {
+      // Don't block the register on /auth/profile, and don't log the cashier
+      // out if a single probe fails (SQLite busy → blacklist fail-closed 401
+      // was wiping the cart mid-E2E and sending us to HRMS).
       if (isAuthenticated && token) {
-        api.get('/auth/profile').catch(() => revokeCurrentSession()).finally(finish);
+        finish();
+        api.get('/auth/profile').catch(() => { /* keep stored session */ });
       } else {
         finish();
       }
@@ -123,7 +142,10 @@ function AuthCheck({ children }) {
       return;
     }
 
-    // Embedded in HRMS: request a token over postMessage and wait for it.
+    // Embedded in HRMS: request a token over postMessage. If the iframe already
+    // has a session (E2E seed, refresh), paint immediately instead of waiting.
+    if (hasStoredToken()) finish();
+
     const onMessage = (e) => {
       if (e.origin !== HRMS_ORIGIN) return;
       if (e.data?.type === 'pos-auth-token' && e.data.token) {
@@ -132,7 +154,7 @@ function AuthCheck({ children }) {
     };
     window.addEventListener('message', onMessage);
     try { window.parent.postMessage({ type: 'pos-ready' }, HRMS_ORIGIN); } catch { /* ignore */ }
-    const fallback = setTimeout(validateStoredSession, 4000);
+    const fallback = setTimeout(validateStoredSession, hasStoredToken() ? 0 : 4000);
 
     return () => {
       clearTimeout(fallback);
@@ -218,7 +240,9 @@ function GlobalSearchProvider({ children }) {
   return (
     <>
       {children}
-      <GlobalSearch isOpen={searchOpen && isAuthenticated} onClose={() => setSearchOpen(false)} onSelect={handleSearchSelect} />
+      {searchOpen && isAuthenticated ? (
+        <GlobalSearch isOpen onClose={() => setSearchOpen(false)} onSelect={handleSearchSelect} />
+      ) : null}
     </>
   );
 }

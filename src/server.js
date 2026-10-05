@@ -663,15 +663,23 @@ const seedDemoData = async (roles) => {
       // first login (mustChangePassword).
       const isProd = config.nodeEnv === 'production';
       const shouldSeedDemo = !isProd && (config.nodeEnv === 'development' || process.env.AUTO_SETUP === 'true');
-      runBootstrap()
-        .then((roles) => {
-          if (isProd) return ensureFirstAdmin();
-          if (shouldSeedDemo) {
-            console.log('Auto-setup (demo data) running in background...');
-            return seedDemoData(roles);
-          }
-        })
-        .catch((e) => console.error('Auto-setup crashed:', e.message));
+      // Await bootstrap (and demo seed) before we bind the port so /health
+      // means the schema and demo accounts actually exist. E2E and a fresh
+      // `npm start` previously raced the background seed and 401'd the first
+      // logins. Failure still logs; we only abort boot in test so CI can't
+      // green-bar a half-started server.
+      try {
+        const roles = await runBootstrap();
+        if (isProd) {
+          await ensureFirstAdmin();
+        } else if (shouldSeedDemo) {
+          console.log('Auto-setup (demo data) running...');
+          await seedDemoData(roles);
+        }
+      } catch (e) {
+        console.error('Auto-setup crashed:', e.message);
+        if (config.nodeEnv === 'test') throw e;
+      }
 
       scheduleLowStockCheck();
       scheduleExpiryCheck();

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useProducts, useCustomers, useUsers, useSales } from '../hooks/useApi';
+import useAuthStore from '../store/authStore';
 import { useDebounce } from '../utils/helpers';
 import './GlobalSearch.css';
 
@@ -11,13 +12,18 @@ export default function GlobalSearch({ isOpen, onClose, onSelect }) {
   const inputRef = useRef(null);
   const listRef = useRef(null);
   const keyHandlerRef = useRef(null);
+  const roleSlug = useAuthStore(s => s.user?.role?.slug || (typeof s.user?.role === 'string' ? s.user.role : null));
+  const canViewUsers = roleSlug === 'admin';
 
   const debouncedQuery = useDebounce(query, 250);
 
-  const { data: productsData } = useProducts({ search: debouncedQuery || undefined, limit: 5 });
-  const { data: customersData } = useCustomers({ search: debouncedQuery || undefined, limit: 5 });
-  const { data: employeesData } = useUsers({ search: debouncedQuery || undefined, limit: 5 });
-  const { data: salesData } = useSales({ search: debouncedQuery || undefined, limit: 5 });
+  // Closed palette used to fire these on every POS load. Cashiers have no
+  // users.view, so GET /users 403'd (and retried) before the register painted.
+  const searchParams = { search: debouncedQuery || undefined, limit: 5 };
+  const { data: productsData } = useProducts(searchParams, { enabled: isOpen });
+  const { data: customersData } = useCustomers(searchParams, { enabled: isOpen });
+  const { data: employeesData } = useUsers(searchParams, { enabled: isOpen && canViewUsers });
+  const { data: salesData } = useSales(searchParams, { enabled: isOpen });
 
   const products = productsData?.data?.products || productsData?.products || [];
   const customers = customersData?.data?.customers || customersData?.customers || [];

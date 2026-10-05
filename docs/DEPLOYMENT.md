@@ -46,14 +46,18 @@ On first boot the database is created and seeded automatically. Existing data in
    - POS → `https://...onrender.com/`
    - HRMS → `https://...onrender.com/hrms`
 
-`AUTO_SETUP=true` makes every fresh boot sync + seed the schema, so a brand-new
-deployment works with zero configuration.
+Production **never** seeds the demo accounts (`admin@minimart.com` / `admin123`
+etc.). On an empty production database the boot path creates a single first-run
+admin from `INITIAL_ADMIN_EMAIL` / `INITIAL_ADMIN_PASSWORD` (12+ characters) or
+prints a one-time generated password to the logs, with `mustChangePassword`
+forced on first login.
 
-> Note: Render's free plan does not give persistent disks. The SQLite file
-> resets on redeploy; the app automatically re-seeds the baseline data on boot.
-> For persistent data (recommended before real use), set these env vars:
-> `DB_DIALECT=mysql`, `DB_HOST`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`
-> (e.g. a free MySQL server).
+`render.yaml` ships a persistent 1 GB disk at `/data` (`DB_STORAGE`,
+`UPLOAD_DIR`, `SETTINGS_FILE`) so SQLite and uploads survive redeploys. For
+MySQL instead, set `DB_DIALECT=mysql` plus `DB_HOST`, `DB_NAME`, `DB_USER`,
+`DB_PASSWORD`.
+
+Demo accounts are **development only** (`AUTO_SETUP=true` or `NODE_ENV=development`).
 
 ### Option B — Docker anywhere
 

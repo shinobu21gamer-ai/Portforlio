@@ -244,6 +244,7 @@ export default function Payment({ success: successProp, cancel: cancelProp }) {
                 </p>
                 <button
                   className="btn btn-warning"
+                  data-testid="cash-override"
                   disabled={cashOverrideLoading}
                   onClick={handleCashOverride}
                 >
@@ -605,7 +606,7 @@ export default function Payment({ success: successProp, cancel: cancelProp }) {
             <div className="success-circle no-print"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
             <p className="success-text no-print">Payment Success</p>
             {saleResult && (
-              <div id="receipt-print-area" className="mt-md text-sm text-muted pay-order-summary receipt-80mm">
+              <div id="receipt-print-area" data-testid="receipt" className="mt-md text-sm text-muted pay-order-summary receipt-80mm">
                 <div className="text-center font-bold" style={{ fontSize: 16, marginBottom: 4, letterSpacing: 1 }}>{storeName}</div>
                 {settings?.address && <div className="text-center" style={{ fontSize: 11 }}>{settings.address}</div>}
                 {settings?.phone && <div className="text-center" style={{ fontSize: 11 }}>Tel: {settings.phone}</div>}
@@ -845,7 +846,7 @@ export default function Payment({ success: successProp, cancel: cancelProp }) {
       </div>
 
       <div className="method-row mb-md">
-        <button className={`method ${method === 'cash' ? 'active' : ''}`} onClick={() => { setMethod('cash'); setSelectedWallet(null); }}>Cash</button>
+        <button className={`method ${method === 'cash' ? 'active' : ''}`} data-testid="pay-method-cash" onClick={() => { setMethod('cash'); setSelectedWallet(null); }}>Cash</button>
         <button className={`method ${method === 'split' ? 'active' : ''}`} onClick={() => setMethod('split')}>Split</button>
         <button className={`method ${method === 'ewallet' ? 'active' : ''}`} onClick={() => setMethod('ewallet')}>E-Wallet</button>
       </div>
@@ -875,7 +876,7 @@ export default function Payment({ success: successProp, cancel: cancelProp }) {
             />
           </div>
           <div className="pay-quick-cash">
-            <button className="btn btn-outline" onClick={() => setCashAmount(total.toFixed(2))}>Exact</button>
+            <button className="btn btn-outline" data-testid="cash-exact" onClick={() => setCashAmount(total.toFixed(2))}>Exact</button>
             <button className="btn btn-outline" onClick={() => setCashAmount('100')}>₱100</button>
             <button className="btn btn-outline" onClick={() => setCashAmount('200')}>₱200</button>
             <button className="btn btn-outline" onClick={() => setCashAmount('500')}>₱500</button>
@@ -978,6 +979,7 @@ export default function Payment({ success: successProp, cancel: cancelProp }) {
         ) : (
           <button
             className="btn btn-success btn-lg"
+            data-testid="complete-payment"
             disabled={
               !method || loading
               || (method === 'cash' && (!cashAmount || parseFloat(cashAmount) < total))
