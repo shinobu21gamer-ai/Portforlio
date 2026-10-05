@@ -1,9 +1,9 @@
 import { test, expect } from '@playwright/test';
-import { DEMO, loginApi, openCashierRegister, registerRoot } from '../helpers';
+import { DEMO, loginApi, loginUi, stubPrint } from '../helpers';
 
 test.describe('POS sale + receipt', () => {
   test('cashier rings up a cash sale and sees a receipt', async ({ page, request }) => {
-    const { token, user, refreshToken } = await loginApi(request, DEMO.cashier.email, DEMO.cashier.password);
+    const { token } = await loginApi(request, DEMO.cashier.email, DEMO.cashier.password);
     const catalog = await request.get('/api/v1/products?limit=1', {
       headers: { Authorization: `Bearer ${token}` },
     });
@@ -11,22 +11,13 @@ test.describe('POS sale + receipt', () => {
     expect(catalog.ok(), `catalog: ${catalog.status()} ${catalogBody}`).toBeTruthy();
     expect(JSON.parse(catalogBody).data.products.length).toBeGreaterThan(0);
 
-    await openCashierRegister(page, token, user, refreshToken);
+    await stubPrint(page);
+    await loginUi(page, DEMO.cashier.email, DEMO.cashier.password);
+    await expect(page.getByRole('button', { name: /Back to HRMS/i })).toBeVisible({ timeout: 20000 });
 
-    // Same-origin iframe: wait until a product card exists in the embed (or the
-    // top-level document, if the cashier shell skipped the iframe).
-    await page.waitForFunction(() => {
-      const inFrame = document
-        .querySelector('iframe[title="Point of Sale"]')
-        ?.contentDocument?.querySelector('[data-testid="product-card"]');
-      const onPage = document.querySelector('[data-testid="product-card"]');
-      return !!(inFrame || onPage);
-    }, { timeout: 25000 });
-
-    const iframe = page.locator('iframe[title="Point of Sale"]');
-    const pos = (await iframe.count()) > 0 ? registerRoot(page) : page;
+    const pos = page.frameLocator('iframe[title="Point of Sale"]');
     const product = pos.getByTestId('product-card').first();
-    await expect(product).toBeVisible({ timeout: 5000 });
+    await expect(product).toBeVisible({ timeout: 25000 });
     await page.screenshot({ path: 'docs/screenshots/pos-terminal.png', fullPage: true });
     await product.click();
 

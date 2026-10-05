@@ -48,7 +48,11 @@ function PageLoader() {
 function hasStoredToken() {
   try {
     const t = localStorage.getItem('token');
-    return !!(t && t !== 'null' && t !== '');
+    if (t && t !== 'null' && t !== '') return true;
+    const hrms = localStorage.getItem('hrms_auth');
+    if (!hrms) return false;
+    const parsed = JSON.parse(hrms);
+    return !!(parsed?.token);
   } catch {
     return false;
   }

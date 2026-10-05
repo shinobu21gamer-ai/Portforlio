@@ -146,6 +146,7 @@ server-side search + sort + pagination wiring (standard param names `search` / `
 - [x] 2026-10-05 **E2E still red after 403 fix** — AuthCheck no longer blocks the register on `/auth/profile`. Session seed writes localStorage on `/health` (same origin) before `/pos`. Playwright webServer inherits `process.env` so `PATH`/`CI` survive.
 - [x] 2026-10-05 **POS sale still 21.7s** — `/payment/success` is auth-optional so the override spec didn't prove session seed. Cash sale now uses the real cashier path (HRMS login → `#pos` iframe). AuthCheck first-paints when a token is already in localStorage. POS iframe no longer `opacity: 0` (Playwright treats that as hidden). Seed writes on `/` (HTML), not `/health` (JSON).
 - [x] 2026-10-05 **POS sale still 22.4s** — iframe POS reads `token`/`user`, HRMS login only writes `hrms_auth` (same origin). Seed both stores, open `/hrms/pos` directly, wait for `product-card` via `contentDocument`.
+- [x] 2026-10-05 **error-context.md still red** — POS authStore now falls back to `hrms_auth` (same-origin embed). Sale spec uses HRMS loginUi + frameLocator like the passing cashier role test. No contentDocument wait.
 
 **Gate:** lint 0/0; **764/764** unit+integration (28 files, ratchet from P5's 515); coverage ~69/73/53/73 with thresholds 65/68/50/68; both frontends production-build clean. Playwright specs land; Chromium isn't downloadable in this sandbox (TLS to cdn.playwright.dev blocked) so E2E is the CI job.
 

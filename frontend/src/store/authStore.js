@@ -1,17 +1,46 @@
 import { create } from 'zustand';
 import useCartStore from './cartStore';
 
+const getStored = (key) => {
+  const val = localStorage.getItem(key);
+  return val && val !== 'null' ? val : null;
+};
+
+/** POS keys, or the HRMS session on the same origin (iframe embed). */
+function readInitialSession() {
+  const token = getStored('token');
+  const userRaw = getStored('user');
+  if (token) {
+    let user = null;
+    try { user = userRaw ? JSON.parse(userRaw) : null; } catch { user = null; }
+    return { user, token, refreshToken: getStored('refreshToken') };
+  }
+  const hrmsRaw = getStored('hrms_auth');
+  if (!hrmsRaw) return { user: null, token: null, refreshToken: null };
+  try {
+    const hrms = JSON.parse(hrmsRaw);
+    if (!hrms?.token) return { user: null, token: null, refreshToken: null };
+    localStorage.setItem('token', hrms.token);
+    if (hrms.user) localStorage.setItem('user', JSON.stringify(hrms.user));
+    if (hrms.refreshToken) localStorage.setItem('refreshToken', hrms.refreshToken);
+    return {
+      user: hrms.user || null,
+      token: hrms.token,
+      refreshToken: hrms.refreshToken || null,
+    };
+  } catch {
+    return { user: null, token: null, refreshToken: null };
+  }
+}
+
 const useAuthStore = create((set) => {
-  const getStored = (key) => {
-    const val = localStorage.getItem(key);
-    return val && val !== 'null' ? val : null;
-  };
+  const initial = readInitialSession();
 
   return {
-    user: getStored('user') ? JSON.parse(localStorage.getItem('user')) : null,
-    token: getStored('token'),
-    refreshToken: getStored('refreshToken'),
-    isAuthenticated: !!getStored('token'),
+    user: initial.user,
+    token: initial.token,
+    refreshToken: initial.refreshToken,
+    isAuthenticated: !!initial.token,
 
     login: (user, token, refreshToken) => {
       const t = (token && token !== 'null' && token !== '') ? token : null;
