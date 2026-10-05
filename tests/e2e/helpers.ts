@@ -36,34 +36,39 @@ export async function loginApi(request: APIRequestContext, email: string, passwo
   };
 }
 
-/** Persist a POS session. Payload is primitives only so addInitScript can't choke on the user object. */
-export async function seedPosSession(page: Page, token: string, user: unknown, refreshToken?: string | null) {
-  const userJson = JSON.stringify(user);
-  const rt = refreshToken ?? '';
-  await page.addInitScript(({ token, userJson, rt }) => {
-    localStorage.setItem('token', token);
-    localStorage.setItem('user', userJson);
-    if (rt) localStorage.setItem('refreshToken', rt);
-    else localStorage.removeItem('refreshToken');
-    localStorage.setItem('minimart_autoprint', '0');
-    window.print = () => {};
-  }, { token, userJson, rt });
+function sessionPayload(token: string, user: unknown, refreshToken?: string | null) {
+  return { token, userJson: JSON.stringify(user), rt: refreshToken ?? '' };
 }
 
-/** HTML same-origin write + /pos. Avoid /health (JSON) — Chromium may not commit localStorage there. */
-export async function gotoPos(page: Page, token: string, user: unknown, refreshToken?: string | null) {
-  const userJson = JSON.stringify(user);
-  const rt = refreshToken ?? '';
-  const persist = ({ token, userJson, rt }: { token: string; userJson: string; rt: string }) => {
+export async function seedPosSession(page: Page, token: string, user: unknown, refreshToken?: string | null) {
+  await page.addInitScript(({ token, userJson, rt }) => {
+    const parsed = JSON.parse(userJson);
+    localStorage.setItem('hrms_auth', JSON.stringify({ user: parsed, token, refreshToken: rt || null }));
     localStorage.setItem('token', token);
     localStorage.setItem('user', userJson);
     if (rt) localStorage.setItem('refreshToken', rt);
     else localStorage.removeItem('refreshToken');
     localStorage.setItem('minimart_autoprint', '0');
     window.print = () => {};
-  };
-  await page.addInitScript(persist, { token, userJson, rt });
+  }, sessionPayload(token, user, refreshToken));
+}
+
+/** Seed HRMS+POS keys on an HTML origin, then open the cashier embed. */
+export async function openCashierRegister(page: Page, token: string, user: unknown, refreshToken?: string | null) {
+  const payload = sessionPayload(token, user, refreshToken);
+  await seedPosSession(page, token, user, refreshToken);
   await page.goto('/');
-  await page.evaluate(persist, { token, userJson, rt });
-  await page.goto('/pos');
+  await page.evaluate(({ token, userJson, rt }) => {
+    const parsed = JSON.parse(userJson);
+    localStorage.setItem('hrms_auth', JSON.stringify({ user: parsed, token, refreshToken: rt || null }));
+    localStorage.setItem('token', token);
+    localStorage.setItem('user', userJson);
+    if (rt) localStorage.setItem('refreshToken', rt);
+    localStorage.setItem('minimart_autoprint', '0');
+  }, payload);
+  await page.goto('/hrms/pos');
+}
+
+export function registerRoot(page: Page) {
+  return page.frameLocator('iframe[title="Point of Sale"]');
 }

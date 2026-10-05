@@ -24,6 +24,8 @@ test.describe('online-pay pending → cash override', () => {
     page.on('dialog', (d) => d.accept());
     await page.goto('/');
     await page.evaluate(({ token, userJson, rt }) => {
+      const user = JSON.parse(userJson);
+      localStorage.setItem('hrms_auth', JSON.stringify({ user, token, refreshToken: rt || null }));
       localStorage.setItem('token', token);
       localStorage.setItem('user', userJson);
       if (rt) localStorage.setItem('refreshToken', rt);
