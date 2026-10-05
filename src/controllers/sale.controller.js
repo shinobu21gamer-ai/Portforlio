@@ -65,6 +65,15 @@ class SaleController {
     }
   }
 
+  async completePendingAsCash(req, res, next) {
+    try {
+      const sale = await saleService.completePendingAsCash(req.params.id, req.user);
+      return sendSuccess(res, sale, 'Pending sale completed as cash');
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async getByInvoice(req, res, next) {
     try {
       const sale = await saleService.getByInvoice(req.params.invoiceNo, req.user);

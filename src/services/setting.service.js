@@ -6,7 +6,7 @@ const ApiError = require('../utils/ApiError');
 const SETTINGS_FILE = path.resolve(__dirname, '../../data/settings.json');
 
 const DEFAULT_KEYS = ['storeName', 'storeAddress', 'storePhone', 'storeEmail', 'taxRate', 'currency', 'lowStockThreshold', 'receiptHeader', 'receiptFooter'];
-const ALLOWED_KEYS = new Set([...DEFAULT_KEYS, 'address', 'phone', 'email', 'gcashNumber', 'mayaNumber', 'allowPublicRegistration']);
+const ALLOWED_KEYS = new Set([...DEFAULT_KEYS, 'address', 'phone', 'email', 'gcashNumber', 'mayaNumber', 'allowPublicRegistration', 'onboardingDismissedAt']);
 
 const DEFAULTS = {
   storeName: config.app.name || 'My Store',
@@ -86,6 +86,12 @@ class SettingService {
 
     if ('allowPublicRegistration' in filtered) {
       filtered.allowPublicRegistration = !!filtered.allowPublicRegistration;
+    }
+
+    // First-run checklist dismissal timestamp (ISO string or null to re-show).
+    if ('onboardingDismissedAt' in filtered) {
+      const v = filtered.onboardingDismissedAt;
+      filtered.onboardingDismissedAt = v === null || v === '' ? null : String(v);
     }
 
     settings = { ...settings, ...filtered };

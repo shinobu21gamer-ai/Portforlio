@@ -1873,3 +1873,30 @@ button:not(.btn):not(.tab):not(.icon-btn) {
 .password-toggle:hover { background: var(--bg-tertiary); color: var(--text); }
 .password-toggle svg { width: 18px; height: 18px; }
 .password-toggle:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+/* ─── First-run onboarding checklist ─────────────────────────────── */
+.onboarding-card { border: 1px solid var(--border-primary); border-left: 4px solid var(--indigo-500, var(--primary)); }
+.onboarding-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 12px; }
+.onboarding-progress { height: 6px; background: var(--bg-tertiary); border-radius: 999px; overflow: hidden; margin-bottom: 16px; }
+.onboarding-progress-fill { height: 100%; background: var(--indigo-500, var(--primary)); border-radius: 999px; transition: width 0.3s var(--ease-out, ease); }
+.onboarding-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.onboarding-step { display: flex; gap: 12px; padding: 10px 8px; border-radius: var(--radius-md, 8px); align-items: flex-start; }
+.onboarding-step:hover { background: var(--bg-tertiary); }
+.onboarding-check {
+  flex: none; width: 22px; height: 22px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  border: 2px solid var(--border-primary); color: transparent; font-size: 13px; font-weight: 700;
+  transition: all 0.2s ease;
+}
+.onboarding-step.done .onboarding-check { background: var(--success, #22c55e); border-color: var(--success, #22c55e); color: #fff; }
+.onboarding-step.done .onboarding-step-title { color: var(--text-muted); text-decoration: line-through; }
+.onboarding-step-body { flex: 1; min-width: 0; }
+.onboarding-step-title { font-weight: 600; font-size: 14px; }
+.onboarding-step-desc { font-size: 13px; color: var(--text-muted); margin-top: 2px; }
+.onboarding-step-action { margin-top: 10px; }
+.onboarding-inline-form { margin-top: 12px; padding: 12px; background: var(--bg-tertiary); border-radius: var(--radius-md, 8px); }
+.onboarding-form-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.onboarding-form-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-muted); }
+.onboarding-form-grid label span { font-weight: 600; }
+@media (max-width: 640px) {
+  .onboarding-form-grid { grid-template-columns: 1fr; }
+}

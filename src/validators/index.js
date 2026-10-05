@@ -447,6 +447,7 @@ const schemas = {
     storeAddress: htmlField().max(255).optional(),
     storePhone: Joi.string().max(20).optional().allow(''),
     allowPublicRegistration: Joi.boolean().optional(),
+    onboardingDismissedAt: Joi.string().isoDate().allow('', null).optional(),
     storeEmail: Joi.string().email().max(150).optional().allow(''),
     taxRate: Joi.number().min(0).max(100).optional().messages({
       'number.max': 'taxRate must be a percentage between 0 and 100',

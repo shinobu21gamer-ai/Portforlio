@@ -27,22 +27,34 @@ function getCategoryColor(cat, index) {
   return map[slug] || COLOR_DEFAULTS[index % COLOR_DEFAULTS.length];
 }
 
+// Held carts auto-expire after this long so a forgotten hold can't be
+// recalled weeks later and double-sell a product that has moved on.
+const HOLD_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
+
 export default function Pos() {
   const user = useAuthStore(s => s.user);
   const HELD_KEY = useMemo(() => `minimart_held_${user?.id || 'guest'}`, [user?.id]);
 
   const loadHeld = () => {
-    try { return JSON.parse(localStorage.getItem(HELD_KEY)) || []; }
+    try {
+      const list = JSON.parse(localStorage.getItem(HELD_KEY)) || [];
+      const fresh = list.filter(h => Date.now() - new Date(h.timestamp).getTime() < HOLD_TTL_MS);
+      if (fresh.length !== list.length) localStorage.setItem(HELD_KEY, JSON.stringify(fresh));
+      return fresh;
+    }
     catch { return []; }
   };
 
   const saveHeld = (list) => localStorage.setItem(HELD_KEY, JSON.stringify(list));
+  const isHeldExpired = (h) => Date.now() - new Date(h.timestamp).getTime() >= HOLD_TTL_MS;
   const [searchParams] = useSearchParams();
   const [query, setQuery] = useState('');
   const [activeTab, setActiveTab] = useState(() => searchParams.get('cat') || 'all');
   const [customerId, setCustomerId] = useState('');
   const [heldTransactions, setHeldTransactions] = useState(loadHeld);
   const [showHeldModal, setShowHeldModal] = useState(false);
+  const [showHoldModal, setShowHoldModal] = useState(false);
+  const [holdReason, setHoldReason] = useState('');
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const searchRef = useRef(null);
   const navigate = useNavigate();
@@ -66,6 +78,22 @@ export default function Pos() {
     categoryId: activeTab !== 'all' ? activeTab : undefined,
     limit: 50,
   });
+
+  // ── Barcode-scanner flow ─────────────────────────────────────────────
+  // Scanners type fast (usually 8+ chars in well under a second) and end
+  // with Enter. Detect that burst, resolve it as a scan, and add directly —
+  // no second Enter or click. A slow Enter still just searches, and with
+  // exactly one result it adds that result.
+  const scanRef = useRef({ start: 0, last: 0, chars: 0 });
+  const pendingScanRef = useRef(null); // scanned value awaiting search results
+  const pendingScanTimeoutRef = useRef(null);
+
+  // Focus the search on mount — that covers both page load and the return
+  // from /payment after a sale, so the next customer's scan is ready.
+  useEffect(() => {
+    const t = setTimeout(() => searchRef.current?.focus(), 50);
+    return () => clearTimeout(t);
+  }, []);
 
   const products = useMemo(() => {
     const prods = (prodData?.data?.products || prodData?.products || []);
@@ -115,18 +143,50 @@ export default function Pos() {
     }
   }, [isExpired, items, addItem, toast]);
 
+  // When a scan wasn't resolved against the currently loaded products,
+  // resolve it once the search for the scanned value settles.
+  useEffect(() => {
+    if (isLoading) return;
+    if (!pendingScanRef.current) return;
+    const scanned = pendingScanRef.current;
+    pendingScanRef.current = null;
+    if (pendingScanTimeoutRef.current) { clearTimeout(pendingScanTimeoutRef.current); pendingScanTimeoutRef.current = null; }
+    const match = products.find(p =>
+      (p.barcode && String(p.barcode) === scanned) ||
+      (p.sku && String(p.sku).toLowerCase() === scanned.toLowerCase()) ||
+      (p.name && p.name.toLowerCase().includes(scanned.toLowerCase()))
+    );
+    if (match) {
+      handleAddProduct(match);
+      setQuery('');
+      toast.success(`Scanned: ${match.name}`);
+    } else if (products.length === 0) {
+      toast.error(`No product matches "${scanned}"`);
+      setQuery('');
+    }
+    // multiple ambiguous results stay on screen for a click
+  }, [isLoading, products, handleAddProduct, toast]);
+
   const total = useCartStore(s => s.getTotal());
   const subtotal = useCartStore(s => s.getSubtotal());
   const tax = useCartStore(s => s.getTax());
 
-  const holdTransaction = useCallback(() => {
+  const holdTransaction = useCallback((reason) => {
     if (items.length === 0) { toast.error('Cart is empty'); return; }
-    const held = { id: Date.now(), items: JSON.parse(JSON.stringify(items)), customerId, timestamp: new Date().toISOString() };
+    const held = {
+      id: Date.now(),
+      items: JSON.parse(JSON.stringify(items)),
+      customerId,
+      reason: (reason || '').trim(),
+      timestamp: new Date().toISOString(),
+    };
     const updated = [...heldTransactions, held];
     setHeldTransactions(updated);
     saveHeld(updated);
     clearCart();
     setCustomerId('');
+    setShowHoldModal(false);
+    setHoldReason('');
     toast.success('Transaction held');
   }, [items, customerId, heldTransactions, clearCart, toast]);
 
@@ -183,7 +243,7 @@ export default function Pos() {
           variant="secondary"
           size="sm"
           fullWidth
-          onClick={holdTransaction}
+          onClick={() => setShowHoldModal(true)}
           disabled={items.length === 0}
         >
           Hold {heldTransactions.length > 0 && `(${heldTransactions.length})`}
@@ -241,13 +301,68 @@ export default function Pos() {
           </select>
           <div className="search">
             <svg className="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-            <input
-              ref={searchRef}
-              className="input"
-              placeholder="Search products... (F1)"
-              value={query}
-              onChange={e => setQuery(e.target.value)}
-            />
+        <input
+          ref={searchRef}
+          className="input"
+          placeholder="Scan barcode or search… (F1)"
+          aria-label="Scan barcode or search products"
+          value={query}
+          onChange={e => {
+            // Track keystroke burst: scanners fire 8+ chars in well under
+            // a second; humans don't.
+            const now = Date.now();
+            if (now - scanRef.current.last > 120) {
+              scanRef.current.start = now;
+              scanRef.current.chars = 1;
+            } else {
+              scanRef.current.chars += 1;
+            }
+            scanRef.current.last = now;
+            setQuery(e.target.value);
+          }}
+          onKeyDown={e => {
+            if (e.key !== 'Enter') return;
+            e.preventDefault();
+            const value = query.trim();
+            if (!value) return;
+
+            // Resolve directly against what's already on screen first —
+            // also covers re-scanning the same code while it's the query.
+            const direct = products.find(p =>
+              (p.barcode && String(p.barcode) === value) ||
+              (p.sku && String(p.sku).toLowerCase() === value.toLowerCase())
+            );
+            if (direct) {
+              handleAddProduct(direct);
+              setQuery('');
+              toast.success(`Scanned: ${direct.name}`);
+              scanRef.current = { start: 0, last: 0, chars: 0 };
+              return;
+            }
+
+            const burst =
+              scanRef.current.chars >= 8 &&
+              Date.now() - scanRef.current.start < 900;
+            if (burst) {
+              // Fast keystrokes + Enter = scanner. The debounced search
+              // will resolve it (effect above adds the match automatically).
+              pendingScanRef.current = value;
+              if (pendingScanTimeoutRef.current) clearTimeout(pendingScanTimeoutRef.current);
+              // Safety: if no search re-fires (e.g. scanned value already
+              // was the query), drop the pending scan instead of letting it
+              // resolve against an unrelated later search.
+              pendingScanTimeoutRef.current = setTimeout(() => { pendingScanRef.current = null; }, 2500);
+              scanRef.current = { start: 0, last: 0, chars: 0 };
+              return;
+            }
+
+            // Slow typing: Enter with exactly one result adds it.
+            if (products.length === 1) {
+              handleAddProduct(products[0]);
+              setQuery('');
+            }
+          }}
+        />
             {query && (
               <button onClick={() => setQuery('')} className="search-clear" aria-label="Clear search">
                 ×
@@ -274,6 +389,14 @@ export default function Pos() {
           >{c.name}</button>
         ))}
       </nav>
+
+      <div className="pos-hintbar" role="note" aria-label="Keyboard shortcuts">
+        <span><kbd>F1</kbd> Scan / Search</span>
+        <span><kbd>Enter</kbd> Add (single result)</span>
+        <span><kbd>F4</kbd> Checkout</span>
+        <span><kbd>F8</kbd> Clear</span>
+        <span><kbd>Esc</kbd> Clear search</span>
+      </div>
 
       <div className="products" role="list" aria-label="Products">
         {isLoading ? (
@@ -375,17 +498,24 @@ export default function Pos() {
             {heldTransactions.map(h => {
               const itemCount = h.items.reduce((s, i) => s + i.quantity, 0);
               const total = h.items.reduce((s, i) => s + (i.sellingPrice || i.price || 0) * i.quantity, 0);
-              const time = new Date(h.timestamp).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' });
+              const heldDate = new Date(h.timestamp);
+              const time = heldDate.toLocaleString('en-PH', { hour: '2-digit', minute: '2-digit' });
+              const ageHrs = Math.floor((Date.now() - heldDate.getTime()) / (60 * 60 * 1000));
+              const age = ageHrs >= 24 ? `${Math.floor(ageHrs / 24)}d ${ageHrs % 24}h` : ageHrs >= 1 ? `${ageHrs}h` : `${Math.max(1, Math.floor((Date.now() - heldDate.getTime()) / 60000))}m`;
+              const expired = isHeldExpired(h);
               return (
-                <div key={h.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px', background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-md)' }}>
-                  <div>
+                <div key={h.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px', background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-md)', opacity: expired ? 0.6 : 1 }}>
+                  <div style={{ minWidth: 0 }}>
                     <div style={{ fontWeight: 'var(--font-semibold)', fontSize: 'var(--text-sm)' }}>
                       {itemCount} item{itemCount !== 1 ? 's' : ''} — {peso(total)}
+                      {expired && <span style={{ color: 'var(--danger)', marginLeft: 8, fontSize: 'var(--text-xs)', fontWeight: 700 }}>EXPIRED</span>}
                     </div>
-                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--fg-tertiary)' }}>{time}</div>
+                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--fg-tertiary)' }}>
+                      {time} · held {age} ago{h.reason ? <span> · “{h.reason}”</span> : null}
+                    </div>
                   </div>
                   <div style={{ display: 'flex', gap: '8px' }}>
-                    <Button variant="primary" size="sm" onClick={() => { recallTransaction(h.id); setShowHeldModal(false); }}>
+                    <Button variant="primary" size="sm" disabled={expired} onClick={() => { recallTransaction(h.id); setShowHeldModal(false); }}>
                       Recall
                     </Button>
                     <Button variant="danger" size="sm" onClick={() => {
@@ -402,6 +532,34 @@ export default function Pos() {
             })}
           </div>
         )}
+      </Modal>
+
+      <Modal
+        open={showHoldModal}
+        onClose={() => setShowHoldModal(false)}
+        title="Hold Transaction"
+        size="sm"
+      >
+        <p style={{ margin: '0 0 12px', color: 'var(--fg-secondary)', fontSize: 'var(--text-sm)' }}>
+          The cart ({items.length} item{items.length !== 1 ? 's' : ''}) is set aside and can be recalled later. Held carts expire after 12 hours.
+        </p>
+        <label htmlFor="hold-reason" style={{ display: 'block', marginBottom: '6px', fontSize: 'var(--text-sm)', fontWeight: 'var(--font-medium)' }}>
+          Reason <span style={{ color: 'var(--fg-tertiary)', fontWeight: 400 }}>(optional)</span>
+        </label>
+        <input
+          id="hold-reason"
+          className="input"
+          placeholder='e.g. "Customer stepping out to pay"'
+          value={holdReason}
+          maxLength={80}
+          onChange={e => setHoldReason(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') holdTransaction(holdReason); }}
+          autoFocus
+        />
+        <div className="modal__footer" style={{ paddingTop: 'var(--space-5)', justifyContent: 'flex-end' }}>
+          <Button variant="secondary" onClick={() => { setShowHoldModal(false); setHoldReason(''); }}>Cancel</Button>
+          <Button variant="primary" onClick={() => holdTransaction(holdReason)}>Hold Cart</Button>
+        </div>
       </Modal>
 
       <ConfirmDialog

@@ -500,6 +500,38 @@
   box-shadow: var(--shadow-focus);
 }
 
+/* F-key hint bar — makes the shortcuts discoverable */
+.pos-hintbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  align-items: center;
+  padding: 6px 16px;
+  font-size: 12px;
+  color: var(--text-muted);
+  background: var(--bg-surface, rgba(0, 0, 0, 0.03));
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.pos-hintbar kbd {
+  display: inline-block;
+  min-width: 22px;
+  margin-right: 5px;
+  padding: 1px 6px;
+  font-size: 11px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-weight: 600;
+  color: var(--text-primary);
+  background: var(--bg-elevated, rgba(0, 0, 0, 0.05));
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  text-align: center;
+}
+@media (max-width: 640px) {
+  .pos-hintbar { display: none; }
+}
+
 /* Products Grid */
 .products {
   flex: 1;
@@ -1025,6 +1057,46 @@
   .product {
     break-inside: avoid;
     page-break-inside: avoid;
+  }
+}
+
+/* ─── 80mm thermal receipt print ─────────────────────────────────────
+   The payment success screen marks its receipt with #receipt-print-area
+   and the app toggles .print-receipt on <body> while window.print() runs.
+   Everything else is hidden via visibility (layout preserved, nothing
+   reflows), leaving a plain monospace slip sized for 80mm paper. */
+@media print {
+  body.print-receipt * {
+    visibility: hidden;
+  }
+  body.print-receipt #receipt-print-area,
+  body.print-receipt #receipt-print-area * {
+    visibility: visible;
+  }
+  body.print-receipt #receipt-print-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 72mm;
+    margin: 0;
+    padding: 0;
+    background: #fff !important;
+    color: #000 !important;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 12px;
+    line-height: 1.45;
+    border: none !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+  }
+  body.print-receipt .no-print {
+    display: none !important;
+  }
+  body.print-receipt #receipt-print-area .text-muted,
+  body.print-receipt #receipt-print-area .receipt-row span,
+  body.print-receipt #receipt-print-area .pay-summary-row,
+  body.print-receipt #receipt-print-area .flex-between span {
+    color: #000 !important;
   }
 }
 

@@ -369,6 +369,64 @@ class SaleService {
   }
 
 
+  /**
+   * Admin/manager escape hatch for a pending online sale: the customer's
+   * gateway payment never went through (card declined, closed the tab,
+   * PayMongo down) but they are standing at the counter paying cash.
+   * Marks the sale paid/cash, records the payment and runs the same
+   * finalization as the online path (loyalty, discount usage, notification).
+   * Stock was already reserved when the pending sale was created.
+   */
+  async completePendingAsCash(saleId, user) {
+    if (!(await this.canApplyManualDiscount(user?.id || user))) {
+      throw ApiError.forbidden('Only a manager or admin can complete a pending sale as cash');
+    }
+
+    const overrideRef = `CASH-OVERRIDE-${Date.now()}`;
+    return sequelize.transaction(async (t) => {
+      const sale = await Sale.findByPk(saleId, { transaction: t, lock: true });
+      if (!sale) throw ApiError.notFound('Sale not found');
+      if (sale.paymentStatus === 'paid') {
+        throw ApiError.conflict('Sale is already marked as paid');
+      }
+      if (sale.status === 'cancelled') {
+        throw ApiError.conflict('Sale has been cancelled and cannot be completed');
+      }
+      if (sale.status !== 'pending') {
+        throw ApiError.conflict(`Sale cannot be completed from status "${sale.status}"`);
+      }
+
+      await sale.update({
+        paymentStatus: 'paid',
+        status: 'completed',
+        paymentMethod: 'cash',
+        paymentReference: overrideRef,
+      }, { transaction: t });
+
+      const existingPayment = await Payment.findOne({ where: { saleId: sale.id }, transaction: t });
+      if (existingPayment) {
+        await existingPayment.update({
+          status: 'completed',
+          paymentMethod: 'cash',
+          reference: overrideRef,
+          paidAt: new Date(),
+        }, { transaction: t });
+      } else {
+        await Payment.create({
+          saleId: sale.id,
+          amount: sale.total,
+          paymentMethod: 'cash',
+          reference: overrideRef,
+          status: 'completed',
+          paidAt: new Date(),
+        }, { transaction: t });
+      }
+
+      await this.finalizeAfterPayment(sale.id, t);
+      return sale;
+    });
+  }
+
   async finalizeAfterPayment(saleId, transaction) {
     const sale = await Sale.findByPk(saleId, { transaction, lock: true });
     if (!sale) throw ApiError.notFound('Sale not found');

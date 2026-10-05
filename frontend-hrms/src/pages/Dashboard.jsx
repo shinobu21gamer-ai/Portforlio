@@ -6,6 +6,7 @@ import LoadingSkeleton from '../components/LoadingSkeleton';
 import { formatDate, getWeekRange, getMonthRange } from '../utils/helpers';
 import { useIsAdmin, useIsHR } from '../hooks/useRole';
 import useAuthStore from '../store/authStore';
+import OnboardingChecklist from '../components/OnboardingChecklist';
 import api from '../api/client';
 import { icons } from '../components/ActionButton';
 
@@ -115,6 +116,7 @@ function AdminDashboard() {
           <div className="sub">Human Resource Management Overview</div>
         </div>
       </header>
+      <OnboardingChecklist />
 
       <div className="flex-wrap-sm mb-md">
         {isAdmin && <button className="btn btn-sm btn-primary" onClick={() => navigate('/employees')}>＋ Add Employee</button>}

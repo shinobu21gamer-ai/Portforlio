@@ -273,6 +273,61 @@ describe('POST /api/v1/sales/pending (online checkout entry point)', () => {
   });
 });
 
+describe('POST /api/v1/sales/pending/:id/cash-complete (admin/manager override)', () => {
+  const makePending = async (token: string) => {
+    const res = await api.post(
+      `${baseUrl}/sales/pending`,
+      { items: [{ productId, quantity: 1 }], paymentMethod: 'gcash' },
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    return res.data.data as any;
+  };
+  const cashComplete = (id: number, token: string) =>
+    api
+      .post(`${baseUrl}/sales/pending/${id}/cash-complete`, {}, { headers: { Authorization: `Bearer ${token}` } })
+      .catch((e) => e.response);
+
+  it('lets an admin complete a pending sale as cash, without double-decrementing stock', async () => {
+    const pending = await makePending(adminToken);
+    expect(pending.status).toBe('pending');
+    // stock already reserved at pending creation
+    expect((await Product.findByPk(productId))!.stockQuantity).toBe(99);
+
+    const res = await cashComplete(pending.id, adminToken);
+    expect(res.status).toBe(200);
+    const sale = res.data.data;
+    expect(sale.status).toBe('completed');
+    expect(sale.paymentStatus).toBe('paid');
+    expect(sale.paymentMethod).toBe('cash');
+    expect(sale.paymentReference).toMatch(/^CASH-OVERRIDE-/);
+
+    // the override must NOT decrement stock a second time
+    expect((await Product.findByPk(productId))!.stockQuantity).toBe(99);
+  });
+
+  it('forbids cashiers (403)', async () => {
+    const pending = await makePending(cashierToken);
+    const res = await cashComplete(pending.id, cashierToken);
+    expect(res.status).toBe(403);
+  });
+
+  it('rejects completing an already-paid sale (409)', async () => {
+    const pending = await makePending(adminToken);
+    const first = await cashComplete(pending.id, adminToken);
+    expect(first.status).toBe(200);
+    const second = await cashComplete(pending.id, adminToken);
+    expect(second.status).toBe(409);
+  });
+
+  it('requires authentication (401)', async () => {
+    const pending = await makePending(adminToken);
+    const res = await api
+      .post(`${baseUrl}/sales/pending/${pending.id}/cash-complete`)
+      .catch((e) => e.response);
+    expect(res.status).toBe(401);
+  });
+});
+
 describe('POST /api/v1/auth/register (public gate)', () => {
   const payload = {
     firstName: 'Stray',
@@ -321,6 +376,48 @@ describe('POST /api/v1/auth/register (public gate)', () => {
 
     const ok = await api.post(`${baseUrl}/auth/register`, { ...payload, email: `stray-${Date.now()}d@example.com` });
     expect(ok.status).toBe(201);
+  });
+});
+
+describe('PUT /api/v1/settings (onboarding dismissal key)', () => {
+  it('persists onboardingDismissedAt for admins and clears it with null', async () => {
+    const stamp = new Date().toISOString();
+    const put = await api.put(
+      `${baseUrl}/settings`,
+      { onboardingDismissedAt: stamp },
+      { headers: { Authorization: `Bearer ${adminToken}` } },
+    );
+    expect(put.status).toBe(200);
+    expect(put.data.data.onboardingDismissedAt).toBe(stamp);
+
+    const clear = await api.put(
+      `${baseUrl}/settings`,
+      { onboardingDismissedAt: null },
+      { headers: { Authorization: `Bearer ${adminToken}` } },
+    );
+    expect(clear.data.data.onboardingDismissedAt).toBeNull();
+  });
+
+  it('forbids non-admins from writing settings (403)', async () => {
+    const res = await api
+      .put(
+        `${baseUrl}/settings`,
+        { onboardingDismissedAt: '2026-01-01T00:00:00.000Z' },
+        { headers: { Authorization: `Bearer ${cashierToken}` } },
+      )
+      .catch((e) => e.response);
+    expect(res.status).toBe(403);
+  });
+
+  it('rejects a malformed timestamp (422)', async () => {
+    const res = await api
+      .put(
+        `${baseUrl}/settings`,
+        { onboardingDismissedAt: 'not-a-date' },
+        { headers: { Authorization: `Bearer ${adminToken}` } },
+      )
+      .catch((e) => e.response);
+    expect(res.status).toBe(422);
   });
 });
 
