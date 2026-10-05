@@ -239,12 +239,45 @@ const schemas = {
     discountValue: Joi.number().min(0).optional().default(0),
     discountId: Joi.number().integer().positive().allow(null).optional(),
     paymentMethod: Joi.string()
-      .valid('cash', 'gcash', 'maya', 'credit_card', 'debit_card', 'bank_transfer', 'other')
+      .valid('cash', 'gcash', 'maya', 'credit_card', 'debit_card', 'bank_transfer', 'other', 'split')
       .required(),
     paymentReference: Joi.string().optional().allow(''),
     cashAmount: Joi.number().min(0).optional(),
+    // Split payment: 2+ legs whose amounts sum exactly to the total.
+    // The overall paymentMethod must be 'split' when this is provided.
+    payments: Joi.array()
+      .items(
+        Joi.object({
+          paymentMethod: Joi.string().valid('cash', 'gcash', 'maya', 'credit_card', 'debit_card', 'bank_transfer', 'other').required(),
+          amount: Joi.number().positive().required(),
+          reference: Joi.string().optional().allow(''),
+        })
+      )
+      .min(2)
+      .max(6)
+      .optional(),
     shippingFee: Joi.number().min(0).optional().default(0),
     notes: htmlField().optional().allow(''),
+  }).custom((value) => {
+    if (value.paymentMethod === 'split' && (!value.payments || value.payments.length < 2)) {
+      throw new Error('Split payment requires at least two legs in payments[]');
+    }
+    return value;
+  }, 'split legs'),
+
+  // Refund a completed sale: omit items for a full refund; otherwise list
+  // per-line quantities. Reason is always required (audit trail).
+  refundSale: Joi.object({
+    items: Joi.array()
+      .items(
+        Joi.object({
+          saleItemId: Joi.number().integer().positive().required(),
+          quantity: Joi.number().integer().positive().required(),
+        })
+      )
+      .max(50)
+      .optional(),
+    reason: Joi.string().trim().min(3).max(500).required(),
   }),
 
   // ─── Purchase ───────────────────────────────────────────
@@ -440,6 +473,15 @@ const schemas = {
     geofenceRadiusMeters: Joi.number().integer().min(10).max(100000).optional().allow(null),
     enforceGeofence: Joi.boolean().optional(),
     isActive: Joi.boolean().optional(),
+  }),
+
+  // ─── Shifts ─────────────────────────────────────────────
+  openShift: Joi.object({
+    openingFloat: Joi.number().min(0).optional().default(0),
+  }),
+  closeShift: Joi.object({
+    countedCash: Joi.number().min(0).required(),
+    notes: Joi.string().max(500).optional().allow(''),
   }),
 
   // ─── Payment ────────────────────────────────────────────

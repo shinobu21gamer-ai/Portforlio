@@ -121,6 +121,10 @@ module.exports = {
   app: {
     name: process.env.APP_NAME || 'MiniMart POS',
     currency: process.env.DEFAULT_CURRENCY || 'PHP',
+    // Business timezone for day/month boundaries in reports, dashboards and
+    // cron windows. Stored timestamps are UTC; everything "today"-ish is
+    // computed in this zone (see src/utils/timezone.js).
+    timezone: process.env.APP_TIMEZONE || 'Asia/Manila',
     taxRate: parseFloat(process.env.TAX_RATE) || 0.12,
     lowStockThreshold: parseInt(process.env.LOW_STOCK_THRESHOLD, 10) || 10,
     expiryWarningDays: parseInt(process.env.EXPIRY_WARNING_DAYS, 10) || 30,

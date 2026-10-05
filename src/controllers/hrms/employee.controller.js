@@ -9,7 +9,12 @@ class EmployeeController {
   async create(req, res, next) { try { sendSuccess(res, await employeeService.create(req.body, req.user?.id), 'Created', 201); } catch (e) { next(e); } }
   async update(req, res, next) { try { sendSuccess(res, await employeeService.update(req.params.id, req.body, req.user?.id), 'Updated'); } catch (e) { next(e); } }
   async delete(req, res, next) { try { sendSuccess(res, await employeeService.delete(req.params.id, req.user?.id)); } catch (e) { next(e); } }
-  async approve(req, res, next) { try { sendSuccess(res, await employeeService.approve(req.params.id, req.user?.id), 'Approved'); } catch (e) { next(e); } }
+  async approve(req, res, next) {
+    try {
+      const { employee, tempPassword } = await employeeService.approve(req.params.id, req.user?.id);
+      sendSuccess(res, { employee, tempPassword }, 'Approved');
+    } catch (e) { next(e); }
+  }
   async reject(req, res, next) { try { sendSuccess(res, await employeeService.reject(req.params.id, req.user?.id), 'Rejected'); } catch (e) { next(e); } }
   async terminate(req, res, next) { try { sendSuccess(res, await employeeService.terminate(req.params.id, req.body, req.user?.id)); } catch (e) { next(e); } }
   async exportCSV(req, res, next) {

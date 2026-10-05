@@ -27,7 +27,44 @@ Living log for the 6-phase plan in `PLAN.md`. Newest entry on top.
 - [x] **A6** — `data/settings.json` → gitignored runtime file; committed baseline `data/settings.defaults.json` (fallback read in `setting.service`); `SETTINGS_FILE` env override. SMTP prod guard: boot fails in production without `SMTP_HOST` unless `EMAIL_DISABLED=true`.
 - [x] **A7/C4/C5** — 11 probe artifacts deleted; `FIX_PROMPT/FIX_TRACKING_PROMPT/OPENCODE_REVIEW_PROMPT/CLOUDFLARE_DEPLOY` + `vercel.json/.vercelignore/nginx.conf` removed; `IMPROVEMENT_PLAN.md` archived to `docs/`. (All logged in destructive-op table above.)
 - [x] **Tests** — new `tests/unit/setup.service.test.ts` (9) + `tests/integration/security.routes.integration.test.ts` (9: gate flow, logout-while-flagged, apply role gate, SMTP boot guard ×3). GATES: lint 0/0; unit 441/441 (17 files); integration 47/47 (4 files); both frontends build; prod-boot smoke (empty DB → 1 flagged admin, generated pw banner, /health 200) + dev-boot smoke (6 demo users, flags false, demo login 200) both PASS.
-## Phase 4 — Logic & flow — not started
+## Phase 4 — Logic & flow — DONE (awaiting user review)
+
+Completed 2026-10-05. Scope sign-off via 3 questions (cashier-void = own cash sale ≤15 min; branch
+transfers skipped + documented; shifts = full feature incl. POS UI). All plan items P4-1…P4-7 and
+verification passes V1…V4 done; all test gates green.
+
+### New features (all done)
+- [x] **P4-1 (A1) Refund & void** — `POST /sales/:id/refund` (full/partial per-item, reason required, restocks in txn, payment-refund ledger, admin/manager). Refund over-request now REJECTS 409 (no silent clamp). Hardened `cancel` (row lock, no double-restock on concurrent cancel, reason kept). **Real product bug fixed:** `sale.service.getById` customer association was missing `email` → receipt email silently dead on webhook + resend; attrs now include email. POS refund modal + "void last sale" quick action; cashier-void limited to own cash sale ≤15 min (window = `max(createdAt,updatedAt)`+15m).
+- [x] **P4-2 (A2) Split payments** — `payments[]` on cash sale create (sum must equal total; change on the cash leg); Payment row per leg; print + email receipts list all legs (split label); Payment.jsx "Split" UI.
+- [x] **P4-3 (A3) Cashier shifts** — Shift model (user, branch, status, openedAt/closedAt, openingFloat, cashSalesTotal, voidedAmount, expectedCash, countedCash, difference, closedBy, notes); open/close/list endpoints; cash sales attribute to open shift inside the sale txn; POS shift widget (ShiftWidget.jsx) + close modal + admin/manager list. Close: expectedCash = openingFloat + cashSalesTotal − voidedTotal; difference = countedCash − expectedCash.
+- [x] **P4-4 Employee↔POS user link fix** — replaced hardcoded `employee123` on employee create AND approve with generated temp password + `mustChangePassword: true` (both frontends already force change). `employeeService.approve` returns `{ employee, tempPassword }` (≠ 'employee123'); temp password surfaced in approve response.
+- [x] **P4-5 (B3) Role-based HRMS menu** — filtered `HR_NAV_BASE` by role per route matrix (manager hides Payroll — routes are admin/hr; hr/admin see all). POS sidebar already role-filtered (verified).
+- [x] **P4-6 (B6) Timezone-correct day boundaries** — `APP_TIMEZONE` (default `Asia/Manila`) + `utils/timezone.js` (day bounds, local date strings, per-dialect SQL date expr). Applied to dashboard, sale report, finance report/cashflow, expense windows. `localDateBoundsForDate` now accepts full-ISO instants (contain local day) in addition to `YYYY-MM-DD`. Fixed a wall-shift sign bug (verified across Sydney DST seasons; zero-padded offsets valid for SQLite/MySQL).
+- [x] **P4-7 (B8 + receipts)** — cash-override guidance copy on POS pending list (admin/manager-only by design); exposed `POST /sales/:id/email-receipt` resend route (was only wired to payment webhooks). `sendReceiptEmail` now reachable via both paths (customer email fix above).
+
+### Verification passes (gate: happy + failure paths via API tests + probes)
+- [x] **V1 Inventory & purchasing** — receive (partial/full + expiry handling), stock adjust, PO pay/installments from petty cash, supplier outstanding balances; assertions on stock/movements/balances. (Branch "transfers" skipped + documented — no per-branch stock exists.)
+- [x] **V2 HRMS** — clock-in/out geofence + overtime math; leave lifecycle pending→hr-reviewed→admin-approved + balances; payroll with known numbers (13th month ₱90k exemption, SSS/PhilHealth/Pag-IBIG, withholding), process→pay, payslip; contracts expiry.
+- [x] **V3 Dashboard & exports** — reconciliation harness (API vs raw SQL, PH TZ) for every widget; CSV integrity (employees/attendance/payrolls/suppliers) row counts + spot values.
+- [x] **V4 Held transactions & checkout** — hold/resume/expiry correctness; checkout happy path regression.
+
+### Tests (all green)
+- [x] unit: tz util (PH/UTC boundary + full-ISO instants), refund math, payroll known-number table, employee approve shape → **18 files / 454 PASS**
+- [x] integration: refund (full/partial/over-refund-409/failure), split (valid/invalid sums), shifts (open/close/expected-cash), dashboard under fixed TZ, receipt resend, employee temp-pw → **5 files / 61 PASS** (incl. 14/14 `phase4.routes.integration.test.ts`)
+- [x] eslint clean; e2e smoke `.smoke_phase4.cjs` 16/16; `frontend` + `frontend-hrms` production builds OK
+
+### Behavior changes to remember
+- refund over-request → 409 (never silently clamps); empty `items` on full refund takes all remaining.
+- `employeeService.approve` → `{ employee, tempPassword }`, `user.mustChangePassword = true`.
+- `sale.service.getById` includes `customer.email` (receipt path fixed).
+- `localDateBoundsForDate(tz, s)`: `YYYY-MM-DD` → local calendar day; full ISO → instant → containing local day.
+- cashier-void window = `max(createdAt, updatedAt)` + 15 min, own cash sale only.
+
+### Env note
+- No `.env` in workspace (dev runs use defaults). Prod needs `SMTP_*` **or** `EMAIL_DISABLED=true`
+  (Phase-3 boot guard, by design). Added commented `EMAIL_DISABLED` block to `.env.example`; render.yaml
+  already ships `EMAIL_DISABLED=true`.
+
 ## Phase 5 — UI/UX redesign — not started
 ## Phase 6 — Tests & CI — not started
 

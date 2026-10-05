@@ -8,6 +8,7 @@ const {
   generateInvoiceNo, calculateDiscount, calculateTax, getPagination, getPaginationMeta, escapeLike,
 } = require('../utils/helpers');
 const config = require('../config');
+const { sqlLocalDateExpr, localDateBoundsForDate } = require('../utils/timezone');
 
 class SaleService {
   async canApplyManualDiscount(userId) {
@@ -65,7 +66,7 @@ class SaleService {
     const { rows, count } = await Sale.findAndCountAll({
       where,
       include: [
-        { association: 'customer', attributes: ['id', 'firstName', 'lastName', 'phone'] },
+        { association: 'customer', attributes: ['id', 'firstName', 'lastName', 'phone', 'email'] },
         { association: 'user', attributes: ['id', 'firstName', 'lastName'] },
       ],
       offset,
@@ -80,7 +81,9 @@ class SaleService {
     const sale = await Sale.findByPk(id, {
       include: [
         { association: 'items', include: [{ association: 'product', attributes: ['id', 'name', 'sku', 'barcode'] }] },
-        { association: 'customer', attributes: ['id', 'firstName', 'lastName', 'phone'] },
+        // email is required for receipt delivery (sendReceiptEmail reads it
+        // off this association) — omitting it silently killed every receipt.
+        { association: 'customer', attributes: ['id', 'firstName', 'lastName', 'phone', 'email'] },
         { association: 'user', attributes: ['id', 'firstName', 'lastName'] },
         { association: 'payments' },
       ],
@@ -234,6 +237,16 @@ class SaleService {
         if (data.paymentMethod === 'cash') {
           throw ApiError.badRequest('Cash sales cannot be created as pending');
         }
+      } else if (data.paymentMethod === 'split') {
+        // Split tender: every leg must be named + positive and the legs must
+        // sum to the total exactly (no change in a split).
+        const legs = Array.isArray(data.payments) ? data.payments : [];
+        const legSum = Math.round(legs.reduce((s, l) => s + (parseFloat(l.amount) || 0), 0) * 100) / 100;
+        if (legs.length < 2 || legSum !== Math.round(total * 100) / 100) {
+          throw ApiError.badRequest(`Split legs must sum to the total (${total}). Received: ${legSum}`);
+        }
+        cashAmt = legs.filter((l) => l.paymentMethod === 'cash')
+          .reduce((s, l) => s + (parseFloat(l.amount) || 0), 0) || null;
       } else {
         // Non-cash payments must be verified through the gateway (pending checkout flow).
         if (data.paymentMethod !== 'cash') {
@@ -265,7 +278,9 @@ class SaleService {
         paymentMethod: data.paymentMethod || (pending ? 'gcash' : 'cash'),
         paymentReference: data.paymentReference || null,
         cashAmount: cashAmt,
-        changeAmount: cashAmt == null ? null : parseFloat((cashAmt - total).toFixed(2)),
+        // No change in a split tender (legs must cover exactly) — only
+        // single-cash sales compute change.
+        changeAmount: cashAmt == null || data.paymentMethod === 'split' ? null : parseFloat((cashAmt - total).toFixed(2)),
         notes: data.notes || null,
         status: pending ? 'pending' : 'completed',
       }, { transaction: t });
@@ -286,14 +301,41 @@ class SaleService {
       }
 
       if (!pending) {
-        await Payment.create({
-          saleId: sale.id,
-          amount: total,
-          paymentMethod: data.paymentMethod,
-          reference: data.paymentReference || null,
-          status: 'completed',
-          paidAt: new Date(),
-        }, { transaction: t });
+        if (data.paymentMethod === 'split') {
+          // One ledger row per leg so the mix is auditable (receipts list legs).
+          for (const leg of data.payments) {
+            await Payment.create({
+              saleId: sale.id,
+              amount: parseFloat(leg.amount),
+              paymentMethod: leg.paymentMethod,
+              reference: leg.reference || null,
+              status: 'completed',
+              paidAt: new Date(),
+            }, { transaction: t });
+          }
+        } else {
+          await Payment.create({
+            saleId: sale.id,
+            amount: total,
+            paymentMethod: data.paymentMethod,
+            reference: data.paymentReference || null,
+            status: 'completed',
+            paidAt: new Date(),
+          }, { transaction: t });
+        }
+
+        // Shift attribution: net cash entering the register for this sale.
+        // Cash: the total (tendered cash minus returned change = total).
+        // Split: only the cash leg(s). Non-cash: nothing.
+        try {
+          const shiftService = require('./shift.service');
+          const shiftCash = data.paymentMethod === 'split'
+            ? (cashAmt || 0)
+            : (data.paymentMethod === 'cash' ? total : 0);
+          if (shiftCash > 0) await shiftService.adjustOpenShift(userId, shiftCash, t);
+        } catch (e) {
+          if (e?.code !== 'MODULE_NOT_FOUND') throw e;
+        }
 
         if (data.customerId) {
           await Customer.increment(
@@ -355,7 +397,7 @@ class SaleService {
             await doSend({
               to: customer.email,
               subject: `Receipt - ${invoiceNo}`,
-              html: receiptEmail(`${customer.firstName} ${customer.lastName}`, invoiceNo, items, total, data.paymentMethod),
+              html: receiptEmail(`${customer.firstName} ${customer.lastName}`, invoiceNo, items, total, data.paymentMethod, saleData.payments),
             });
           }
         } catch { /* email failure non-blocking */ }
@@ -422,6 +464,14 @@ class SaleService {
         }, { transaction: t });
       }
 
+      // Cash entered the register — attribute to the operator's open shift.
+      try {
+        const shiftService = require('./shift.service');
+        await shiftService.adjustOpenShift(user?.id, parseFloat(sale.total) || 0, t);
+      } catch (e) {
+        if (e?.code !== 'MODULE_NOT_FOUND') throw e;
+      }
+
       await this.finalizeAfterPayment(sale.id, t);
       const completed = await Sale.findByPk(sale.id, {
         transaction: t,
@@ -480,44 +530,64 @@ class SaleService {
     return sale;
   }
 
+  // Fire-and-forget receipt (payment webhooks): never throws, logs failures.
   async emailReceiptForSale(saleId) {
     try {
-      const { sendEmail: doSend } = require('../utils/mailer');
-      const { receiptEmail } = require('../utils/emailTemplates');
-      const sale = await this.getById(saleId);
-      if (!sale || !sale.customerId || !sale.customer?.email) return;
-      const items = (sale.items || []).map(i => ({
-        name: i.product?.name || i.productName || 'Item',
-        quantity: i.quantity,
-        subtotal: i.total,
-      }));
-      await doSend({
-        to: sale.customer.email,
-        subject: `Receipt - ${sale.invoiceNo}`,
-        html: receiptEmail(`${sale.customer.firstName} ${sale.customer.lastName}`, sale.invoiceNo, items, sale.total, sale.paymentMethod),
-      });
-    } catch { /* email failure non-blocking */ }
+      await this.sendReceiptEmail(saleId);
+    } catch (e) {
+      console.error(`[EMAIL] Receipt for sale ${saleId} not sent: ${e.message}`);
+    }
   }
 
-async cancel(id, userId) {
-    const sale = await Sale.findByPk(id, { include: [{ association: 'items' }] });
-    if (!sale) throw ApiError.notFound('Sale not found');
-    if (sale.status === 'cancelled') return this.getById(id);
-    if (sale.status === 'refunded') throw ApiError.badRequest('Sale already refunded');
-
-    const onlineMethods = ['gcash', 'maya', 'credit_card', 'debit_card', 'bank_transfer'];
-    if (sale.paymentStatus === 'paid' && onlineMethods.includes(sale.paymentMethod)) {
-      throw ApiError.badRequest('Paid online orders must be refunded via the payment gateway before cancellation');
+  // Strict receipt send — used by the manual resend route so the caller
+  // gets a real error when there's no customer email or SMTP fails.
+  async sendReceiptEmail(saleId) {
+    const { sendEmail: doSend } = require('../utils/mailer');
+    const { receiptEmail } = require('../utils/emailTemplates');
+    const sale = await this.getById(saleId);
+    if (!sale || !sale.customerId || !sale.customer?.email) {
+      throw ApiError.badRequest('This sale has no customer email address to send the receipt to');
     }
+    const items = (sale.items || []).map(i => ({
+      name: i.product?.name || i.productName || 'Item',
+      quantity: i.quantity,
+      subtotal: i.total,
+    }));
+    await doSend({
+      to: sale.customer.email,
+      subject: `Receipt - ${sale.invoiceNo}`,
+      html: receiptEmail(`${sale.customer.firstName} ${sale.customer.lastName}`, sale.invoiceNo, items, sale.total, sale.paymentMethod, sale.payments),
+    });
+    return { sent: true, to: sale.customer.email };
+  }
 
-    // Only restore stock for completed sales; pending sales don't affect stock
-    const shouldRestoreStock = sale.status === 'completed';
-
+  async cancel(id, userId) {
     const t = await sequelize.transaction();
     try {
+      // Row-lock BEFORE reading so two concurrent cancels can't both pass
+      // the status check and double-restock (same pattern as
+      // cancelPendingOnline).
+      const sale = await Sale.findByPk(id, {
+        include: [{ association: 'items' }],
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
+      if (!sale) throw ApiError.notFound('Sale not found');
+      if (sale.status === 'cancelled') { await t.rollback(); return this.getById(id); }
+      if (sale.status === 'refunded') throw ApiError.badRequest('Sale already refunded');
+
+      const onlineMethods = ['gcash', 'maya', 'credit_card', 'debit_card', 'bank_transfer'];
+      if (sale.paymentStatus === 'paid' && onlineMethods.includes(sale.paymentMethod)) {
+        throw ApiError.badRequest('Paid online orders must be refunded via the payment gateway before cancellation');
+      }
+
+      // Only restore stock for completed sales; pending sales don't affect stock
+      const shouldRestoreStock = sale.status === 'completed';
       if (shouldRestoreStock) {
         for (const item of sale.items) {
-          const qty = parseInt(item.quantity, 10);
+          // Only restock what hasn't already been refunded.
+          const qty = parseInt(item.quantity, 10) - (parseInt(item.refundedQuantity, 10) || 0);
+          if (qty <= 0) continue;
           const product = await Product.findByPk(item.productId, { transaction: t, lock: true });
           if (!product) continue;
           const previousStock = parseInt(product.stockQuantity, 10) || 0;
@@ -576,6 +646,203 @@ async cancel(id, userId) {
 
       await t.commit();
       return this.getById(id);
+    } catch (error) {
+      await t.rollback();
+      throw error;
+    }
+  }
+
+  /**
+   * Refund a completed sale — full or partial per line.
+   *
+   * - Restocks each refunded quantity (row-locked) and logs a StockMovement.
+   * - Records the refund as a negative-amount Payment row (ledger/audit trail;
+   *   finance reports aggregate from sales, not the payments table).
+   * - Reverses customer stats/loyalty pro-rata to the refunded amount.
+   * - Full refund → status 'refunded'; partial → paymentStatus 'partially_refunded'.
+   *
+   * Authorization:
+   *   admin / manager — any completed sale, full or partial.
+   *   cashier — their own CASH sale only, completed within the last 15
+   *   minutes, full refund only (counter-mistake flow).
+   */
+  async refund(saleId, data, user) {
+    const reason = (data?.reason || '').trim();
+    if (!reason) throw ApiError.badRequest('A refund reason is required');
+
+    const requestedLines = Array.isArray(data?.items) && data.items.length
+      ? data.items
+      : null; // no items → full refund
+
+    const t = await sequelize.transaction();
+    try {
+      const sale = await Sale.findByPk(saleId, {
+        include: [{ association: 'items' }],
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
+      if (!sale) throw ApiError.notFound('Sale not found');
+
+      if (sale.status === 'refunded') throw ApiError.conflict('Sale is already fully refunded');
+      if (sale.status !== 'completed') throw ApiError.conflict(`Sale is ${sale.status} — only completed sales can be refunded`);
+      if (!['paid', 'partially_refunded'].includes(sale.paymentStatus)) {
+        throw ApiError.conflict('Sale payment is not in a refundable state');
+      }
+
+      // ── Role rules ────────────────────────────────────────────────
+      const role = user?.role?.slug;
+      if (!['admin', 'manager'].includes(role)) {
+        const doneAt = new Date(Math.max(new Date(sale.createdAt).getTime(), new Date(sale.updatedAt).getTime()));
+        const withinWindow = Date.now() - doneAt.getTime() <= 15 * 60 * 1000;
+        const ownCashSale = String(sale.userId) === String(user?.id) && sale.paymentMethod === 'cash';
+        if (role !== 'cashier' || !ownCashSale || !withinWindow) {
+          throw ApiError.forbidden('Only admins/managers can refund this sale (cashiers may void their own cash sale within 15 minutes)');
+        }
+        if (requestedLines) {
+          throw ApiError.badRequest('Cashier voids must be a full refund — select all items');
+        }
+      }
+
+      // ── Resolve refund lines + amount ─────────────────────────────
+      const lines = [];
+      if (requestedLines) {
+        for (const line of requestedLines) {
+          const itemRow = sale.items.find((i) => String(i.id) === String(line.saleItemId));
+          if (!itemRow) throw ApiError.badRequest(`Item ${line.saleItemId} is not part of this sale`);
+          const remaining = parseInt(itemRow.quantity, 10) - (parseInt(itemRow.refundedQuantity, 10) || 0);
+          const qty = Math.max(0, parseInt(line.quantity, 10) || 0);
+          // Reject over-requests rather than silently clamping — a refund for
+          // 3 when only 1 remains is a signal of a double-processed void.
+          if (qty > remaining) {
+            throw ApiError.conflict(`Only ${remaining} unit(s) of ${itemRow.productName} remain refundable`);
+          }
+          if (qty <= 0) throw ApiError.conflict(`No remaining refundable quantity for ${itemRow.productName}`);
+          lines.push({ itemRow, qty });
+        }
+      } else {
+        for (const itemRow of sale.items) {
+          const remaining = parseInt(itemRow.quantity, 10) - (parseInt(itemRow.refundedQuantity, 10) || 0);
+          if (remaining > 0) lines.push({ itemRow, qty: remaining });
+        }
+      }
+      if (!lines.length) throw ApiError.conflict('Nothing left to refund on this sale');
+
+      let refundAmount = 0;
+      for (const { itemRow, qty } of lines) {
+        // Pro-rata per unit (keeps tax/discount share exact per line).
+        refundAmount += (parseFloat(itemRow.total) / parseInt(itemRow.quantity, 10)) * qty;
+      }
+      refundAmount = Math.round(refundAmount * 100) / 100;
+      if (refundAmount <= 0) throw ApiError.badRequest('Refund amount must be greater than zero');
+
+      // ── Restock + stock movements ─────────────────────────────────
+      for (const { itemRow, qty } of lines) {
+        const product = await Product.findByPk(itemRow.productId, { transaction: t, lock: t.LOCK.UPDATE });
+        if (product) {
+          const previousStock = parseInt(product.stockQuantity, 10) || 0;
+          const newStock = previousStock + qty;
+          await product.update({ stockQuantity: newStock }, { transaction: t });
+          await StockMovement.create({
+            productId: itemRow.productId,
+            userId: user?.id,
+            type: 'in',
+            quantity: qty,
+            previousStock,
+            newStock,
+            referenceType: 'SaleRefund',
+            referenceId: sale.id,
+            notes: `Refund #${sale.invoiceNo}: ${qty} x ${itemRow.productName} — ${reason}`,
+          }, { transaction: t });
+        }
+        await itemRow.update(
+          { refundedQuantity: (parseInt(itemRow.refundedQuantity, 10) || 0) + qty },
+          { transaction: t }
+        );
+      }
+
+      // ── Ledger row ────────────────────────────────────────────────
+      await Payment.create({
+        saleId: sale.id,
+        amount: -refundAmount,
+        paymentMethod: sale.paymentMethod === 'split' ? 'other' : sale.paymentMethod,
+        reference: `REFUND-${sale.invoiceNo}`,
+        status: 'refunded',
+        paidAt: new Date(),
+      }, { transaction: t });
+
+      // ── Sale status ───────────────────────────────────────────────
+      const total = parseFloat(sale.total) || 0;
+      const alreadyRefunded = parseFloat(sale.refundedAmount) || 0;
+      const fullyRefunded = alreadyRefunded + refundAmount >= total - 0.005;
+      await sale.update({
+        refundedAmount: Math.min(total, alreadyRefunded + refundAmount),
+        status: fullyRefunded ? 'refunded' : 'completed',
+        paymentStatus: fullyRefunded ? 'refunded' : 'partially_refunded',
+        notes: `${sale.notes ? sale.notes + '\n' : ''}[refund ${new Date().toISOString()}] ${reason}`,
+      }, { transaction: t });
+
+      // ── Customer reversal (pro-rata) ──────────────────────────────
+      if (sale.customerId) {
+        const customer = await Customer.findByPk(sale.customerId, { transaction: t });
+        if (customer) {
+          const loyaltyPts = Math.floor(refundAmount / 100);
+          await Customer.update(
+            {
+              totalPurchases: Math.max(0, parseFloat(customer.totalPurchases) - refundAmount),
+              visitCount: fullyRefunded ? Math.max(0, customer.visitCount - 1) : customer.visitCount,
+              loyaltyPoints: Math.max(0, customer.loyaltyPoints - loyaltyPts),
+            },
+            { where: { id: sale.customerId }, transaction: t }
+          );
+          if (loyaltyPts > 0) {
+            await LoyaltyPoint.create({
+              customerId: sale.customerId,
+              saleId: sale.id,
+              points: -loyaltyPts,
+              type: 'adjusted',
+              balanceBefore: customer.loyaltyPoints,
+              balanceAfter: Math.max(0, customer.loyaltyPoints - loyaltyPts),
+            }, { transaction: t });
+          }
+        }
+      }
+
+      // ── Open-shift cash adjustment (Phase 4 shifts) ──────────────
+      // Only the cash portion of a refund leaves the register.
+      if (sale.paymentMethod === 'cash' || sale.paymentMethod === 'split') {
+        const paidLegs = await Payment.findAll({
+          where: { saleId: sale.id, status: 'completed' },
+          transaction: t,
+        });
+        const paidTotal = paidLegs.reduce((s, p) => s + (parseFloat(p.amount) || 0), 0) || total;
+        const cashPaid = paidLegs
+          .filter((p) => p.paymentMethod === 'cash')
+          .reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
+        const cashRefund = Math.round(refundAmount * (cashPaid / paidTotal) * 100) / 100;
+        if (cashRefund > 0) {
+          try {
+            const shiftService = require('./shift.service');
+            await shiftService.adjustOpenShift(user?.id, -cashRefund, t);
+          } catch (e) {
+            if (e?.code !== 'MODULE_NOT_FOUND') throw e;
+          }
+        }
+      }
+
+      await Notification.create({
+        type: 'refund',
+        title: `Refund: ${sale.invoiceNo}`,
+        message: `${fullyRefunded ? 'Full' : 'Partial'} refund of ${refundAmount.toFixed(2)} — ${reason}`,
+        data: { saleId: sale.id, invoiceNo: sale.invoiceNo, refundAmount, reason, by: user?.id },
+      }).catch(() => {});
+
+      await t.commit();
+      return {
+        sale: await this.getById(saleId, user),
+        refundAmount,
+        fullyRefunded,
+        refundedItems: lines.map(({ itemRow, qty }) => ({ saleItemId: itemRow.id, productName: itemRow.productName, quantity: qty })),
+      };
     } catch (error) {
       await t.rollback();
       throw error;
@@ -660,9 +927,11 @@ async cancel(id, userId) {
   }
 
   async getSalesReport(startDate, endDate) {
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    end.setHours(23, 59, 59, 999);
+    // Report dates are local calendar dates (business timezone) — resolve
+    // them to UTC-instant bounds instead of trusting the server's local zone.
+    const tz = config.app.timezone;
+    const start = localDateBoundsForDate(tz, startDate).start;
+    const end = localDateBoundsForDate(tz, endDate).end;
 
     let totalSales = 0;
     let totalRevenue = 0;
@@ -681,7 +950,7 @@ async cancel(id, userId) {
         ],
         where: {
           status: 'completed',
-          createdAt: { [Op.between]: [start, end] },
+          createdAt: { [Op.gte]: start, [Op.lt]: end },
         },
         raw: true,
       });
@@ -696,19 +965,18 @@ async cancel(id, userId) {
 
     let dailyBreakdown = {};
     try {
-      const isSQLite = sequelize.getDialect() === 'sqlite';
-      const dateExpr = isSQLite ? "date(created_at)" : "DATE(created_at)";
+      const localDayExpr = sqlLocalDateExpr('created_at', config.app.timezone, sequelize.getDialect());
       const rawDaily = await sequelize.query(`
-        SELECT ${dateExpr} as date,
+        SELECT ${localDayExpr} as date,
                COUNT(*) as sales,
                COALESCE(SUM(total), 0) as revenue,
                COALESCE(SUM(profit), 0) as profit
         FROM sales
-        WHERE created_at BETWEEN :startDate AND :endDate AND status = 'completed'
-        GROUP BY ${dateExpr}
-        ORDER BY ${dateExpr} ASC
+        WHERE created_at >= :startDate AND created_at < :endDate AND status = 'completed'
+        GROUP BY ${localDayExpr}
+        ORDER BY ${localDayExpr} ASC
       `, {
-        replacements: { startDate: start.toISOString(), endDate: end.toISOString() },
+        replacements: { startDate: start, endDate: end },
         type: sequelize.QueryTypes.SELECT,
       });
       rawDaily.forEach((d) => {

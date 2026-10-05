@@ -1,8 +1,16 @@
 const { Op } = require('sequelize');
+const crypto = require('crypto');
 const { Employee, Department, Position, Contract, User, Role, sequelize } = require('../../models');
 const ApiError = require('../../utils/ApiError');
 const { getPagination, getPaginationMeta, sanitizeObject, generateEmployeeNo, escapeLike } = require('../../utils/helpers');
 const { logActivity } = require('../../utils/audit');
+
+// One-time temp password for new employee accounts. Never a fixed value —
+// a hardcoded default (the old 'employee123') is a default credential the
+// moment it lands in a log, an email archive or a screenshot. The account
+// is flagged mustChangePassword, so the Phase-3 gate + both frontends force
+// a change at first login.
+const generateTempPassword = () => crypto.randomBytes(9).toString('base64url');
 
 class EmployeeService {
   async getAll(query) {
@@ -78,7 +86,7 @@ class EmployeeService {
       let role = pos?.roleSlug ? await Role.findOne({ where: { slug: pos.roleSlug }, transaction: t }) : null;
       if (!role) role = await Role.findOne({ where: { slug: 'employee' }, transaction: t });
       if (role) {
-        const tempPassword = 'employee123';
+        const tempPassword = generateTempPassword();
         const user = await User.create({
           firstName: employee.firstName,
           lastName: employee.lastName,
@@ -86,6 +94,7 @@ class EmployeeService {
           password: tempPassword,
           roleId: role.id,
           isActive: false,
+          mustChangePassword: true,
         }, { transaction: t });
         await employee.update({ userId: user.id }, { transaction: t });
       }
@@ -223,13 +232,18 @@ class EmployeeService {
 
       await t.commit();
 
+      let tempPassword = null;
       try {
         const { sendEmail } = require('../../utils/mailer');
         const { employeeApprovedEmail, formatDate } = require('../../utils/emailTemplates');
         const user = emp.userId ? await User.findByPk(emp.userId) : null;
-        const tempPassword = user ? 'employee123' : null;
-        if (user && tempPassword) {
-          await user.update({ password: tempPassword, isActive: true });
+        if (user) {
+          // Fresh one-time password on (re)approval — never the old fixed
+          // 'employee123'. mustChangePassword forces a change at first login
+          // (Phase-3 gate), and all tokens issued before the change die via
+          // the passwordChangedAt check.
+          tempPassword = generateTempPassword();
+          await user.update({ password: tempPassword, isActive: true, mustChangePassword: true });
         }
         const startDateFormatted = formatDate(emp.hireDate);
         const scheduleInfo = emp.schedule ? `${emp.schedule.name} (${emp.schedule.startTime} — ${emp.schedule.endTime})` : '';
@@ -245,7 +259,9 @@ class EmployeeService {
         }).catch(() => {});
       } catch (e) { console.error('[EMAIL] Employee approve email failed:', e.message); }
 
-      return this.getById(id);
+      // tempPassword rides along in the response (HR operator copies it to the
+      // employee when email is unavailable, e.g. SMTP not configured).
+      return { employee: await this.getById(id), tempPassword };
     } catch (error) {
       await t.rollback();
       throw error;

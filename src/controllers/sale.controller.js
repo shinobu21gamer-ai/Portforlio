@@ -92,6 +92,24 @@ class SaleController {
       next(error);
     }
   }
+
+  async refund(req, res, next) {
+    try {
+      const result = await saleService.refund(req.params.id, req.body, req.user);
+      return sendSuccess(res, result, result.fullyRefunded ? 'Sale fully refunded' : 'Partial refund processed');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async emailReceipt(req, res, next) {
+    try {
+      const result = await saleService.sendReceiptEmail(req.params.id);
+      return sendSuccess(res, result, `Receipt sent to ${result.to}`);
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 
 module.exports = new SaleController();

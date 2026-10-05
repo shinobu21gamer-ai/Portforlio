@@ -117,7 +117,16 @@ export default function Employees() {
 
   const handleApprove = async (emp) => {
     if (!(await confirmApprove(`Approve ${emp.firstName}?`))) return;
-    try { await approveMut.mutateAsync(emp.id); toast.success('Employee approved'); }
+    try {
+      const result = await approveMut.mutateAsync(emp.id);
+      // Temp password is one-time: it is also emailed to the employee, and the
+      // account is forced to change it at first login.
+      if (result?.tempPassword) {
+        toast.success(`Approved. One-time login password: ${result.tempPassword} (sent by email — must be changed at first login)`);
+      } else {
+        toast.success('Employee approved');
+      }
+    }
     catch (err) { const errors = err.response?.data?.errors; if (errors?.length) toast.error(errors.join('. ')); else toast.error(err.response?.data?.message || 'Approval failed'); }
   };
 

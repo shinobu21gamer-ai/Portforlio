@@ -14,5 +14,10 @@ router.post('/pending', protect, hasPermission('sales.create'), validate(schemas
 router.post('/pending/:id/cancel', protect, saleController.cancelPending);
 router.post('/pending/:id/cash-complete', protect, authorize('admin', 'manager'), saleController.completePendingAsCash);
 router.post('/:id/cancel', protect, hasPermission('sales.cancel'), saleController.cancel);
+// Refunds: role rules enforced in the service (admin/manager any; cashier
+// own cash sale within 15 min, full only).
+router.post('/:id/refund', protect, validate(schemas.refundSale), saleController.refund);
+// Manual receipt resend (also used by POS "resend receipt").
+router.post('/:id/email-receipt', protect, saleController.emailReceipt);
 
 module.exports = router;

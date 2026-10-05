@@ -133,6 +133,7 @@ module.exports = (sequelize, DataTypes) => {
     User.hasOne(models.Employee, { foreignKey: 'user_id', as: 'employee', onDelete: 'SET NULL' });
     User.hasMany(models.ActivityLog, { foreignKey: 'user_id', as: 'activityLogs', onDelete: 'CASCADE' });
     User.hasMany(models.Sale, { foreignKey: 'user_id', as: 'sales', onDelete: 'SET NULL' });
+    User.hasMany(models.Shift, { foreignKey: 'user_id', as: 'shifts', onDelete: 'SET NULL' });
     User.hasMany(models.Purchase, { foreignKey: 'user_id', as: 'purchases', onDelete: 'SET NULL' });
     User.hasMany(models.Inventory, { foreignKey: 'user_id', as: 'inventories', onDelete: 'SET NULL' });
     User.hasMany(models.StockMovement, { foreignKey: 'user_id', as: 'stockMovements', onDelete: 'SET NULL' });

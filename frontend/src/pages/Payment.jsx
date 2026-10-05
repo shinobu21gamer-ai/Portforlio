@@ -35,6 +35,12 @@ export default function Payment({ success: successProp, cancel: cancelProp }) {
   const [method, setMethod] = useState(null);
   const [cashAmount, setCashAmount] = useState('');
   const [selectedWallet, setSelectedWallet] = useState(null);
+  // Split tender: 2-6 legs, each { method, amount }. Completed at the
+  // register (mixed legs are not routed through the online gateway).
+  const [splitLegs, setSplitLegs] = useState([
+    { method: 'cash', amount: '' },
+    { method: 'gcash', amount: '' },
+  ]);
   const [customerId, setCustomerId] = useState(null);
   const [showSuccess, setShowSuccess] = useState(false);
   const [showFailure, setShowFailure] = useState(false);
@@ -136,7 +142,7 @@ export default function Payment({ success: successProp, cancel: cancelProp }) {
   // cash sale server-side (stock was already reserved at pending creation).
   const handleCashOverride = async () => {
     if (!saleIdParam) return;
-    if (!window.confirm('Online payment was not confirmed.\nComplete this sale as CASH received at the counter?')) return;
+    if (!window.confirm('The online payment never confirmed.\n\nComplete this sale with CASH paid at the counter?\nThe sale will be recorded as a CASH sale (it counts to your open shift\'s till).')) return;
     setCashOverrideLoading(true);
     try {
       const res = await api.post(`/sales/pending/${saleIdParam}/cash-complete`);
@@ -234,7 +240,7 @@ export default function Payment({ success: successProp, cancel: cancelProp }) {
             {canManualDiscount && (
               <div style={{ marginTop: 20, padding: 14, background: 'var(--bg-tertiary)', border: '1px dashed var(--border)', borderRadius: 'var(--radius-md)' }}>
                 <p className="text-sm mb-sm" style={{ margin: 0 }}>
-                  <strong>Manager option:</strong> if the customer's online payment failed and they are paying cash at the counter, complete the sale as cash.
+                  <strong>Manager override:</strong> the online payment never confirmed. If the customer is paying with cash at the counter, complete the sale as cash — it will be recorded as a CASH sale.
                 </p>
                 <button
                   className="btn btn-warning"
@@ -242,7 +248,7 @@ export default function Payment({ success: successProp, cancel: cancelProp }) {
                   onClick={handleCashOverride}
                 >
                   {cashOverrideLoading && <span className="btn-spinner" />}
-                  {cashOverrideLoading ? 'Completing…' : 'Complete as cash at counter'}
+                  {cashOverrideLoading ? 'Completing…' : 'Record cash & complete sale'}
                 </button>
               </div>
             )}
@@ -256,8 +262,43 @@ export default function Payment({ success: successProp, cancel: cancelProp }) {
 
   const getPaymentMethod = () => {
     if (method === 'cash') return 'cash';
+    if (method === 'split') return 'split';
     if (method === 'ewallet') return selectedWallet === 'GCash' ? 'gcash' : 'maya';
     return 'cash';
+  };
+
+  const SPLIT_METHODS = [
+    { value: 'cash', label: 'Cash' },
+    { value: 'gcash', label: 'GCash' },
+    { value: 'maya', label: 'Maya' },
+    { value: 'credit_card', label: 'Credit Card' },
+    { value: 'debit_card', label: 'Debit Card' },
+    { value: 'bank_transfer', label: 'Bank Transfer' },
+    { value: 'other', label: 'Other' },
+  ];
+  const splitFilled = splitLegs.map(l => ({ ...l, num: parseFloat(l.amount) || 0 }));
+  const splitCollected = splitFilled.reduce((s, l) => s + l.num, 0);
+  const splitRemaining = Math.round((total - splitCollected) * 100) / 100;
+  const splitValid = splitFilled.length >= 2
+    && splitFilled.every(l => l.num > 0)
+    && splitRemaining === 0;
+
+  const updateSplitLeg = (idx, field, value) => {
+    setSplitLegs(prev => prev.map((l, i) => (i === idx ? { ...l, [field]: value } : l)));
+  };
+  const addSplitLeg = () => {
+    if (splitLegs.length >= 6) return;
+    setSplitLegs(prev => [...prev, { method: 'cash', amount: '' }]);
+  };
+  const removeSplitLeg = (idx) => {
+    if (splitLegs.length <= 2) return;
+    setSplitLegs(prev => prev.filter((_, i) => i !== idx));
+  };
+  const applyRemainingToLast = () => {
+    if (splitRemaining <= 0) return;
+    setSplitLegs(prev => prev.map((l, i) => (i === prev.length - 1
+      ? { ...l, amount: String(Math.round(((parseFloat(l.amount) || 0) + splitRemaining) * 100) / 100) }
+      : l)));
   };
 
   const handleApplyPromo = async () => {
@@ -357,10 +398,17 @@ export default function Payment({ success: successProp, cancel: cancelProp }) {
   const handleSubmit = async () => {
     setLoading(true);
     try {
+      const paymentMethod = getPaymentMethod();
+      const cashLegs = method === 'split'
+        ? splitFilled.filter(l => l.method === 'cash').reduce((s, l) => s + l.num, 0)
+        : (method === 'cash' ? parseFloat(cashAmount) : undefined);
       const saleData = {
         items: items.map(i => ({ productId: i.id, quantity: i.quantity })),
-        paymentMethod: getPaymentMethod(),
-        cashAmount: method === 'cash' ? parseFloat(cashAmount) : undefined,
+        paymentMethod,
+        cashAmount: method === 'split' && cashLegs ? cashLegs : (method === 'cash' ? parseFloat(cashAmount) : undefined),
+        payments: method === 'split'
+          ? splitFilled.map(l => ({ paymentMethod: l.method, amount: l.num }))
+          : undefined,
         customerId: customerId || undefined,
         discountType: discountType !== 'none' ? discountType : undefined,
         discountValue: discountType !== 'none' ? parseFloat(discountValue) || 0 : undefined,
@@ -409,6 +457,8 @@ export default function Payment({ success: successProp, cancel: cancelProp }) {
     const paymentMethod = r.paymentMethod || method || 'cash';
     const cashGiven = r.cashAmount ?? (method === 'cash' ? parseFloat(cashAmount) : saleTotal);
     const change = cashGiven - saleTotal;
+    const isSplit = paymentMethod === 'split';
+    const splitPayments = (r.payments || []).filter(p => p.status === 'completed' && Number(p.amount) > 0);
 
     const itemRows = ((saleItems || []).length ? saleItems : items).map(item => {
       const qty = item.quantity;
@@ -422,14 +472,33 @@ export default function Payment({ success: successProp, cancel: cancelProp }) {
       ? `<div style="display:flex;justify-content:space-between;padding:4px 0"><span>Discount:</span><span>-${peso(saleDiscount)}</span></div>`
       : '';
 
-    const methodLabel = {
+    const LEG_LABELS = {
       cash: 'Cash',
       gcash: 'GCash',
       maya: 'Maya',
       credit_card: 'Credit Card',
       debit_card: 'Debit Card',
-      online: 'Online Payment (PayMongo)',
-    }[paymentMethod] || 'Cash';
+      bank_transfer: 'Bank Transfer',
+      other: 'Other',
+    };
+
+    const methodLabel =
+      isSplit && splitPayments.length > 1
+        ? `Split (${splitPayments
+            .map((p) => LEG_LABELS[p.paymentMethod] || p.paymentMethod)
+            .join(' + ')})`
+        : ({
+        cash: 'Cash',
+        gcash: 'GCash',
+        maya: 'Maya',
+        credit_card: 'Credit Card',
+        debit_card: 'Debit Card',
+        online: 'Online Payment (PayMongo)',
+      }[paymentMethod] || 'Cash');
+
+    const splitRows = isSplit
+      ? splitPayments.map(p => `<div><span>${escapeHtml(({ cash: 'Cash', gcash: 'GCash', maya: 'Maya', credit_card: 'Credit Card', debit_card: 'Debit Card', bank_transfer: 'Bank Transfer', other: 'Other' }[p.paymentMethod] || p.paymentMethod))}</span><span>${peso(p.amount)}</span></div>`).join('')
+      : '';
 
     return `<!DOCTYPE html>
 <html lang="en">
@@ -480,7 +549,7 @@ export default function Payment({ success: successProp, cancel: cancelProp }) {
   </div>
   <div class="payment-info">
     <div><span>Payment Method:</span><span>${methodLabel}</span></div>
-    <div><span>Amount Tendered:</span><span>${peso(cashGiven)}</span></div>
+    ${isSplit ? splitRows : `<div><span>Amount Tendered:</span><span>${peso(cashGiven)}</span></div>`}
     ${change > 0 ? `<div><span>Change:</span><span>${peso(change)}</span></div>` : ''}
   </div>
   <div class="footer">
@@ -522,7 +591,12 @@ export default function Payment({ success: successProp, cancel: cancelProp }) {
     const tendered = parseFloat(saleResult?.cashAmount ?? (method === 'cash' ? cashAmount : rTotal)) || 0;
     const change = Math.max(0, tendered - rTotal);
     const isCash = (saleResult?.paymentMethod || method) === 'cash';
-    const methodLabel = { cash: 'Cash', gcash: 'GCash', maya: 'Maya', credit_card: 'Credit Card', debit_card: 'Debit Card', online: 'Online Payment' }[saleResult?.paymentMethod || method] || 'Cash';
+    const isSplit = (saleResult?.paymentMethod || method) === 'split';
+    const splitPayments = (saleResult?.payments || []).filter(p => p.status === 'completed' && Number(p.amount) > 0);
+    const METHOD_LABELS = { cash: 'Cash', gcash: 'GCash', maya: 'Maya', credit_card: 'Credit Card', debit_card: 'Debit Card', bank_transfer: 'Bank Transfer', other: 'Other', online: 'Online Payment' };
+    const methodLabel = isSplit && splitPayments.length > 1
+      ? `Split (${splitPayments.map(p => METHOD_LABELS[p.paymentMethod] || p.paymentMethod).join(' + ')})`
+      : (METHOD_LABELS[saleResult?.paymentMethod || method] || 'Cash');
 
     return (
       <PosLayout active="home">
@@ -581,6 +655,9 @@ export default function Payment({ success: successProp, cancel: cancelProp }) {
                       <div className="flex-between font-bold"><span>Change</span><span>{peso(change)}</span></div>
                     </>
                   )}
+                  {isSplit && splitPayments.map((p, i) => (
+                    <div className="flex-between" key={i}><span>{METHOD_LABELS[p.paymentMethod] || p.paymentMethod}</span><span>{peso(p.amount)}</span></div>
+                  ))}
                 </div>
                 <div style={{ borderTop: '1px dashed var(--border)', margin: '8px 0' }} />
                 <div className="text-center" style={{ fontSize: 11 }}>
@@ -769,6 +846,7 @@ export default function Payment({ success: successProp, cancel: cancelProp }) {
 
       <div className="method-row mb-md">
         <button className={`method ${method === 'cash' ? 'active' : ''}`} onClick={() => { setMethod('cash'); setSelectedWallet(null); }}>Cash</button>
+        <button className={`method ${method === 'split' ? 'active' : ''}`} onClick={() => setMethod('split')}>Split</button>
         <button className={`method ${method === 'ewallet' ? 'active' : ''}`} onClick={() => setMethod('ewallet')}>E-Wallet</button>
       </div>
 
@@ -811,6 +889,61 @@ export default function Payment({ success: successProp, cancel: cancelProp }) {
         </div>
       )}
 
+      {method === 'split' && (
+        <div className="max-w-md">
+          <div className="text-sm mb-sm text-muted">
+            Divide the total across payment methods. Every leg must be filled and the total must be covered exactly.
+          </div>
+          {splitLegs.map((leg, idx) => (
+            <div key={idx} className="flex-row mb-sm" style={{ gap: 6, alignItems: 'center' }}>
+              <select
+                className="input-block"
+                value={leg.method}
+                onChange={e => updateSplitLeg(idx, 'method', e.target.value)}
+                style={{ padding: '6px 8px', maxWidth: 150, flexShrink: 0 }}
+              >
+                {SPLIT_METHODS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+              </select>
+              <input
+                className="input-block flex-1"
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="Amount"
+                value={leg.amount}
+                onChange={e => {
+                  const v = e.target.value;
+                  if (v === '' || (!v.includes('-') && !v.includes('+') && !v.includes('e') && !v.includes('E'))) {
+                    updateSplitLeg(idx, 'amount', v);
+                  }
+                }}
+              />
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                disabled={splitLegs.length <= 2}
+                onClick={() => removeSplitLeg(idx)}
+                aria-label="Remove leg"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+          <div className="flex-row" style={{ gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <button type="button" className="btn btn-outline btn-sm" onClick={addSplitLeg} disabled={splitLegs.length >= 6}>
+              + Add method
+            </button>
+            <button type="button" className="btn btn-outline btn-sm" onClick={applyRemainingToLast} disabled={splitRemaining <= 0}>
+              Put remaining in last leg
+            </button>
+          </div>
+          <div className={`pay-summary-row mt-sm ${splitRemaining === 0 ? 'text-success' : splitCollected > total ? 'text-error' : 'text-muted'}`}>
+            <span>{splitRemaining === 0 ? 'Fully covered' : (splitCollected > total ? 'Over total' : 'Remaining')}</span>
+            <span>{peso(Math.abs(splitRemaining))}</span>
+          </div>
+        </div>
+      )}
+
       {method === 'ewallet' && !selectedWallet && (
         <div className="wallet-grid max-w-md">
           <button className="wallet cashg" onClick={() => setSelectedWallet('GCash')}>GCash</button>
@@ -843,7 +976,15 @@ export default function Payment({ success: successProp, cancel: cancelProp }) {
             {(onlineLoading || createPendingSale.isPending || createCheckout.isPending) && <span className="btn-spinner" />}{onlineLoading || createPendingSale.isPending || createCheckout.isPending ? 'Redirecting to PayMongo...' : `Pay ${peso(total)} via ${selectedWallet}`}
           </button>
         ) : (
-          <button className="btn btn-success btn-lg" disabled={!method || loading || (method === 'cash' && (!cashAmount || parseFloat(cashAmount) < total))} onClick={handleSubmit}>
+          <button
+            className="btn btn-success btn-lg"
+            disabled={
+              !method || loading
+              || (method === 'cash' && (!cashAmount || parseFloat(cashAmount) < total))
+              || (method === 'split' && !splitValid)
+            }
+            onClick={handleSubmit}
+          >
             {loading && <span className="btn-spinner" />}{loading ? 'Processing...' : 'Complete Payment'}
           </button>
         )}

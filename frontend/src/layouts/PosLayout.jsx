@@ -6,6 +6,7 @@ import { useUnreadCount } from '../hooks/useApi';
 import { peso, productEmoji } from '../utils/helpers';
 import Button from '../components/Button';
 import Avatar from '../components/Avatar';
+import ShiftWidget from '../components/ShiftWidget';
 
 const HRMS_ORIGIN = import.meta.env.VITE_HRMS_URL
   ? (() => { try { return new URL(import.meta.env.VITE_HRMS_URL).origin; } catch { return window.location.origin; } })()
@@ -155,6 +156,7 @@ export default function PosLayout({ children, active, showCart = false, cartFoot
             </NavLink>
           </div>
           <div className="sidebar-bottom">
+            <ShiftWidget />
             <Button
               className="sidebar-btn"
               variant="ghost"

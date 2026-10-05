@@ -190,6 +190,11 @@ const runBootstrap = async () => {
       await safeAddColumn('attendances', 'clock_in_lng', 'DECIMAL(10,7)');
       await safeAddColumn('attendances', 'geofence_distance_meters', 'INTEGER');
       await safeAddColumn('attendances', 'is_geofence_verified', 'BOOLEAN');
+      // Phase 4 — refunds (cumulative refund tracking per sale / per line)
+      await safeAddColumn('sales', 'refunded_amount', 'DECIMAL(15,2) DEFAULT 0');
+      await safeAddColumn('sale_items', 'refunded_quantity', 'INTEGER DEFAULT 0');
+      // Phase 4 — split payments: sales paid across multiple methods
+      await safeModifyEnum('sales', 'payment_method', "'cash', 'gcash', 'maya', 'credit_card', 'debit_card', 'bank_transfer', 'other', 'split'");
       // Indexes for existing databases (see safeAddIndex for why this is needed).
       await safeAddIndex('leave_requests', 'idx_leave_employee_start', ['employee_id', 'start_date']);
       await safeAddIndex('leave_requests', 'idx_leave_status', ['status']);

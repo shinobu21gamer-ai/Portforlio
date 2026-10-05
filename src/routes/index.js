@@ -25,6 +25,7 @@ const financeRoutes = require('./finance.routes');
 const branchRoutes = require('./branch.routes');
 const pettyCashRoutes = require('./pettyCash.routes');
 const loyaltyRoutes = require('./loyalty.routes');
+const shiftRoutes = require('./shift.routes');
 
 const apiPrefix = config.apiPrefix;
 
@@ -53,6 +54,7 @@ router.use(`${apiPrefix}/finance`, financeRoutes);
 router.use(`${apiPrefix}/branches`, branchRoutes);
 router.use(`${apiPrefix}/petty-cash`, pettyCashRoutes);
 router.use(`${apiPrefix}/loyalty`, loyaltyRoutes);
+router.use(`${apiPrefix}/shifts`, shiftRoutes);
 
 router.use(`${apiPrefix}/tracking`, require('./tracking.routes'));
 
