@@ -28,16 +28,22 @@ export async function loginApi(request: APIRequestContext, email: string, passwo
   const res = await request.post('/api/v1/auth/login', { data: { email, password } });
   expect(res.ok(), `login ${email} failed: ${res.status()} ${await res.text()}`).toBeTruthy();
   const json = await res.json();
-  return { token: json.data.token as string, user: json.data.user };
+  return {
+    token: json.data.token as string,
+    refreshToken: json.data.refreshToken as string | undefined,
+    user: json.data.user,
+  };
 }
 
 /** Persist a POS session without the SSO query-param (which strips other search params). */
-export async function seedPosSession(page: Page, token: string, user: unknown) {
-  await page.addInitScript(({ token, user }) => {
+export async function seedPosSession(page: Page, token: string, user: unknown, refreshToken?: string | null) {
+  await page.addInitScript(({ token, user, refreshToken }) => {
     localStorage.setItem('token', token);
     localStorage.setItem('user', JSON.stringify(user));
+    if (refreshToken) localStorage.setItem('refreshToken', refreshToken);
+    else localStorage.removeItem('refreshToken');
     localStorage.setItem('minimart_autoprint', '0');
     // @ts-expect-error — window.print is a function
     window.print = () => {};
-  }, { token, user });
+  }, { token, user, refreshToken: refreshToken ?? null });
 }

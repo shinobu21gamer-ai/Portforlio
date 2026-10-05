@@ -95,6 +95,7 @@ client.interceptors.response.use(
         }
       } else {
         isRefreshing = false;
+        processQueue(error, null);
         localStorage.removeItem('token');
         localStorage.removeItem('refreshToken');
         localStorage.removeItem('user');

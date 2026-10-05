@@ -218,7 +218,9 @@ function GlobalSearchProvider({ children }) {
   return (
     <>
       {children}
-      <GlobalSearch isOpen={searchOpen && isAuthenticated} onClose={() => setSearchOpen(false)} onSelect={handleSearchSelect} />
+      {searchOpen && isAuthenticated ? (
+        <GlobalSearch isOpen onClose={() => setSearchOpen(false)} onSelect={handleSearchSelect} />
+      ) : null}
     </>
   );
 }
