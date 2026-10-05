@@ -25,8 +25,13 @@ services:
         generateValue: true
       - key: JWT_REFRESH_SECRET
         generateValue: true
-      - key: CORS_ORIGIN
-        value: "*"
+      # CORS: leave unset. API + both frontends are served from the same
+      # Render host, so the server defaults to same-origin-only (most secure).
+      # Set CORS_ORIGIN=https://other-host.example.com only if you deploy a
+      # frontend on a separate origin (or CORS_ORIGIN=* for an API-only,
+      # cookie-less consumer).
+      # - key: CORS_ORIGIN
+      #   value: https://your-frontend.example.com
       # PayMongo (optional - only needed for online payments).
       # Set these in the Render dashboard as encrypted secrets, or uncomment and
       # fill them in. Do NOT commit real keys here.

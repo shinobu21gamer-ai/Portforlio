@@ -9,6 +9,18 @@ const stripHtml = (value, helpers) => {
 
 const htmlField = () => Joi.string().custom(stripHtml, 'HTML strip');
 
+// Cross-field rule ("a discount value requires a discount type") as a FIELD-level
+// .when() — the documented Joi pattern for sibling refs. (An object-level
+// .when('discountValue') on the root schema throws "Invalid reference exceeds
+// the schema root" and 500s every request; attached to an item OBJECT inside
+// .items() it silently always takes the "then" branch. sale.routes tests pin this.)
+const discountTypeField = Joi.string().valid('percentage', 'fixed')
+  .when('discountValue', {
+    is: Joi.number().min(1),
+    then: Joi.string().required(),
+    otherwise: Joi.string().optional(),
+  });
+
 const schemas = {
   // ─── Auth ───────────────────────────────────────────────
   register: Joi.object({
@@ -199,18 +211,13 @@ const schemas = {
         Joi.object({
           productId: Joi.number().integer().positive().required(),
           quantity: Joi.number().integer().min(1).required(),
-          discountType: Joi.string().valid('percentage', 'fixed').optional(),
+          discountType: discountTypeField,
           discountValue: Joi.number().min(0).optional().default(0),
-        })
-        .when('discountValue', {
-          is: Joi.number().min(1),
-          then: Joi.object({ discountType: Joi.string().valid('percentage', 'fixed').required() }),
-          otherwise: Joi.object({ discountType: Joi.string().valid('percentage', 'fixed').optional() }),
         })
       )
       .min(1)
       .required(),
-    discountType: Joi.string().valid('percentage', 'fixed').optional(),
+    discountType: discountTypeField,
     discountValue: Joi.number().min(0).optional().default(0),
     discountId: Joi.number().integer().positive().allow(null).optional(),
     paymentMethod: Joi.string()
@@ -220,10 +227,6 @@ const schemas = {
     cashAmount: Joi.number().min(0).optional(),
     shippingFee: Joi.number().min(0).optional().default(0),
     notes: htmlField().optional().allow(''),
-  }).when('discountValue', {
-    is: Joi.number().min(1),
-    then: Joi.object({ discountType: Joi.string().valid('percentage', 'fixed').required() }),
-    otherwise: Joi.object({ discountType: Joi.string().valid('percentage', 'fixed').optional() }),
   }),
 
   // ─── Purchase ───────────────────────────────────────────
@@ -443,6 +446,7 @@ const schemas = {
     mayaNumber: Joi.string().allow('').max(50).optional(),
     storeAddress: htmlField().max(255).optional(),
     storePhone: Joi.string().max(20).optional().allow(''),
+    allowPublicRegistration: Joi.boolean().optional(),
     storeEmail: Joi.string().email().max(150).optional().allow(''),
     taxRate: Joi.number().min(0).max(100).optional().messages({
       'number.max': 'taxRate must be a percentage between 0 and 100',

@@ -4,7 +4,11 @@ const dotenv = require('dotenv');
 
 dotenv.config();
 
-const isSQLite = (process.env.DB_DIALECT || 'mysql') === 'sqlite';
+// Dialect default lives in src/config (SQLite) — a bare `npm start` must work
+// without any env vars. Reading process.env here with a different default
+// previously made fresh deploys crash with "Unable to connect to the database".
+const config = require('./index');
+const isSQLite = config.dbDialect === 'sqlite';
 
 // ':memory:' must be passed through untouched. path.resolve() would turn it
 // into a real file named ':memory:', which silently leaks to disk and lets
@@ -43,7 +47,7 @@ const sequelize = isSQLite
       {
         host: process.env.DB_HOST,
         port: process.env.DB_PORT || 3306,
-        dialect: process.env.DB_DIALECT || 'mysql',
+        dialect: config.dbDialect,
         logging: process.env.NODE_ENV === 'development' ? console.log : false,
         pool: {
           max: 10,

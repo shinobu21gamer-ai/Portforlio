@@ -8,6 +8,9 @@ uploads/products/*
 !uploads/products/*.svg
 uploads/resumes/*
 !uploads/resumes/.gitkeep
+# Uploaded documents (resumes, HR files) are private runtime data — never commit
+uploads/documents/*
+!uploads/documents/.gitkeep
 exports/*
 !exports/.gitkeep
 dist/

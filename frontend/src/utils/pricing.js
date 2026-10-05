@@ -41,14 +41,19 @@ export const computeCartTotal = (items, options = {}) => {
   const safeItems = Array.isArray(items) ? items : [];
   let subtotal = 0;
   let itemTax = 0;
+  let itemDiscount = 0;
 
   for (const i of safeItems) {
     const qty = parseInt(i.quantity, 10) || 1;
     const unit = parseMoney(i.sellingPrice || i.price || 0);
     const itemSubtotal = unit * qty;
+    // Per-line discounts reduce the tax base and the payable total, mirroring
+    // sale.service.js (which was fixed to subtract them from the total).
+    const lineDiscount = calculateDiscount(itemSubtotal, i.discountType, i.discountValue);
     const rate = resolveTaxRate(i.taxRate, appTaxRate);
-    itemTax += itemTaxOf(itemSubtotal, rate);
+    itemTax += itemTaxOf(itemSubtotal - lineDiscount, rate);
     subtotal += itemSubtotal;
+    itemDiscount += lineDiscount;
   }
 
   let discount = calculateDiscount(subtotal, discountType, discountValue);
@@ -58,7 +63,7 @@ export const computeCartTotal = (items, options = {}) => {
 
   const sub = parseFloat(subtotal.toFixed(2));
   const tax = parseFloat(itemTax.toFixed(2));
-  const total = parseFloat((sub - discount + tax + parseMoney(shippingFee)).toFixed(2));
+  const total = parseFloat((sub - itemDiscount - discount + tax + parseMoney(shippingFee)).toFixed(2));
   return {
     subtotal: sub,
     itemTax: tax,

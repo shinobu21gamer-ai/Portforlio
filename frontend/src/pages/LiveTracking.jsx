@@ -25,7 +25,9 @@ export default function LiveTracking({ deliveryId }) {
   const [status, setStatus] = useState('pending');
   const [dest, setDest] = useState(null);
   const [demo, setDemo] = useState(false);
+  const [live, setLive] = useState(true);
   const socketRef = useRef(null);
+  const pollIntervalRef = useRef(null);
   const simRef = useRef(false);
   const demoIntervalRef = useRef(null);
 
@@ -45,11 +47,18 @@ export default function LiveTracking({ deliveryId }) {
       if (u && /^https?:/.test(u)) return new URL(u).origin;
       return window.location.origin;
     })();
-    const token = sessionStorage.getItem('token')
+    // Socket.io connections are now authenticated server-side, so the token
+    // (POS authStore → localStorage 'token'; HRMS → hrms_auth) must be sent
+    // in the handshake or the connection is refused.
+    const token = localStorage.getItem('token')
+      || sessionStorage.getItem('token')
       || (() => { try { return JSON.parse(localStorage.getItem('hrms_auth') || '{}').token } catch(e) { return null } })() || '';
     let cancelled = false;
 
-    fetch(`${base}/api/v1/tracking/delivery/${deliveryId}`, {
+    // REST fetch, used for the initial load AND as a polling fallback when the
+    // live socket can't be established (e.g. expired token) — the page degrades
+    // to 5s refreshes instead of going dark.
+    const refresh = () => fetch(`${base}/api/v1/tracking/delivery/${deliveryId}`, {
       headers: { Authorization: `Bearer ${token}` }
     })
       .then(r => r.json())
@@ -73,9 +82,20 @@ export default function LiveTracking({ deliveryId }) {
       })
       .catch(() => {});
 
-    const socket = io(base, { transports: ['websocket', 'polling'] });
+    refresh();
+
+    const socket = io(base, { transports: ['websocket', 'polling'], auth: { token } });
     socketRef.current = socket;
     socket.emit('join-delivery', deliveryId);
+
+    socket.on('connect_error', () => {
+      setLive(false);
+      if (pollIntervalRef.current) return; // already polling (reconnect retries fire repeatedly)
+      pollIntervalRef.current = setInterval(() => {
+        if (cancelled) { clearInterval(pollIntervalRef.current); pollIntervalRef.current = null; return; }
+        refresh();
+      }, 5000);
+    });
 
     socket.on('location', (data) => {
       if (data.deliveryId == deliveryId) {
@@ -94,7 +114,14 @@ export default function LiveTracking({ deliveryId }) {
       }
     });
 
-    return () => { cancelled = true; socket.disconnect(); };
+    return () => {
+      cancelled = true;
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+      socket.disconnect();
+    };
   }, [deliveryId]);
 
   useEffect(() => {
@@ -180,6 +207,23 @@ export default function LiveTracking({ deliveryId }) {
         }}>
           <span>⚠️</span>
           <span>SIMULATED DEMO — no live rider data. This path is auto-generated for preview.</span>
+        </div>
+      )}
+
+      {!live && (
+        <div style={{
+          padding: '8px 16px',
+          background: '#eff6ff',
+          borderBottom: '1px solid #bfdbfe',
+          color: '#1d4ed8',
+          fontSize: 12,
+          fontWeight: 600,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+        }}>
+          <span>📡</span>
+          <span>Live connection unavailable — refreshing every 5 seconds. If this persists, sign in again.</span>
         </div>
       )}
 

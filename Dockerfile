@@ -40,12 +40,14 @@ COPY uploads ./uploads
 RUN mkdir -p uploads/products uploads/resumes uploads/documents logs data && \
     chown -R appuser:appgroup /app
 
+# CORS: unset = same-origin only (API + frontends share one host behind the
+# nginx proxy). Override at deploy time if a separate frontend origin exists:
+#   docker run -e CORS_ORIGIN=https://pos.example.com ...
 ENV NODE_ENV=production \
     PORT=8080 \
     AUTO_SETUP=true \
     DB_DIALECT=sqlite \
-    DB_STORAGE=/data/database.sqlite \
-    CORS_ORIGIN=*
+    DB_STORAGE=/data/database.sqlite
 
 EXPOSE 8080
 

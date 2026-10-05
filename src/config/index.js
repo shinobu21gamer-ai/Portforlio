@@ -56,14 +56,20 @@ if (!process.env.JWT_REFRESH_SECRET) {
   errors.push('JWT_REFRESH_SECRET appears to be a placeholder. Generate a real secret.');
 }
 
-if (isProd) {
-  const dbDialect = process.env.DB_DIALECT || 'sqlite';
-  if (dbDialect === 'mysql') {
-    if (!process.env.DB_HOST) errors.push('DB_HOST is required in production (mysql)');
-    if (!process.env.DB_NAME) errors.push('DB_NAME is required in production (mysql)');
-    if (!process.env.DB_USER) errors.push('DB_USER is required in production (mysql)');
-    if (!process.env.DB_PASSWORD) errors.push('DB_PASSWORD is required in production (mysql)');
-  }
+// Single source of truth for the database dialect. Everything (database.js,
+// server.js) must read config.dbDialect so the defaults can never diverge.
+// SQLite is the documented default: `npm start` must work with zero env vars.
+const SUPPORTED_DIALECTS = ['sqlite', 'mysql'];
+const dbDialect = (process.env.DB_DIALECT || 'sqlite').toLowerCase();
+if (!SUPPORTED_DIALECTS.includes(dbDialect)) {
+  errors.push(`DB_DIALECT must be one of: ${SUPPORTED_DIALECTS.join(', ')} (got "${process.env.DB_DIALECT}")`);
+}
+
+if (isProd && dbDialect === 'mysql') {
+  if (!process.env.DB_HOST) errors.push('DB_HOST is required in production (mysql)');
+  if (!process.env.DB_NAME) errors.push('DB_NAME is required in production (mysql)');
+  if (!process.env.DB_USER) errors.push('DB_USER is required in production (mysql)');
+  if (!process.env.DB_PASSWORD) errors.push('DB_PASSWORD is required in production (mysql)');
 }
 
 if (errors.length > 0) {
@@ -80,6 +86,7 @@ module.exports = {
   nodeEnv: process.env.NODE_ENV || 'development',
   port: parseInt(process.env.PORT, 10) || 5000,
   apiPrefix: process.env.API_PREFIX || '/api/v1',
+  dbDialect,
   jwt: {
     secret: process.env.JWT_SECRET,
     expiresIn: process.env.JWT_EXPIRES_IN || '7d',

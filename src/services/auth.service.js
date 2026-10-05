@@ -6,6 +6,33 @@ const config = require('../config');
 const ApiError = require('../utils/ApiError');
 const { Op } = require('sequelize');
 
+// In-memory memo for the per-request blacklist lookup. A DB round-trip on
+// EVERY authenticated request is both a hot path and an availability risk
+// (a DB blip fails the check closed → total lockout). A short TTL keeps
+// revocation latency ≤10s while the DB query becomes rare.
+const BLACKLIST_CACHE_TTL_MS = 10_000;
+const BLACKLIST_CACHE_MAX = 5000;
+const blacklistCache = new Map(); // token -> rememberedAt (insertion-ordered)
+
+function rememberBlacklisted(token) {
+  if (!token || token === 'null' || token === '') return;
+  blacklistCache.delete(token); // refresh recency (Map keeps insertion order)
+  blacklistCache.set(token, Date.now());
+  while (blacklistCache.size > BLACKLIST_CACHE_MAX) {
+    blacklistCache.delete(blacklistCache.keys().next().value);
+  }
+}
+
+function isBlacklistedCached(token) {
+  const at = blacklistCache.get(token);
+  if (!at) return false;
+  if (Date.now() - at > BLACKLIST_CACHE_TTL_MS) {
+    blacklistCache.delete(token);
+    return false;
+  }
+  return true;
+}
+
 class AuthService {
   generateToken(userId, isRefresh = false) {
     const secret = isRefresh ? config.jwt.refreshSecret : config.jwt.secret;
@@ -18,10 +45,15 @@ class AuthService {
   }
 
   async isTokenBlacklisted(token) {
+    if (!token) return false;
+    if (isBlacklistedCached(token)) return true;
     try {
-      const blacklisted = await BlacklistedToken.findOne({ where: { token } });
+      const blacklisted = await BlacklistedToken.findOne({ where: { token }, attributes: ['id'] });
+      if (blacklisted) rememberBlacklisted(token);
       return !!blacklisted;
     } catch (e) {
+      // Fail closed, but only after the cheap cache miss — the cache is what
+      // keeps a transient DB error from taking out the whole API.
       console.error('Token blacklist check failed:', e.message);
       return true;
     }
@@ -33,6 +65,7 @@ class AuthService {
       const decoded = jwt.decode(token);
       const expiresAt = decoded && decoded.exp ? new Date(decoded.exp * 1000) : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
       await BlacklistedToken.findOrCreate({ where: { token }, defaults: { token, expiresAt, userId } });
+      rememberBlacklisted(token); // revoke immediately, don't wait for the TTL
     } catch (e) {
       console.error('Failed to blacklist token:', e);
     }
@@ -64,6 +97,14 @@ class AuthService {
   }
 
   async register(data) {
+    // Off by default in production: a self-registered account is a live POS
+    // login (cashier role + JWT). Stores opt in via ALLOW_PUBLIC_REGISTRATION
+    // or the admin Settings toggle.
+    const settingService = require('../services/setting.service');
+    if (!settingService.isPublicRegistrationAllowed()) {
+      throw ApiError.forbidden('Public registration is disabled on this store. Ask an administrator to create your account.');
+    }
+
     const existing = await User.findOne({ where: { email: data.email } });
     if (existing) throw ApiError.conflict('Email already registered');
 

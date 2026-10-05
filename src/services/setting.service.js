@@ -6,7 +6,7 @@ const ApiError = require('../utils/ApiError');
 const SETTINGS_FILE = path.resolve(__dirname, '../../data/settings.json');
 
 const DEFAULT_KEYS = ['storeName', 'storeAddress', 'storePhone', 'storeEmail', 'taxRate', 'currency', 'lowStockThreshold', 'receiptHeader', 'receiptFooter'];
-const ALLOWED_KEYS = new Set([...DEFAULT_KEYS, 'address', 'phone', 'email', 'gcashNumber', 'mayaNumber']);
+const ALLOWED_KEYS = new Set([...DEFAULT_KEYS, 'address', 'phone', 'email', 'gcashNumber', 'mayaNumber', 'allowPublicRegistration']);
 
 const DEFAULTS = {
   storeName: config.app.name || 'My Store',
@@ -59,7 +59,10 @@ loadFromFile();
 
 class SettingService {
   async get() {
-    return { ...settings };
+    // `publicRegistrationEffective` is what actually gates the register API
+    // (env override + setting + environment default), so the UI can display
+    // the true state even when env forces it.
+    return { ...settings, publicRegistrationEffective: this.isPublicRegistrationAllowed() };
   }
 
   async update(data) {
@@ -81,9 +84,28 @@ class SettingService {
       filtered.lowStockThreshold = threshold;
     }
 
+    if ('allowPublicRegistration' in filtered) {
+      filtered.allowPublicRegistration = !!filtered.allowPublicRegistration;
+    }
+
     settings = { ...settings, ...filtered };
     saveToFile();
-    return { ...settings };
+    // Same shape as get() so clients always see publicRegistrationEffective.
+    return this.get();
+  }
+
+  /**
+   * Public self-registration gate (POST /api/v1/auth/register).
+   * Precedence: explicit env ALLOW_PUBLIC_REGISTRATION > admin setting > default.
+   * Default is OFF in production (a stranger-registered account is a live POS
+   * login) and ON in development for convenience.
+   */
+  isPublicRegistrationAllowed() {
+    const envFlag = (process.env.ALLOW_PUBLIC_REGISTRATION || '').toLowerCase();
+    if (envFlag === 'true' || envFlag === '1') return true;
+    if (envFlag === 'false' || envFlag === '0') return false;
+    if (settings.allowPublicRegistration !== undefined) return !!settings.allowPublicRegistration;
+    return config.nodeEnv !== 'production';
   }
 }
 

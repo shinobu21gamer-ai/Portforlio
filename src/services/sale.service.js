@@ -109,6 +109,7 @@ class SaleService {
       let subtotal = 0;
       let totalProfit = 0;
       let totalItemTax = 0;
+      let totalItemDiscount = 0;
       const items = [];
 
       for (const item of data.items) {
@@ -155,9 +156,10 @@ class SaleService {
           : (rawTaxRate > 1 ? rawTaxRate / 100 : rawTaxRate);
         const itemTax = calculateTax(itemSubtotal - itemDiscount, itemTaxRate);
         const itemTotal = itemSubtotal - itemDiscount + itemTax;
-        subtotal += itemSubtotal;
-        totalItemTax += itemTax;
-        totalProfit += ((unitPrice - (itemDiscount / item.quantity)) - buyingPrice) * item.quantity;
+      subtotal += itemSubtotal;
+      totalItemTax += itemTax;
+      totalItemDiscount += itemDiscount;
+      totalProfit += ((unitPrice - (itemDiscount / item.quantity)) - buyingPrice) * item.quantity;
 
         items.push({
           productId: product.id,
@@ -217,7 +219,11 @@ class SaleService {
       }
       const saleSubtotal = subtotal;
       const saleTax = totalItemTax;
-      const total = saleSubtotal - saleDiscount + saleTax + (parseFloat(data.shippingFee || 0));
+      // Item-level discounts (set per line) must reduce the payable total —
+      // they were previously applied to the line items and tax base only, so
+      // receipts showed discounted lines that did not add up to the total and
+      // cash change was computed against the undiscounted amount.
+      const total = saleSubtotal - totalItemDiscount - saleDiscount + saleTax + (parseFloat(data.shippingFee || 0));
 
       // A pending sale is an unpaid online checkout: the money has not arrived
       // yet, so it must not be recorded as paid and the customer must not be
