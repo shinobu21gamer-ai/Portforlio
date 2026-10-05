@@ -45,6 +45,13 @@ const protect = async (req, res, next) => {
     }
 
     req.user = user;
+
+    // First-run/seeded accounts are flagged mustChangePassword: they may
+    // only change their password (and log out) until they pick their own.
+    if (user.mustChangePassword && !['/change-password', '/logout'].includes(req.path)) {
+      throw new ApiError(403, 'Password change required', { code: 'MUST_CHANGE_PASSWORD' });
+    }
+
     next();
   } catch (error) {
     next(error);

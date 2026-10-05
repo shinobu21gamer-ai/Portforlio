@@ -76,7 +76,8 @@ module.exports = (sequelize, DataTypes) => {
       field: 'payment_status',
     },
     paymentMethod: {
-      type: DataTypes.ENUM('cash', 'gcash', 'maya', 'credit_card', 'debit_card', 'bank_transfer', 'other'),
+      // 'split' = sale paid across multiple methods (see payments[]).
+      type: DataTypes.ENUM('cash', 'gcash', 'maya', 'credit_card', 'debit_card', 'bank_transfer', 'other', 'split'),
       allowNull: false,
       field: 'payment_method',
     },
@@ -98,6 +99,11 @@ module.exports = (sequelize, DataTypes) => {
     notes: {
       type: DataTypes.TEXT,
       allowNull: true,
+    },
+    refundedAmount: {
+      type: DataTypes.DECIMAL(15, 2),
+      defaultValue: 0,
+      field: 'refunded_amount',
     },
     status: {
       type: DataTypes.ENUM('pending', 'completed', 'cancelled', 'refunded'),

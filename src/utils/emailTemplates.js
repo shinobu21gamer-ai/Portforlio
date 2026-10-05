@@ -344,12 +344,22 @@ function scheduleAssignmentEmail(userName, scheduleName, startTime, endTime, dat
   return baseLayout(content);
 }
 
-function receiptEmail(userName, invoiceNo, items, total, paymentMethod) {
+function receiptEmail(userName, invoiceNo, items, total, paymentMethod, payments = []) {
   const itemRows = items.map(i => `
     <tr>
       <td style="padding:8px 0;border-bottom:1px solid #eee;">${escapeHtml(i.name)} &times; ${escapeHtml(i.quantity)}</td>
       <td style="padding:8px 0;border-bottom:1px solid #eee;text-align:right;">₱${Number(i.subtotal).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td>
     </tr>`).join('');
+
+  // Split tenders list each leg (completed payments only, not refund rows).
+  const paidLegs = (payments || []).filter(p => p.status === 'completed' && Number(p.amount) > 0);
+  const legRows = paidLegs.length > 1
+    ? paidLegs.map(p => `
+    <tr>
+      <td style="padding:4px 0;color:#555;">${escapeHtml(p.paymentMethod)}${p.reference ? ` <span style="color:#999;">(${escapeHtml(p.reference)})</span>` : ''}</td>
+      <td style="padding:4px 0;text-align:right;">₱${Number(p.amount).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td>
+    </tr>`).join('')
+    : '';
 
   const content = `
     <h2 style="margin:0 0 16px;font-size:18px;color:#333;">Receipt - ${escapeHtml(invoiceNo)}</h2>
@@ -362,6 +372,7 @@ function receiptEmail(userName, invoiceNo, items, total, paymentMethod) {
         <td style="padding:12px 0 0;text-align:right;font-weight:700;font-size:16px;">₱${Number(total).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td>
       </tr>
     </table>
+    ${legRows ? `<table style="width:100%;border-collapse:collapse;margin:8px 0 16px;font-size:13px;">${legRows}</table>` : ''}
     <p style="font-size:13px;color:#666;">Payment: ${escapeHtml(paymentMethod)}</p>`;
   return baseLayout(content);
 }

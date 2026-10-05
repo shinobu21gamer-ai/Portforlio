@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import ErrorState from '../components/ErrorState';
 import PosLayout from '../layouts/PosLayout';
 import useAuthStore from '../store/authStore';
 import { useSettings, useUpdateSettings } from '../hooks/useApi';
@@ -7,7 +8,7 @@ import { useToast } from '../components/Toast';
 export default function Settings() {
   const user = useAuthStore(s => s.user);
   const toast = useToast();
-  const { data: serverSettings, isLoading: loadingSettings } = useSettings();
+  const { data: serverSettings, isLoading: loadingSettings, isError, error, refetch } = useSettings();
   const updateSettingsMut = useUpdateSettings();
   const [form, setForm] = useState({
     storeName: '',
@@ -20,11 +21,13 @@ export default function Settings() {
     receiptFooter: 'Thank you for your purchase!',
     gcashNumber: '',
     mayaNumber: '',
+    allowPublicRegistration: false,
   });
 
   useEffect(() => {
     if (serverSettings) {
-      setForm({
+      setForm(p => ({
+        ...p,
         storeName: serverSettings.storeName || '',
         address: serverSettings.address || '',
         phone: serverSettings.phone || '',
@@ -35,7 +38,8 @@ export default function Settings() {
         receiptFooter: serverSettings.receiptFooter || 'Thank you for your purchase!',
         gcashNumber: serverSettings.gcashNumber || '',
         mayaNumber: serverSettings.mayaNumber || '',
-      });
+        allowPublicRegistration: !!serverSettings.allowPublicRegistration,
+      }));
     }
   }, [serverSettings]);
 
@@ -60,6 +64,14 @@ export default function Settings() {
       toast.error('Failed to save settings');
     }
   };
+
+  if (isError) {
+    return (
+      <div className="page-error-wrap">
+        <ErrorState message={error?.response?.data?.message || 'Something went wrong while loading this data.'} onRetry={() => refetch()} />
+      </div>
+    );
+  }
 
   return (
     <PosLayout active="settings">
@@ -103,6 +115,30 @@ export default function Settings() {
             <div className="field"><label>GCash Number</label><input className="input-block" placeholder="09XX XXX XXXX" value={form.gcashNumber} onChange={e => update('gcashNumber', e.target.value)} /></div>
             <div className="field"><label>Maya Number</label><input className="input-block" placeholder="09XX XXX XXXX" value={form.mayaNumber} onChange={e => update('mayaNumber', e.target.value)} /></div>
           </div>
+        </div>
+
+        <div className="dashboard-section">
+          <h2 style={{ marginBottom: 16 }}>Security</h2>
+          <label style={{ display: 'flex', alignItems: 'flex-start', gap: 12, cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={form.allowPublicRegistration}
+              onChange={e => update('allowPublicRegistration', e.target.checked)}
+              style={{ marginTop: 4, width: 18, height: 18, accentColor: 'var(--primary, #6366f1)' }}
+            />
+            <span>
+              <span style={{ fontWeight: 600, display: 'block' }}>Allow public self-registration</span>
+              <span className="text-sm text-muted">
+                When enabled, anyone can create an account from the login page — new accounts get the cashier role.
+                Off by default in production; enable only if you want walk-up self-serve sign-ups.
+              </span>
+              {serverSettings && serverSettings.publicRegistrationEffective !== form.allowPublicRegistration && (
+                <span className="text-sm" style={{ display: 'block', marginTop: 4, color: 'var(--warning-fg)' }}>
+                  Note: this store's environment configuration currently overrides this toggle (effective: {serverSettings.publicRegistrationEffective ? 'enabled' : 'disabled'}).
+                </span>
+              )}
+            </span>
+          </label>
         </div>
 
         <div className="flex-end mb-lg">

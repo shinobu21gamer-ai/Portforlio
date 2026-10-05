@@ -2,9 +2,10 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
+const config = require('../config');
 const { validateFileSignature } = require('../utils/fileType');
 
-const resumeDir = path.resolve('uploads/resumes');
+const resumeDir = path.join(path.resolve(config.upload.base), 'resumes');
 if (!fs.existsSync(resumeDir)) {
   fs.mkdirSync(resumeDir, { recursive: true });
 }

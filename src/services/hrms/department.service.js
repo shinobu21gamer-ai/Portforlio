@@ -10,10 +10,13 @@ class DepartmentService {
     const where = {};
     if (query.search) where.name = { [require('sequelize').Op.like]: `%${escapeLike(query.search)}%` };
 
+    const allowedSort = ["createdAt","name"];
+    const sortBy = allowedSort.includes(query.sortBy) ? query.sortBy : 'createdAt';
+    const sortOrder = query.sortOrder === 'ASC' ? 'ASC' : 'DESC';
     const { rows, count } = await Department.findAndCountAll({
       where,
       include: [{ association: 'positions', attributes: ['id'] }],
-      offset, limit, order: [['createdAt', 'DESC']],
+      offset, limit, order: [[sortBy, sortOrder]],
     });
 
     const depts = rows.map(d => ({ ...d.toJSON(), positionCount: d.positions?.length || 0, positions: undefined }));

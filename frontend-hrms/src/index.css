@@ -444,7 +444,9 @@
 .login-brand h1 { font-size: 28px; font-weight: 800; color: var(--fg-primary); margin: 0; letter-spacing: -0.5px; }
 .login-brand p { font-size: 13px; color: var(--text-muted); margin: 6px 0 0; }
 .login-form { display: flex; flex-direction: column; gap: 16px; }
-.auth-options { display: flex; justify-content: flex-end; margin-top: -2px; }
+.auth-options { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: -2px; }
+.remember-me { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 500; color: var(--text-muted); cursor: pointer; user-select: none; }
+.remember-me input { margin: 0; width: 15px; height: 15px; cursor: pointer; }
 .auth-link { font-size: 13px; font-weight: 500; color: var(--primary); text-decoration: none; }
 .auth-link:hover { text-decoration: underline; }
 .auth-submit { margin-top: 4px; }
@@ -685,7 +687,7 @@
   background: var(--bg-secondary);
   border-radius: var(--radius-xl);
   border: 1px solid var(--border-primary);
-  overflow: hidden;
+  overflow-x: auto;
   margin-bottom: 16px;
   box-shadow: var(--shadow-sm);
 }
@@ -1871,3 +1873,58 @@ button:not(.btn):not(.tab):not(.icon-btn) {
 .password-toggle:hover { background: var(--bg-tertiary); color: var(--text); }
 .password-toggle svg { width: 18px; height: 18px; }
 .password-toggle:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+/* ─── First-run onboarding checklist ─────────────────────────────── */
+.onboarding-card { border: 1px solid var(--border-primary); border-left: 4px solid var(--indigo-500, var(--primary)); }
+.onboarding-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 12px; }
+.onboarding-progress { height: 6px; background: var(--bg-tertiary); border-radius: 999px; overflow: hidden; margin-bottom: 16px; }
+.onboarding-progress-fill { height: 100%; background: var(--indigo-500, var(--primary)); border-radius: 999px; transition: width 0.3s var(--ease-out, ease); }
+.onboarding-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.onboarding-step { display: flex; gap: 12px; padding: 10px 8px; border-radius: var(--radius-md, 8px); align-items: flex-start; }
+.onboarding-step:hover { background: var(--bg-tertiary); }
+.onboarding-check {
+  flex: none; width: 22px; height: 22px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  border: 2px solid var(--border-primary); color: transparent; font-size: 13px; font-weight: 700;
+  transition: all 0.2s ease;
+}
+.onboarding-step.done .onboarding-check { background: var(--success, #22c55e); border-color: var(--success, #22c55e); color: #fff; }
+.onboarding-step.done .onboarding-step-title { color: var(--text-muted); text-decoration: line-through; }
+.onboarding-step-body { flex: 1; min-width: 0; }
+.onboarding-step-title { font-weight: 600; font-size: 14px; }
+.onboarding-step-desc { font-size: 13px; color: var(--text-muted); margin-top: 2px; }
+.onboarding-step-action { margin-top: 10px; }
+.onboarding-inline-form { margin-top: 12px; padding: 12px; background: var(--bg-tertiary); border-radius: var(--radius-md, 8px); }
+.onboarding-form-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.onboarding-form-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-muted); }
+.onboarding-form-grid label span { font-weight: 600; }
+@media (max-width: 640px) {
+  .onboarding-form-grid { grid-template-columns: 1fr; }
+}
+
+/* ─── ConfirmDialog (kit parity with POS) ─── */
+.confirm-dialog { text-align: center; }
+.confirm-dialog__message { margin: 0 0 20px; color: var(--fg-secondary); font-size: var(--text-base, 14px); line-height: 1.6; white-space: pre-line; }
+.confirm-dialog__actions { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; }
+
+/* ─── Recharts — theme-aware axes / grid / tooltip (attribute var() is unreliable in SVG) ─── */
+.recharts-cartesian-grid line { stroke: var(--border-primary); }
+.recharts-cartesian-axis-tick text { fill: var(--fg-secondary); }
+.recharts-cartesian-axis-line path, .recharts-cartesian-axis-tick-line line { stroke: var(--border-primary); }
+.recharts-legend-item-text { color: var(--fg-secondary) !important; }
+.recharts-default-tooltip {
+  background: var(--bg-elevated) !important;
+  border: 1px solid var(--border-primary) !important;
+  border-radius: var(--radius-md, 8px) !important;
+  box-shadow: var(--shadow-md, 0 4px 12px rgba(0,0,0,.12));
+}
+.recharts-tooltip-label, .recharts-tooltip-item { color: var(--fg-primary) !important; }
+
+/* ─── Leaflet — dark mode tile treatment (external OSM tiles stay light) ─── */
+[data-theme="dark"] .leaflet-tile { filter: brightness(0.6) contrast(1.1) saturate(0.6); }
+[data-theme="dark"] .leaflet-container { background: var(--bg-primary); }
+
+/* ─── ErrorState (kit component) ─── */
+.error-state { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 48px 24px; gap: 10px; }
+.error-state__icon { color: var(--error); opacity: 0.8; }
+.error-state h3 { margin: 0; font-size: 16px; font-weight: 700; color: var(--fg-primary); }
+.error-state p { margin: 0 0 10px; font-size: 14px; color: var(--fg-secondary); max-width: 420px; }

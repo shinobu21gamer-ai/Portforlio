@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import SortableHeader from '../components/SortableHeader';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../api/client';
 
@@ -8,7 +9,7 @@ import { useToast } from '../components/Toast';
 import { formatDate, peso } from '../utils/helpers';
 import { useEmployees } from '../hooks/useApi';
 import { useIsAdmin, useIsAdminOrHR } from '../hooks/useRole';
-import { confirmDelete, confirmApprove, confirmTerminate } from '../utils/swal';
+import useConfirm from '../hooks/useConfirm.jsx';
 import useDebounce from '../hooks/useDebounce';
 import { icons } from '../components/ActionButton';
 
@@ -41,9 +42,17 @@ function useDeleteContract() {
 }
 
 export default function Contracts() {
+  const { confirmDelete, confirmApprove, confirmTerminate, confirmDialog } = useConfirm();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search);
+  const [sortBy, setSortBy] = useState('createdAt');
+  const [sortOrder, setSortOrder] = useState('DESC');
+  const handleSort = (field) => {
+    if (sortBy === field) setSortOrder((o) => (o === 'ASC' ? 'DESC' : 'ASC'));
+    else { setSortBy(field); setSortOrder('DESC'); }
+        setPage(1);
+  };
   const [createModal, setCreateModal] = useState(false);
   const [editModal, setEditModal] = useState(false);
   const [viewModal, setViewModal] = useState(false);
@@ -60,7 +69,7 @@ export default function Contracts() {
   const isAdmin = useIsAdmin();
   const canCreateEdit = useIsAdminOrHR();
 
-  const { data, isLoading } = useContracts({ page, limit: 10, status: statusFilter || undefined, contractType: typeFilter || undefined, search: debouncedSearch || undefined });
+  const { data, isLoading } = useContracts({ page, limit: 10, status: statusFilter || undefined, contractType: typeFilter || undefined, search: debouncedSearch || undefined, sortBy, sortOrder });
   const { data: empData } = useEmployees({ limit: 100, status: 'active' });
   const employees = empData?.employees || [];
   const contracts = data?.contracts || [];
@@ -233,7 +242,7 @@ export default function Contracts() {
       {isLoading ? <LoadingSkeleton rows={4} /> : (
         <div className="table-wrap">
           <table className="data-table">
-            <thead><tr><th className="w-40"><input type="checkbox" checked={selected.length > 0 && selected.length === contracts.filter(c => c.status === 'pending' && !c.approvedAt && isAdmin).length} onChange={toggleAll} /></th><th>Employee</th><th>Department</th><th>Type</th><th>Payment</th><th>Start</th><th>End</th><th>Salary</th><th>Status</th><th>Approved</th><th>Actions</th></tr></thead>
+            <thead><tr><th className="w-40"><input type="checkbox" checked={selected.length > 0 && selected.length === contracts.filter(c => c.status === 'pending' && !c.approvedAt && isAdmin).length} onChange={toggleAll} /></th><th>Employee</th><th>Department</th><th>Type</th><th>Payment</th><SortableHeader label="Start" field="startDate" sortBy={sortBy} sortOrder={sortOrder} onSort={handleSort} /><SortableHeader label="End" field="endDate" sortBy={sortBy} sortOrder={sortOrder} onSort={handleSort} /><SortableHeader label="Salary" field="salary" sortBy={sortBy} sortOrder={sortOrder} onSort={handleSort} /><th>Status</th><th>Approved</th><th>Actions</th></tr></thead>
             <tbody>
               {contracts.map(c => {
                 const canApprove = c.status === 'pending' && !c.approvedAt && isAdmin;
@@ -438,6 +447,7 @@ export default function Contracts() {
           </div>
         </div>
       </Modal>
+    {confirmDialog}
     </>
   );
 }

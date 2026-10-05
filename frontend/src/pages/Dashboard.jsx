@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import ErrorState from '../components/ErrorState';
 import PosLayout from '../layouts/PosLayout';
 import { useDashboard } from '../hooks/useApi';
 import useAuthStore from '../store/authStore';
@@ -39,7 +40,7 @@ function EmptyChart({ text = 'No data available' }) {
 }
 
 export default function Dashboard() {
-  const { data, isLoading, error } = useDashboard();
+  const { data, isLoading, error, refetch } = useDashboard();
   const user = useAuthStore(s => s.user);
   const role = user?.role?.slug;
   const isAdmin = role === 'admin';
@@ -48,7 +49,7 @@ export default function Dashboard() {
   const isInventory = role === 'inventory_staff';
 
   if (isLoading) return <PosLayout active="dashboard"><LoadingSkeleton type="cards" /></PosLayout>;
-  if (error) return <PosLayout active="dashboard"><div className="empty-state"><div className="icon">⚠️</div><h3>Failed to load dashboard</h3><p>{error.message}</p></div></PosLayout>;
+  if (error) return <PosLayout active="dashboard"><div className="page-error-wrap"><ErrorState message={error?.response?.data?.message || 'Something went wrong while loading this data.'} onRetry={() => refetch()} /></div></PosLayout>;
 
   const d = data || {};
 
@@ -145,7 +146,7 @@ export default function Dashboard() {
           <div style={chartContainerStyle}>
             <ResponsiveContainer width="100%" height={300}>
               <LineChart data={dailySalesData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--muted, #f4f4f5)" />
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                 <XAxis dataKey="name" tick={{ fontSize: 12 }} />
                 <YAxis yAxisId="left" tick={{ fontSize: 12 }} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
                 <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 12 }} />
@@ -155,9 +156,9 @@ export default function Dashboard() {
                   yAxisId="left"
                   type="monotone"
                   dataKey="revenue"
-                  stroke="var(--primary, #6366f1)"
+                  stroke="#6366f1"
                   strokeWidth={3}
-                  dot={{ fill: 'var(--primary, #6366f1)', strokeWidth: 2, r: 4 }}
+                  dot={{ fill: '#6366f1', strokeWidth: 2, r: 4 }}
                   activeDot={{ r: 6 }}
                 />
                 <Line
@@ -218,7 +219,7 @@ export default function Dashboard() {
           <div style={chartContainerStyle}>
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={bestSellersBarData} layout="vertical" margin={{ left: 20 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--muted, #f4f4f5)" />
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                 <XAxis type="number" tick={{ fontSize: 12 }} />
                 <YAxis type="category" dataKey="name" width={120} tick={{ fontSize: 12 }} />
                 <Tooltip formatter={(value) => [value, 'Units Sold']} />

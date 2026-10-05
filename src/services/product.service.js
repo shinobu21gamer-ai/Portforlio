@@ -9,7 +9,6 @@ const {
   getPagination,
   getPaginationMeta,
   sanitizeObject,
-  calculateTax,
   escapeLike,
 } = require('../utils/helpers');
 

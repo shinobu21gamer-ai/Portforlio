@@ -1,6 +1,6 @@
 const Joi = require('joi');
 
-const stripHtml = (value, helpers) => {
+const stripHtml = (value, _helpers) => {
   if (typeof value === 'string') {
     return value.replace(/<[^>]*>/g, '');
   }
@@ -8,6 +8,18 @@ const stripHtml = (value, helpers) => {
 };
 
 const htmlField = () => Joi.string().custom(stripHtml, 'HTML strip');
+
+// Cross-field rule ("a discount value requires a discount type") as a FIELD-level
+// .when() — the documented Joi pattern for sibling refs. (An object-level
+// .when('discountValue') on the root schema throws "Invalid reference exceeds
+// the schema root" and 500s every request; attached to an item OBJECT inside
+// .items() it silently always takes the "then" branch. sale.routes tests pin this.)
+const discountTypeField = Joi.string().valid('percentage', 'fixed')
+  .when('discountValue', {
+    is: Joi.number().min(1),
+    then: Joi.string().required(),
+    otherwise: Joi.string().optional(),
+  });
 
 const schemas = {
   // ─── Auth ───────────────────────────────────────────────
@@ -20,6 +32,24 @@ const schemas = {
       .required()
       .messages({ 'string.pattern.base': 'Password must contain at least one uppercase letter, one lowercase letter, and one number' }),
     phone: Joi.string().min(7).max(20).optional().allow(''),
+  }),
+
+  // Admin-created users carry the hierarchy fields (role, branch, reports-to).
+  // NOTE: POST /users must NOT reuse `register` — stripUnknown would silently
+  // drop roleId and every user create would 400 with "User.roleId cannot be null".
+  createUser: Joi.object({
+    firstName: htmlField().min(2).max(100).required(),
+    lastName: htmlField().min(2).max(100).required(),
+    email: Joi.string().email().max(150).required(),
+    password: Joi.string().min(8).max(128)
+      .pattern(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
+      .required()
+      .messages({ 'string.pattern.base': 'Password must contain at least one uppercase letter, one lowercase letter, and one number' }),
+    phone: Joi.string().min(7).max(20).optional().allow(''),
+    roleId: Joi.number().integer().positive().required(),
+    branchId: Joi.number().integer().positive().optional().allow(null),
+    reportsToId: Joi.number().integer().positive().optional().allow(null),
+    isActive: Joi.boolean().optional(),
   }),
 
   login: Joi.object({
@@ -199,31 +229,55 @@ const schemas = {
         Joi.object({
           productId: Joi.number().integer().positive().required(),
           quantity: Joi.number().integer().min(1).required(),
-          discountType: Joi.string().valid('percentage', 'fixed').optional(),
+          discountType: discountTypeField,
           discountValue: Joi.number().min(0).optional().default(0),
-        })
-        .when('discountValue', {
-          is: Joi.number().min(1),
-          then: Joi.object({ discountType: Joi.string().valid('percentage', 'fixed').required() }),
-          otherwise: Joi.object({ discountType: Joi.string().valid('percentage', 'fixed').optional() }),
         })
       )
       .min(1)
       .required(),
-    discountType: Joi.string().valid('percentage', 'fixed').optional(),
+    discountType: discountTypeField,
     discountValue: Joi.number().min(0).optional().default(0),
     discountId: Joi.number().integer().positive().allow(null).optional(),
     paymentMethod: Joi.string()
-      .valid('cash', 'gcash', 'maya', 'credit_card', 'debit_card', 'bank_transfer', 'other')
+      .valid('cash', 'gcash', 'maya', 'credit_card', 'debit_card', 'bank_transfer', 'other', 'split')
       .required(),
     paymentReference: Joi.string().optional().allow(''),
     cashAmount: Joi.number().min(0).optional(),
+    // Split payment: 2+ legs whose amounts sum exactly to the total.
+    // The overall paymentMethod must be 'split' when this is provided.
+    payments: Joi.array()
+      .items(
+        Joi.object({
+          paymentMethod: Joi.string().valid('cash', 'gcash', 'maya', 'credit_card', 'debit_card', 'bank_transfer', 'other').required(),
+          amount: Joi.number().positive().required(),
+          reference: Joi.string().optional().allow(''),
+        })
+      )
+      .min(2)
+      .max(6)
+      .optional(),
     shippingFee: Joi.number().min(0).optional().default(0),
     notes: htmlField().optional().allow(''),
-  }).when('discountValue', {
-    is: Joi.number().min(1),
-    then: Joi.object({ discountType: Joi.string().valid('percentage', 'fixed').required() }),
-    otherwise: Joi.object({ discountType: Joi.string().valid('percentage', 'fixed').optional() }),
+  }).custom((value) => {
+    if (value.paymentMethod === 'split' && (!value.payments || value.payments.length < 2)) {
+      throw new Error('Split payment requires at least two legs in payments[]');
+    }
+    return value;
+  }, 'split legs'),
+
+  // Refund a completed sale: omit items for a full refund; otherwise list
+  // per-line quantities. Reason is always required (audit trail).
+  refundSale: Joi.object({
+    items: Joi.array()
+      .items(
+        Joi.object({
+          saleItemId: Joi.number().integer().positive().required(),
+          quantity: Joi.number().integer().positive().required(),
+        })
+      )
+      .max(50)
+      .optional(),
+    reason: Joi.string().trim().min(3).max(500).required(),
   }),
 
   // ─── Purchase ───────────────────────────────────────────
@@ -421,6 +475,15 @@ const schemas = {
     isActive: Joi.boolean().optional(),
   }),
 
+  // ─── Shifts ─────────────────────────────────────────────
+  openShift: Joi.object({
+    openingFloat: Joi.number().min(0).optional().default(0),
+  }),
+  closeShift: Joi.object({
+    countedCash: Joi.number().min(0).required(),
+    notes: Joi.string().max(500).optional().allow(''),
+  }),
+
   // ─── Payment ────────────────────────────────────────────
   createCheckout: Joi.object({
     amount: Joi.number().positive().optional(),
@@ -443,6 +506,8 @@ const schemas = {
     mayaNumber: Joi.string().allow('').max(50).optional(),
     storeAddress: htmlField().max(255).optional(),
     storePhone: Joi.string().max(20).optional().allow(''),
+    allowPublicRegistration: Joi.boolean().optional(),
+    onboardingDismissedAt: Joi.string().isoDate().allow('', null).optional(),
     storeEmail: Joi.string().email().max(150).optional().allow(''),
     taxRate: Joi.number().min(0).max(100).optional().messages({
       'number.max': 'taxRate must be a percentage between 0 and 100',

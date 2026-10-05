@@ -120,7 +120,12 @@ router.put('/jobs/:id/reject', protect, authorize('admin'), jobCtrl.reject);
 router.delete('/jobs/:id', protect, authorize('admin', 'hr'), jobCtrl.delete);
 router.get('/jobs/applications/list', protect, authorize('admin', 'hr'), jobCtrl.getApplications);
 router.get('/jobs/applications/resume/:filename', protect, authorize('admin', 'hr', 'manager'), jobCtrl.downloadResume);
-router.post('/jobs/applications', protect, resumeUpload.single('resume'), validateResumeSignature, validate(schemas.applyJob), jobCtrl.apply);
+// Authenticated "apply to a posting" is an internal-candidate flow: only the
+// employee role may use it. External candidates apply through the public,
+// rate-limited /public/jobs/apply endpoint (signature-verified). Admin/HR/
+// manager approve applications; they should not be adding themselves to the
+// pipeline.
+router.post('/jobs/applications', protect, authorize('employee'), resumeUpload.single('resume'), validateResumeSignature, validate(schemas.applyJob), jobCtrl.apply);
 router.put('/jobs/applications/:id/status', protect, authorize('admin', 'hr'), validate(schemas.updateApplicationStatus), jobCtrl.updateApplicationStatus);
 
 // ─── Interviews ─────────────────────────────────────

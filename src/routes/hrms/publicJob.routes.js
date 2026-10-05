@@ -14,6 +14,26 @@ const applyLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+// GET /api/v1/public/settings - Brand-safe store info for the public landing
+// page (name, contact, currency). Deliberately does NOT expose payment
+// numbers, tax rate, thresholds or any other operational fields.
+router.get('/settings', async (req, res, next) => {
+  try {
+    const settingService = require('../../services/setting.service');
+    const s = await settingService.get();
+    res.json({
+      success: true,
+      data: {
+        storeName: s.storeName || 'MiniMart',
+        address: s.address || '',
+        phone: s.phone || '',
+        email: s.email || '',
+        currency: s.currency || 'PHP',
+      },
+    });
+  } catch (e) { next(e); }
+});
+
 // GET /api/v1/public/jobs - Get all open job postings (public)
 router.get('/jobs', async (req, res, next) => {
   try {

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import SortableHeader from '../components/SortableHeader';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../api/client';
 
@@ -43,6 +44,13 @@ export default function Leaves() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search);
+  const [sortBy, setSortBy] = useState('createdAt');
+  const [sortOrder, setSortOrder] = useState('DESC');
+  const handleSort = (field) => {
+    if (sortBy === field) setSortOrder((o) => (o === 'ASC' ? 'DESC' : 'ASC'));
+    else { setSortBy(field); setSortOrder('DESC'); }
+        setPage(1);
+  };
   const [statusFilter, setStatusFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [createModal, setCreateModal] = useState(false);
@@ -58,7 +66,7 @@ export default function Leaves() {
   const isAdmin = useIsAdmin();
   const isHR = useIsHR();
 
-  const { data, isLoading } = useLeaves({ page, limit: 10, status: statusFilter || undefined, leaveType: typeFilter || undefined, search: debouncedSearch || undefined });
+  const { data, isLoading } = useLeaves({ page, limit: 10, status: statusFilter || undefined, leaveType: typeFilter || undefined, search: debouncedSearch || undefined, sortBy, sortOrder });
   const { data: empData } = useEmployees({ limit: 100, status: 'active' });
   const employees = empData?.employees || [];
   const leaves = data?.leaves || [];
@@ -172,7 +180,7 @@ export default function Leaves() {
       {isLoading ? <LoadingSkeleton rows={4} /> : (
         <div className="table-wrap">
           <table className="data-table">
-            <thead><tr><th className="w-40"><input type="checkbox" checked={selected.length > 0 && selected.length === leaves.filter(l => (isAdmin && l.status === 'hr-reviewed') || (isHR && l.status === 'pending')).length} onChange={toggleAll} /></th><th>Employee</th><th>Department</th><th>Type</th><th>From</th><th>To</th><th>Days</th><th>Reason</th><th>Status</th><th>Actions</th></tr></thead>
+            <thead><tr><th className="w-40"><input type="checkbox" checked={selected.length > 0 && selected.length === leaves.filter(l => (isAdmin && l.status === 'hr-reviewed') || (isHR && l.status === 'pending')).length} onChange={toggleAll} /></th><th>Employee</th><th>Department</th><th>Type</th><SortableHeader label="From" field="startDate" sortBy={sortBy} sortOrder={sortOrder} onSort={handleSort} /><SortableHeader label="To" field="endDate" sortBy={sortBy} sortOrder={sortOrder} onSort={handleSort} /><SortableHeader label="Days" field="days" sortBy={sortBy} sortOrder={sortOrder} onSort={handleSort} /><th>Reason</th><th>Status</th><th>Actions</th></tr></thead>
             <tbody>
               {(data?.leaves || []).map(l => {
                 const canSelect = (isAdmin && l.status === 'hr-reviewed') || (isHR && l.status === 'pending');

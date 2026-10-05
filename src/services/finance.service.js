@@ -1,18 +1,25 @@
 const { Op, fn, col, literal } = require('sequelize');
 const { Sale, SaleItem, Purchase, Expense, PettyCashTransaction, sequelize } = require('../models');
+const config = require('../config');
+const { localDateBoundsForDate, localMonthBounds, localDateStr, sqlLocalDateExpr } = require('../utils/timezone');
 
-const toLocalDateStr = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+// Resolve report date inputs (local calendar dates in the business timezone)
+// to UTC-instant bounds. Defaults: start of the local month -> now.
+const resolveReportBounds = (startDate, endDate) => {
+  const tz = config.app.timezone;
+  const now = new Date();
+  const start = startDate
+    ? localDateBoundsForDate(tz, startDate).start
+    : localMonthBounds(tz, now).start;
+  const end = endDate ? localDateBoundsForDate(tz, endDate).end : now;
+  return { start, end, startStr: localDateStr(tz, start), endStr: localDateStr(tz, new Date(end.getTime() - 1)) };
+};
 
 class FinanceService {
   async getFinanceReport(startDate, endDate) {
-    const start = startDate ? new Date(startDate) : new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-    const end = endDate ? new Date(endDate + 'T23:59:59') : new Date();
-    const startStr = toLocalDateStr(start);
-    const endStr = toLocalDateStr(end);
-    const isSQLite = sequelize.getDialect() === 'sqlite';
-    const nextDayExpr = isSQLite ? `date(:endDate, '+1 day')` : `DATE_ADD(DATE(:endDate), INTERVAL 1 DAY)`;
-    const dateExpr = isSQLite ? 'DATE(s.created_at)' : 'DATE(s.created_at)';
-    const expenseDateExpr = isSQLite ? 'DATE(expense_date)' : 'DATE(expense_date)';
+    const { start, end, startStr, endStr } = resolveReportBounds(startDate, endDate);
+    const dateExpr = sqlLocalDateExpr('s.created_at', config.app.timezone, sequelize.getDialect());
+    const expenseDateExpr = 'DATE(expense_date)';
 
     const [salesSummary, expensesSummary, taxSummary, cogsData, dailySummary] = await Promise.all([
       // Sales summary
@@ -25,7 +32,7 @@ class FinanceService {
           [fn('COALESCE', fn('SUM', col('tax_amount')), 0), 'totalTax'],
           [fn('COALESCE', fn('SUM', col('shipping_fee')), 0), 'totalShipping'],
         ],
-        where: { createdAt: { [Op.between]: [start, end] }, status: 'completed' },
+        where: { createdAt: { [Op.gte]: start, [Op.lt]: end }, status: 'completed' },
         raw: true,
       }),
 
@@ -47,7 +54,7 @@ class FinanceService {
           [fn('COALESCE', fn('SUM', col('total')), 0), 'total'],
           [fn('COALESCE', fn('SUM', col('tax_amount')), 0), 'tax'],
         ],
-        where: { createdAt: { [Op.between]: [start, end] }, status: 'completed' },
+        where: { createdAt: { [Op.gte]: start, [Op.lt]: end }, status: 'completed' },
         group: ['payment_method'],
         raw: true,
       }),
@@ -58,7 +65,7 @@ class FinanceService {
           [fn('COALESCE', fn('SUM', col('quantity')), 0), 'totalUnitsSold'],
           [fn('COALESCE', fn('SUM', literal('quantity * buying_price')), 0), 'totalCOGS'],
         ],
-        include: [{ model: Sale, as: 'sale', attributes: [], where: { createdAt: { [Op.between]: [start, end] }, status: 'completed' } }],
+        include: [{ model: Sale, as: 'sale', attributes: [], where: { createdAt: { [Op.gte]: start, [Op.lt]: end }, status: 'completed' } }],
         raw: true,
       }),
 
@@ -71,11 +78,11 @@ class FinanceService {
                COALESCE(SUM(s.tax_amount), 0) as tax,
                COALESCE(SUM(s.discount_amount), 0) as discounts
         FROM sales s
-        WHERE s.created_at >= date(:startDate) AND s.created_at < ${nextDayExpr} AND s.status = 'completed'
+        WHERE s.created_at >= :startUtc AND s.created_at < :endUtc AND s.status = 'completed'
         GROUP BY ${dateExpr}
         ORDER BY ${dateExpr} ASC
       `, {
-        replacements: { startDate: startStr, endDate: endStr },
+        replacements: { startUtc: start, endUtc: end },
         type: sequelize.QueryTypes.SELECT,
       }),
     ]);
@@ -86,11 +93,11 @@ class FinanceService {
              COALESCE(SUM(si.quantity * si.buying_price), 0) as cogs
       FROM sale_items si
       JOIN sales s ON s.id = si.sale_id
-      WHERE s.created_at >= date(:startDate) AND s.created_at < ${nextDayExpr} AND s.status = 'completed'
+      WHERE s.created_at >= :startUtc AND s.created_at < :endUtc AND s.status = 'completed'
       GROUP BY ${dateExpr}
       ORDER BY ${dateExpr} ASC
     `, {
-      replacements: { startDate: startStr, endDate: endStr },
+      replacements: { startUtc: start, endUtc: end },
       type: sequelize.QueryTypes.SELECT,
     });
 
@@ -99,11 +106,11 @@ class FinanceService {
       SELECT ${expenseDateExpr} as date,
              COALESCE(SUM(amount), 0) as total
       FROM expenses
-      WHERE expense_date >= date(:startDate) AND expense_date < ${nextDayExpr}
+      WHERE expense_date >= :startStr AND expense_date <= :endStr
       GROUP BY ${expenseDateExpr}
       ORDER BY ${expenseDateExpr} ASC
     `, {
-      replacements: { startDate: startStr, endDate: endStr },
+      replacements: { startStr, endStr },
       type: sequelize.QueryTypes.SELECT,
     });
 
@@ -165,10 +172,7 @@ class FinanceService {
   }
 
   async getCashflow(startDate, endDate) {
-    const start = startDate ? new Date(startDate) : new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-    const end = endDate ? new Date(endDate + 'T23:59:59') : new Date();
-    const startStr = toLocalDateStr(start);
-    const endStr = toLocalDateStr(end);
+    const { start, end, startStr, endStr } = resolveReportBounds(startDate, endDate);
 
     const [salesCash, purchasePayments, expensePayments] = await Promise.all([
       // Cash received from sales
@@ -179,7 +183,7 @@ class FinanceService {
           [fn('COALESCE', fn('SUM', col('cash_amount')), 0), 'cashReceived'],
           [fn('COALESCE', fn('SUM', col('total')), 0), 'totalSales'],
         ],
-        where: { createdAt: { [Op.between]: [start, end] }, status: 'completed' },
+        where: { createdAt: { [Op.gte]: start, [Op.lt]: end }, status: 'completed' },
         group: ['payment_method'],
         raw: true,
       }),
@@ -190,7 +194,7 @@ class FinanceService {
           [fn('COALESCE', fn('SUM', col('paid_amount')), 0), 'totalPaid'],
           [fn('COUNT', col('id')), 'count'],
         ],
-        where: { createdAt: { [Op.between]: [start, end] }, status: { [Op.ne]: 'cancelled' } },
+        where: { createdAt: { [Op.gte]: start, [Op.lt]: end }, status: { [Op.ne]: 'cancelled' } },
         raw: true,
       }),
 
@@ -212,12 +216,12 @@ class FinanceService {
     const [pettyDeposits, pettyWithdrawals] = await Promise.all([
       PettyCashTransaction.findOne({
         attributes: [[fn('COALESCE', fn('SUM', col('amount')), 0), 'total']],
-        where: { type: 'deposit', createdAt: { [Op.between]: [start, end] } },
+        where: { type: 'deposit', createdAt: { [Op.gte]: start, [Op.lt]: end } },
         raw: true,
       }),
       PettyCashTransaction.findOne({
         attributes: [[fn('COALESCE', fn('SUM', col('amount')), 0), 'total']],
-        where: { type: 'withdrawal', referenceType: { [Op.ne]: 'Purchase' }, createdAt: { [Op.between]: [start, end] } },
+        where: { type: 'withdrawal', referenceType: { [Op.ne]: 'Purchase' }, createdAt: { [Op.gte]: start, [Op.lt]: end } },
         raw: true,
       }),
     ]);

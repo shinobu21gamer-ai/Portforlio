@@ -93,13 +93,13 @@ export default function Profile() {
 
       <div className="flex gap-md flex-wrap items-start">
         <div className="flex-col flex-center flex-gap-sm" style={{ minWidth: 160 }}>
-          <div className="flex-center font-bold" style={{ width: 80, height: 80, borderRadius: '50%', background: 'var(--primary)', fontSize: 32, color: '#fff' }}>
+          <div className="flex-center font-bold" style={{ width: 80, height: 80, borderRadius: '50%', background: 'var(--primary)', fontSize: 32, color: 'var(--primary-fg)' }}>
             {authUser?.firstName?.[0]}{authUser?.lastName?.[0]}
           </div>
           <div className="text-center">
             <div className="font-semibold">{authUser?.firstName} {authUser?.lastName}</div>
             <div className="text-sm text-muted">{authUser?.email}</div>
-            <span className="badge mt-xs" style={{ background: roleSlug === 'admin' ? 'var(--primary)' : roleSlug === 'manager' ? 'var(--success)' : 'var(--muted)', color: roleSlug === 'admin' ? '#fff' : 'var(--fg)' }}>{roleName}</span>
+            <span className="badge mt-xs" style={{ background: roleSlug === 'admin' ? 'var(--primary)' : roleSlug === 'manager' ? 'var(--success)' : 'var(--muted)', color: roleSlug === 'admin' ? 'var(--primary-fg)' : 'var(--fg-primary)' }}>{roleName}</span>
           </div>
         </div>
 

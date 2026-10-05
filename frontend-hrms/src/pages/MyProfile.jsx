@@ -3,7 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useMyProfile } from '../hooks/useApi';
 import api from '../api/client';
 import LoadingSkeleton from '../components/LoadingSkeleton';
-import Swal from 'sweetalert2';
+import { useToast } from '../components/Toast';
 import { icons } from '../components/ActionButton';
 import { formatTime, formatDate, maskId, peso } from '../utils/helpers';
 import Avatar from '../components/Avatar';
@@ -14,6 +14,7 @@ export default function MyProfile() {
   const [form, setForm] = useState({});
   const [saving, setSaving] = useState(false);
   const qc = useQueryClient();
+  const toast = useToast();
 
   if (isLoading) return <LoadingSkeleton rows={4} />;
   if (!emp) return <div className="empty-state">Profile not found</div>;
@@ -36,13 +37,13 @@ export default function MyProfile() {
     setSaving(true);
     try {
       await api.put('/me/profile', form);
-      Swal.fire({ icon: 'success', title: 'Updated', text: 'Profile updated', timer: 1500, showConfirmButton: false });
+      toast.success('Profile updated', { title: 'Updated' });
       setEditing(false);
       qc.invalidateQueries({ queryKey: ['my-profile'] });
     } catch (err) {
       const errors = err.response?.data?.errors;
       const msg = (errors && errors.length ? errors.join('. ') : err.response?.data?.message) || 'Failed to update';
-      Swal.fire({ icon: 'error', title: 'Failed', text: msg });
+      toast.error(msg, { title: 'Failed' });
     } finally {
       setSaving(false);
     }

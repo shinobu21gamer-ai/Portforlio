@@ -16,6 +16,7 @@ const PosEmbed = lazy(() => import('./pages/PosEmbed'));
 const Login = lazy(() => import('./pages/Login'));
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
 const ResetPassword = lazy(() => import('./pages/ResetPassword'));
+const ChangePassword = lazy(() => import('./pages/ChangePassword'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Employees = lazy(() => import('./pages/Employees'));
 const EmployeeDetail = lazy(() => import('./pages/EmployeeDetail'));
@@ -89,6 +90,7 @@ export default function App() {
           <Route path="/login" element={<Suspense fallback={<PageLoader />}><Login /></Suspense>} />
           <Route path="/forgot-password" element={<Suspense fallback={<PageLoader />}><ForgotPassword /></Suspense>} />
           <Route path="/reset-password" element={<Suspense fallback={<PageLoader />}><ResetPassword /></Suspense>} />
+          <Route path="/change-password" element={<Suspense fallback={<PageLoader />}><ChangePassword /></Suspense>} />
           <Route path="/careers" element={<Suspense fallback={<PageLoader />}><JobPortal /></Suspense>} />
 
           {/* POS — accessible by all authenticated roles */}

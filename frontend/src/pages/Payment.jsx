@@ -7,11 +7,25 @@ import { useCreateSale, useCreatePendingSale, useCreateCheckout, useVerifyPaymen
 import { useToast } from '../components/Toast';
 import { peso, useDebounce } from '../utils/helpers';
 import { computeCartTotal } from '../utils/pricing';
+import api from '../api/client';
 
 const escapeHtml = (str) => {
   if (typeof str !== 'string') return String(str || '');
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
 };
+
+// Print the success screen's #receipt-print-area as an 80mm thermal slip.
+// The .print-receipt body class scopes the @media print rules (everything
+// else visibility:hidden); window.print() blocks until the dialog closes,
+// so the class is removed on afterprint with a timed fallback.
+function printReceipt80mm() {
+  const body = document.body;
+  body.classList.add('print-receipt');
+  const cleanup = () => body.classList.remove('print-receipt');
+  window.addEventListener('afterprint', cleanup, { once: true });
+  window.print();
+  setTimeout(cleanup, 1500);
+}
 
 export default function Payment({ success: successProp, cancel: cancelProp }) {
   const [searchParams] = useSearchParams();
@@ -21,12 +35,33 @@ export default function Payment({ success: successProp, cancel: cancelProp }) {
   const [method, setMethod] = useState(null);
   const [cashAmount, setCashAmount] = useState('');
   const [selectedWallet, setSelectedWallet] = useState(null);
+  // Split tender: 2-6 legs, each { method, amount }. Completed at the
+  // register (mixed legs are not routed through the online gateway).
+  const [splitLegs, setSplitLegs] = useState([
+    { method: 'cash', amount: '' },
+    { method: 'gcash', amount: '' },
+  ]);
   const [customerId, setCustomerId] = useState(null);
   const [showSuccess, setShowSuccess] = useState(false);
   const [showFailure, setShowFailure] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saleResult, setSaleResult] = useState(null);
   const [onlineLoading, setOnlineLoading] = useState(false);
+
+  // Per-cashier auto-print preference. Defaults ON: a register prints a slip
+  // for every sale, and the cashier who wants it off opts out on the receipt.
+  const [autoPrint, setAutoPrint] = useState(() => {
+    try { return localStorage.getItem('minimart_autoprint') !== '0'; } catch { return true; }
+  });
+  const setAutoPrintPref = (v) => {
+    setAutoPrint(v);
+    try { localStorage.setItem('minimart_autoprint', v ? '1' : '0'); } catch {}
+  };
+
+  // Countdown shown while we poll for an online payment, so the cashier is
+  // never staring at a spinner wondering how long "a few seconds" is.
+  const [waitSecondsLeft, setWaitSecondsLeft] = useState(20);
+  const [cashOverrideLoading, setCashOverrideLoading] = useState(false);
 
   const [discountType, setDiscountType] = useState('none');
   const [discountValue, setDiscountValue] = useState('');
@@ -102,14 +137,47 @@ export default function Payment({ success: successProp, cancel: cancelProp }) {
   const verifyDataRef = useRef(verifyData);
   verifyDataRef.current = verifyData;
 
+  // Manager/admin escape hatch: the online payment never confirmed but the
+  // customer is at the counter with cash. Completes the pending sale as a
+  // cash sale server-side (stock was already reserved at pending creation).
+  const handleCashOverride = async () => {
+    if (!saleIdParam) return;
+    if (!window.confirm('The online payment never confirmed.\n\nComplete this sale with CASH paid at the counter?\nThe sale will be recorded as a CASH sale (it counts to your open shift\'s till).')) return;
+    setCashOverrideLoading(true);
+    try {
+      const res = await api.post(`/sales/pending/${saleIdParam}/cash-complete`);
+      const sale = res.data?.data || {};
+      setSaleResult({ ...sale, paymentMethod: 'cash', cashAmount: sale.total });
+      clearCart();
+      sessionStorage.removeItem('pendingOnlineSale');
+      setShowSuccess(true);
+      toast.success('Sale completed as cash at the counter.');
+      if (autoPrint) setTimeout(printReceipt80mm, 400);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Cash override failed');
+    } finally {
+      setCashOverrideLoading(false);
+    }
+  };
+
+  const WAIT_TIMEOUT_MS = 20000;
   useEffect(() => {
-    if (!successProp || !saleIdParam || showSuccess) return undefined;
+    if (!successProp || !saleIdParam || showSuccess) {
+      setWaitSecondsLeft(WAIT_TIMEOUT_MS / 1000);
+      return undefined;
+    }
+    const startedAt = Date.now();
+    setWaitSecondsLeft(WAIT_TIMEOUT_MS / 1000);
     const timer = setTimeout(() => {
       if (!verifyDataRef.current?.verified) {
         setShowFailure(true);
       }
-    }, 20000);
-    return () => clearTimeout(timer);
+    }, WAIT_TIMEOUT_MS);
+    const tick = setInterval(() => {
+      const left = Math.max(0, Math.ceil((WAIT_TIMEOUT_MS - (Date.now() - startedAt)) / 1000));
+      setWaitSecondsLeft(left);
+    }, 250);
+    return () => { clearTimeout(timer); clearInterval(tick); };
   }, [successProp, saleIdParam, showSuccess]);
 
   useEffect(() => {
@@ -159,10 +227,31 @@ export default function Payment({ success: successProp, cancel: cancelProp }) {
     return (
       <PosLayout active="home">
         <div className="flex-center" style={{ minHeight: '60vh' }}>
-          <div className="text-center">
+          <div className="text-center" style={{ maxWidth: 420, padding: '0 16px' }}>
             <div className="spinner" style={{ width: 40, height: 40, margin: '0 auto 16px' }} />
             <p className="font-bold mb-sm" style={{ fontSize: 16 }}>Waiting for payment confirmation...</p>
-            <p className="text-sm text-muted">This may take a few seconds. Please do not close this page.</p>
+            <p className="text-sm text-muted">
+              This may take a few seconds. Please do not close this page.
+              <br />
+              <span style={{ fontVariantNumeric: 'tabular-nums', color: waitSecondsLeft <= 5 ? 'var(--danger)' : undefined }}>
+                {waitSecondsLeft}s remaining before this times out.
+              </span>
+            </p>
+            {canManualDiscount && (
+              <div style={{ marginTop: 20, padding: 14, background: 'var(--bg-tertiary)', border: '1px dashed var(--border)', borderRadius: 'var(--radius-md)' }}>
+                <p className="text-sm mb-sm" style={{ margin: 0 }}>
+                  <strong>Manager override:</strong> the online payment never confirmed. If the customer is paying with cash at the counter, complete the sale as cash — it will be recorded as a CASH sale.
+                </p>
+                <button
+                  className="btn btn-warning"
+                  disabled={cashOverrideLoading}
+                  onClick={handleCashOverride}
+                >
+                  {cashOverrideLoading && <span className="btn-spinner" />}
+                  {cashOverrideLoading ? 'Completing…' : 'Record cash & complete sale'}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </PosLayout>
@@ -173,8 +262,43 @@ export default function Payment({ success: successProp, cancel: cancelProp }) {
 
   const getPaymentMethod = () => {
     if (method === 'cash') return 'cash';
+    if (method === 'split') return 'split';
     if (method === 'ewallet') return selectedWallet === 'GCash' ? 'gcash' : 'maya';
     return 'cash';
+  };
+
+  const SPLIT_METHODS = [
+    { value: 'cash', label: 'Cash' },
+    { value: 'gcash', label: 'GCash' },
+    { value: 'maya', label: 'Maya' },
+    { value: 'credit_card', label: 'Credit Card' },
+    { value: 'debit_card', label: 'Debit Card' },
+    { value: 'bank_transfer', label: 'Bank Transfer' },
+    { value: 'other', label: 'Other' },
+  ];
+  const splitFilled = splitLegs.map(l => ({ ...l, num: parseFloat(l.amount) || 0 }));
+  const splitCollected = splitFilled.reduce((s, l) => s + l.num, 0);
+  const splitRemaining = Math.round((total - splitCollected) * 100) / 100;
+  const splitValid = splitFilled.length >= 2
+    && splitFilled.every(l => l.num > 0)
+    && splitRemaining === 0;
+
+  const updateSplitLeg = (idx, field, value) => {
+    setSplitLegs(prev => prev.map((l, i) => (i === idx ? { ...l, [field]: value } : l)));
+  };
+  const addSplitLeg = () => {
+    if (splitLegs.length >= 6) return;
+    setSplitLegs(prev => [...prev, { method: 'cash', amount: '' }]);
+  };
+  const removeSplitLeg = (idx) => {
+    if (splitLegs.length <= 2) return;
+    setSplitLegs(prev => prev.filter((_, i) => i !== idx));
+  };
+  const applyRemainingToLast = () => {
+    if (splitRemaining <= 0) return;
+    setSplitLegs(prev => prev.map((l, i) => (i === prev.length - 1
+      ? { ...l, amount: String(Math.round(((parseFloat(l.amount) || 0) + splitRemaining) * 100) / 100) }
+      : l)));
   };
 
   const handleApplyPromo = async () => {
@@ -274,10 +398,17 @@ export default function Payment({ success: successProp, cancel: cancelProp }) {
   const handleSubmit = async () => {
     setLoading(true);
     try {
+      const paymentMethod = getPaymentMethod();
+      const cashLegs = method === 'split'
+        ? splitFilled.filter(l => l.method === 'cash').reduce((s, l) => s + l.num, 0)
+        : (method === 'cash' ? parseFloat(cashAmount) : undefined);
       const saleData = {
         items: items.map(i => ({ productId: i.id, quantity: i.quantity })),
-        paymentMethod: getPaymentMethod(),
-        cashAmount: method === 'cash' ? parseFloat(cashAmount) : undefined,
+        paymentMethod,
+        cashAmount: method === 'split' && cashLegs ? cashLegs : (method === 'cash' ? parseFloat(cashAmount) : undefined),
+        payments: method === 'split'
+          ? splitFilled.map(l => ({ paymentMethod: l.method, amount: l.num }))
+          : undefined,
         customerId: customerId || undefined,
         discountType: discountType !== 'none' ? discountType : undefined,
         discountValue: discountType !== 'none' ? parseFloat(discountValue) || 0 : undefined,
@@ -289,18 +420,12 @@ export default function Payment({ success: successProp, cancel: cancelProp }) {
       clearCart();
       setShowSuccess(true);
       toast.success('Sale completed successfully!');
-      setTimeout(() => {
-        const html = buildReceiptHtml(result);
-        const blob = new Blob([html], { type: 'text/html' });
-        const url = URL.createObjectURL(blob);
-        const win = window.open(url, '_blank');
-        if (win) {
-          setTimeout(() => URL.revokeObjectURL(url), 5000);
-        } else {
-          URL.revokeObjectURL(url);
-          toast.info('Popup blocked. Use Print Receipt on the success screen to view your receipt.');
-        }
-      }, 300);
+      // Print in-page: the browser print dialog picks up the 80mm receipt
+      // from the success screen (see @media print CSS). A window.open popup
+      // here was routinely eaten by popup blockers, losing the slip.
+      if (autoPrint) {
+        setTimeout(printReceipt80mm, 400);
+      }
     } catch (err) {
       // A dropped connection is not the same as a rejected sale: the request may
       // well have succeeded server-side and only the response was lost. Saying
@@ -332,6 +457,8 @@ export default function Payment({ success: successProp, cancel: cancelProp }) {
     const paymentMethod = r.paymentMethod || method || 'cash';
     const cashGiven = r.cashAmount ?? (method === 'cash' ? parseFloat(cashAmount) : saleTotal);
     const change = cashGiven - saleTotal;
+    const isSplit = paymentMethod === 'split';
+    const splitPayments = (r.payments || []).filter(p => p.status === 'completed' && Number(p.amount) > 0);
 
     const itemRows = ((saleItems || []).length ? saleItems : items).map(item => {
       const qty = item.quantity;
@@ -345,14 +472,33 @@ export default function Payment({ success: successProp, cancel: cancelProp }) {
       ? `<div style="display:flex;justify-content:space-between;padding:4px 0"><span>Discount:</span><span>-${peso(saleDiscount)}</span></div>`
       : '';
 
-    const methodLabel = {
+    const LEG_LABELS = {
       cash: 'Cash',
       gcash: 'GCash',
       maya: 'Maya',
       credit_card: 'Credit Card',
       debit_card: 'Debit Card',
-      online: 'Online Payment (PayMongo)',
-    }[paymentMethod] || 'Cash';
+      bank_transfer: 'Bank Transfer',
+      other: 'Other',
+    };
+
+    const methodLabel =
+      isSplit && splitPayments.length > 1
+        ? `Split (${splitPayments
+            .map((p) => LEG_LABELS[p.paymentMethod] || p.paymentMethod)
+            .join(' + ')})`
+        : ({
+        cash: 'Cash',
+        gcash: 'GCash',
+        maya: 'Maya',
+        credit_card: 'Credit Card',
+        debit_card: 'Debit Card',
+        online: 'Online Payment (PayMongo)',
+      }[paymentMethod] || 'Cash');
+
+    const splitRows = isSplit
+      ? splitPayments.map(p => `<div><span>${escapeHtml(({ cash: 'Cash', gcash: 'GCash', maya: 'Maya', credit_card: 'Credit Card', debit_card: 'Debit Card', bank_transfer: 'Bank Transfer', other: 'Other' }[p.paymentMethod] || p.paymentMethod))}</span><span>${peso(p.amount)}</span></div>`).join('')
+      : '';
 
     return `<!DOCTYPE html>
 <html lang="en">
@@ -382,7 +528,9 @@ export default function Payment({ success: successProp, cancel: cancelProp }) {
 <div class="receipt">
   <div class="header">
     <div class="store-name">${escapeHtml(storeName)}</div>
-    <div class="store-tagline">Your Neighborhood Store</div>
+    ${settings?.address ? `<div class="store-tagline">${escapeHtml(settings.address)}</div>` : ''}
+    ${settings?.phone ? `<div class="store-tagline">Tel: ${escapeHtml(settings.phone)}</div>` : ''}
+    ${(settings?.gcashNumber || settings?.mayaNumber) ? `<div class="store-tagline">${settings.gcashNumber ? `GCash: ${escapeHtml(settings.gcashNumber)}` : ''}${settings.gcashNumber && settings.mayaNumber ? ' · ' : ''}${settings.mayaNumber ? `Maya: ${escapeHtml(settings.mayaNumber)}` : ''}</div>` : ''}
   </div>
   <div class="meta">
     <div>Date: ${dateStr} ${timeStr}</div>
@@ -401,11 +549,11 @@ export default function Payment({ success: successProp, cancel: cancelProp }) {
   </div>
   <div class="payment-info">
     <div><span>Payment Method:</span><span>${methodLabel}</span></div>
-    <div><span>Amount Tendered:</span><span>${peso(cashGiven)}</span></div>
+    ${isSplit ? splitRows : `<div><span>Amount Tendered:</span><span>${peso(cashGiven)}</span></div>`}
     ${change > 0 ? `<div><span>Change:</span><span>${peso(change)}</span></div>` : ''}
   </div>
   <div class="footer">
-    <div>Thank you for shopping!</div>
+    <div>${escapeHtml(settings?.receiptFooter || 'Thank you for shopping!')}</div>
     <div style="margin-top:4px">This receipt serves as your official proof of purchase.</div>
   </div>
 </div>
@@ -414,45 +562,61 @@ export default function Payment({ success: successProp, cancel: cancelProp }) {
 </html>`;
   };
 
-  const openPrintReceipt = () => {
+  // Fallback for cashiers whose thermal printer is down: save the receipt as
+  // a standalone HTML file. In-page printing (window.print + 80mm CSS) is the
+  // primary path — this never opens a popup, which blockers eat.
+  const downloadReceiptHtml = () => {
     const html = buildReceiptHtml();
     if (!html) { toast.error('No receipt data'); return; }
     const blob = new Blob([html], { type: 'text/html' });
     const url = URL.createObjectURL(blob);
-    const win = window.open(url, '_blank');
-    if (!win) {
-      URL.revokeObjectURL(url);
-      toast.error('Popup blocked. Opening receipt inline.');
-      const printWindow = window.open('', '_blank');
-      if (printWindow) {
-        printWindow.document.write(html);
-        printWindow.document.close();
-      } else {
-        const fallbackBlob = new Blob([html], { type: 'text/html' });
-        const fallbackUrl = URL.createObjectURL(fallbackBlob);
-        const a = document.createElement('a');
-        a.href = fallbackUrl;
-        a.download = `receipt-${Date.now()}.html`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        setTimeout(() => URL.revokeObjectURL(fallbackUrl), 5000);
-      }
-    } else {
-      setTimeout(() => URL.revokeObjectURL(url), 5000);
-    }
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `receipt-${(saleResult?.invoiceNo || 'sale').replace(/[^A-Za-z0-9-]/g, '')}-${Date.now()}.html`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
   };
 
   if (showSuccess) {
+    // The receipt block is the print target: @media print hides everything
+    // else and renders just this as an 80mm thermal slip (monospace, store
+    // header with e-wallet numbers, dashed separators).
+    const receiptItems = saleResult?.items || saleResult?.lineItems || items || [];
+    const rSubtotal = saleResult?.subtotal ?? storeSubtotal;
+    const rDiscount = saleResult?.discount ?? discountAmount;
+    const rTax = saleResult?.tax ?? tax;
+    const rTotal = saleResult?.total ?? total;
+    const tendered = parseFloat(saleResult?.cashAmount ?? (method === 'cash' ? cashAmount : rTotal)) || 0;
+    const change = Math.max(0, tendered - rTotal);
+    const isCash = (saleResult?.paymentMethod || method) === 'cash';
+    const isSplit = (saleResult?.paymentMethod || method) === 'split';
+    const splitPayments = (saleResult?.payments || []).filter(p => p.status === 'completed' && Number(p.amount) > 0);
+    const METHOD_LABELS = { cash: 'Cash', gcash: 'GCash', maya: 'Maya', credit_card: 'Credit Card', debit_card: 'Debit Card', bank_transfer: 'Bank Transfer', other: 'Other', online: 'Online Payment' };
+    const methodLabel = isSplit && splitPayments.length > 1
+      ? `Split (${splitPayments.map(p => METHOD_LABELS[p.paymentMethod] || p.paymentMethod).join(' + ')})`
+      : (METHOD_LABELS[saleResult?.paymentMethod || method] || 'Cash');
+
     return (
       <PosLayout active="home">
         <div className="flex-center" style={{ minHeight: '60vh' }}>
           <div className="receipt-wrap">
-            <div className="success-circle"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
-            <p className="success-text">Payment Success</p>
+            <div className="success-circle no-print"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
+            <p className="success-text no-print">Payment Success</p>
             {saleResult && (
-              <div className="mt-md text-sm text-muted pay-order-summary">
-                <div className="text-center font-bold" style={{ fontSize: 16, marginBottom: 12 }}>{storeName}</div>
+              <div id="receipt-print-area" className="mt-md text-sm text-muted pay-order-summary receipt-80mm">
+                <div className="text-center font-bold" style={{ fontSize: 16, marginBottom: 4, letterSpacing: 1 }}>{storeName}</div>
+                {settings?.address && <div className="text-center" style={{ fontSize: 11 }}>{settings.address}</div>}
+                {settings?.phone && <div className="text-center" style={{ fontSize: 11 }}>Tel: {settings.phone}</div>}
+                {(settings?.gcashNumber || settings?.mayaNumber) && (
+                  <div className="text-center" style={{ fontSize: 11 }}>
+                    {settings.gcashNumber && <span>GCash: {settings.gcashNumber}</span>}
+                    {settings.gcashNumber && settings.mayaNumber && <span> · </span>}
+                    {settings.mayaNumber && <span>Maya: {settings.mayaNumber}</span>}
+                  </div>
+                )}
+                <div style={{ borderTop: '1px dashed var(--border)', margin: '8px 0' }} />
                 <div className="receipt-header">
                   <div className="receipt-date">
                     {new Date().toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
@@ -462,7 +626,9 @@ export default function Payment({ success: successProp, cancel: cancelProp }) {
                   </div>
                 </div>
                 <div className="receipt-items-wrap">
-                  {(saleResult.items || saleResult.lineItems || items).map((item, idx) => {
+                  {receiptItems.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '8px 0', color: 'var(--fg-tertiary)' }}>No items</div>
+                  ) : receiptItems.map((item, idx) => {
                     const name = item.product?.name || item.productName || item.name || 'Item';
                     const price = item.unitPrice || item.sellingPrice || item.price || 0;
                     return (
@@ -474,31 +640,44 @@ export default function Payment({ success: successProp, cancel: cancelProp }) {
                   })}
                 </div>
                 <div className="receipt-totals">
-                  <div className="pay-summary-row"><span>Subtotal</span><span>{peso(saleResult.subtotal ?? storeSubtotal)}</span></div>
-                  {(saleResult.discount ?? discountAmount) > 0 && (
-                    <div className="pay-summary-row text-error"><span>Discount</span><span>-{peso(saleResult.discount ?? discountAmount)}</span></div>
+                  <div className="pay-summary-row"><span>Subtotal</span><span>{peso(rSubtotal)}</span></div>
+                  {rDiscount > 0 && (
+                    <div className="pay-summary-row text-error"><span>Discount</span><span>-{peso(rDiscount)}</span></div>
                   )}
-                   <div className="pay-summary-row"><span>Tax</span><span>{peso(saleResult.tax ?? tax)}</span></div>
-                  <div className="pay-summary-total"><span>Total</span><span>{peso(saleResult.total ?? total)}</span></div>
+                   <div className="pay-summary-row"><span>Tax</span><span>{peso(rTax)}</span></div>
+                  <div className="pay-summary-total"><span>Total</span><span>{peso(rTotal)}</span></div>
                 </div>
                 <div className="receipt-footer">
-                  <div className="flex-between"><span>Payment</span><span>{saleResult.paymentMethod === 'gcash' ? 'GCash' : saleResult.paymentMethod === 'maya' ? 'Maya' : saleResult.paymentMethod === 'credit_card' ? 'Credit Card' : saleResult.paymentMethod === 'debit_card' ? 'Debit Card' : saleResult.paymentMethod === 'online' ? 'Online Payment' : 'Cash'}</span></div>
-                  {method === 'cash' && (
+                  <div className="flex-between"><span>Payment</span><span>{methodLabel}</span></div>
+                  {isCash && (
                     <>
-                      <div className="flex-between"><span>Tendered</span><span>{peso(parseFloat(cashAmount) || 0)}</span></div>
-                      <div className="flex-between font-bold"><span>Change</span><span>{peso(Math.max(0, (parseFloat(cashAmount) || 0) - (saleResult.total ?? total)))}</span></div>
+                      <div className="flex-between"><span>Tendered</span><span>{peso(tendered)}</span></div>
+                      <div className="flex-between font-bold"><span>Change</span><span>{peso(change)}</span></div>
                     </>
                   )}
+                  {isSplit && splitPayments.map((p, i) => (
+                    <div className="flex-between" key={i}><span>{METHOD_LABELS[p.paymentMethod] || p.paymentMethod}</span><span>{peso(p.amount)}</span></div>
+                  ))}
+                </div>
+                <div style={{ borderTop: '1px dashed var(--border)', margin: '8px 0' }} />
+                <div className="text-center" style={{ fontSize: 11 }}>
+                  {settings?.receiptFooter || 'Thank you for your purchase!'}
+                  <div style={{ marginTop: 2, color: 'var(--fg-tertiary)' }}>This receipt serves as your official proof of purchase.</div>
                 </div>
               </div>
             )}
-            <div className="receipt-actions">
+            <div className="receipt-actions no-print">
               {window.top !== window ? (
                 <button className="btn btn-success" onClick={() => { window.top.location.href = import.meta.env.VITE_HRMS_URL || `${window.location.origin}/hrms`; }}>Back to HRMS</button>
               ) : (
-                <button className="btn btn-success" onClick={() => navigate('/')}>New Transaction</button>
+                <button className="btn btn-success" onClick={() => navigate('/')}>Next Sale</button>
               )}
-              <button className="btn btn-outline" onClick={openPrintReceipt}>Print Receipt</button>
+              <button className="btn btn-outline" onClick={printReceipt80mm}>Print Receipt</button>
+              <button className="btn btn-outline" onClick={downloadReceiptHtml}>Download HTML</button>
+              <label className="flex-between" style={{ width: '100%', gap: 8, cursor: 'pointer', fontSize: 'var(--text-sm)', color: 'var(--fg-secondary)' }}>
+                <span>Auto-print receipt after each sale</span>
+                <input type="checkbox" checked={autoPrint} onChange={e => setAutoPrintPref(e.target.checked)} aria-label="Auto-print receipt after each sale" />
+              </label>
             </div>
           </div>
         </div>
@@ -667,6 +846,7 @@ export default function Payment({ success: successProp, cancel: cancelProp }) {
 
       <div className="method-row mb-md">
         <button className={`method ${method === 'cash' ? 'active' : ''}`} onClick={() => { setMethod('cash'); setSelectedWallet(null); }}>Cash</button>
+        <button className={`method ${method === 'split' ? 'active' : ''}`} onClick={() => setMethod('split')}>Split</button>
         <button className={`method ${method === 'ewallet' ? 'active' : ''}`} onClick={() => setMethod('ewallet')}>E-Wallet</button>
       </div>
 
@@ -709,6 +889,61 @@ export default function Payment({ success: successProp, cancel: cancelProp }) {
         </div>
       )}
 
+      {method === 'split' && (
+        <div className="max-w-md">
+          <div className="text-sm mb-sm text-muted">
+            Divide the total across payment methods. Every leg must be filled and the total must be covered exactly.
+          </div>
+          {splitLegs.map((leg, idx) => (
+            <div key={idx} className="flex-row mb-sm" style={{ gap: 6, alignItems: 'center' }}>
+              <select
+                className="input-block"
+                value={leg.method}
+                onChange={e => updateSplitLeg(idx, 'method', e.target.value)}
+                style={{ padding: '6px 8px', maxWidth: 150, flexShrink: 0 }}
+              >
+                {SPLIT_METHODS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+              </select>
+              <input
+                className="input-block flex-1"
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="Amount"
+                value={leg.amount}
+                onChange={e => {
+                  const v = e.target.value;
+                  if (v === '' || (!v.includes('-') && !v.includes('+') && !v.includes('e') && !v.includes('E'))) {
+                    updateSplitLeg(idx, 'amount', v);
+                  }
+                }}
+              />
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                disabled={splitLegs.length <= 2}
+                onClick={() => removeSplitLeg(idx)}
+                aria-label="Remove leg"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+          <div className="flex-row" style={{ gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <button type="button" className="btn btn-outline btn-sm" onClick={addSplitLeg} disabled={splitLegs.length >= 6}>
+              + Add method
+            </button>
+            <button type="button" className="btn btn-outline btn-sm" onClick={applyRemainingToLast} disabled={splitRemaining <= 0}>
+              Put remaining in last leg
+            </button>
+          </div>
+          <div className={`pay-summary-row mt-sm ${splitRemaining === 0 ? 'text-success' : splitCollected > total ? 'text-error' : 'text-muted'}`}>
+            <span>{splitRemaining === 0 ? 'Fully covered' : (splitCollected > total ? 'Over total' : 'Remaining')}</span>
+            <span>{peso(Math.abs(splitRemaining))}</span>
+          </div>
+        </div>
+      )}
+
       {method === 'ewallet' && !selectedWallet && (
         <div className="wallet-grid max-w-md">
           <button className="wallet cashg" onClick={() => setSelectedWallet('GCash')}>GCash</button>
@@ -741,7 +976,15 @@ export default function Payment({ success: successProp, cancel: cancelProp }) {
             {(onlineLoading || createPendingSale.isPending || createCheckout.isPending) && <span className="btn-spinner" />}{onlineLoading || createPendingSale.isPending || createCheckout.isPending ? 'Redirecting to PayMongo...' : `Pay ${peso(total)} via ${selectedWallet}`}
           </button>
         ) : (
-          <button className="btn btn-success btn-lg" disabled={!method || loading || (method === 'cash' && (!cashAmount || parseFloat(cashAmount) < total))} onClick={handleSubmit}>
+          <button
+            className="btn btn-success btn-lg"
+            disabled={
+              !method || loading
+              || (method === 'cash' && (!cashAmount || parseFloat(cashAmount) < total))
+              || (method === 'split' && !splitValid)
+            }
+            onClick={handleSubmit}
+          >
             {loading && <span className="btn-spinner" />}{loading ? 'Processing...' : 'Complete Payment'}
           </button>
         )}

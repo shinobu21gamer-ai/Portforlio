@@ -1,21 +1,5 @@
-import { useState, useRef, useMemo, useEffect } from 'react';
-
-function SortIndicator({ field, sortBy, sortOrder }) {
-  const isActive = sortBy === field;
-  return (
-    <span className={isActive ? 'sort-indicator active' : 'sort-indicator'} aria-hidden="true">
-      {isActive ? (
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" focusable="false">
-          <path d={sortOrder === 'ASC' ? 'M12 6l6 8H6z' : 'M12 18l-6-8h12z'} />
-        </svg>
-      ) : (
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" focusable="false">
-          <path d="M12 5l5 7H7zM12 19l-5-7h10z" />
-        </svg>
-      )}
-    </span>
-  );
-}
+import React, { useState, useRef, useMemo, useEffect } from 'react';
+import SortableHeader from './SortableHeader';
 
 export default function DataTable({
   columns,
@@ -94,6 +78,22 @@ export default function DataTable({
 
   const visHeaders = columns.filter(c => visibleCols.includes(c.key));
 
+  // Keyboard navigation: ArrowUp/Down + Home/End move focus between rows
+  // (delegated, so custom renderRow output works too as long as rows are
+  // focusable); sortable headers are focusable and toggle on Enter/Space.
+  const onTableKeyDown = (e) => {
+    const row = e.target.closest('tr[data-dt-row]');
+    if (!row) return;
+    const rows = Array.from(tableRef.current.querySelectorAll('tbody tr[data-dt-row]'));
+    const i = rows.indexOf(row);
+    if (i === -1) return;
+    let target = null;
+    if (e.key === 'ArrowDown') target = rows[i + 1];
+    else if (e.key === 'ArrowUp') target = rows[i - 1];
+    else if (e.key === 'Home') target = rows[0];
+    else if (e.key === 'End') target = rows[rows.length - 1];
+    if (target) { e.preventDefault(); target.focus(); }
+  };
   const total = pagination?.total || pagination?.totalItems || filteredData.length;
   const page = pagination?.page || 1;
   const totalPages = pagination?.totalPages || 1;
@@ -177,24 +177,19 @@ export default function DataTable({
         </div>
       </div>
       <div className="table-wrap" ref={tableRef}>
-        <table className="data-table">
+        <table className="data-table" onKeyDown={onTableKeyDown} aria-rowcount={filteredData.length}>
           <thead>
             <tr>
               {visHeaders.map(c =>
                 c.sortable ? (
-                  <th
+                  <SortableHeader
                     key={c.key}
-                    onClick={() => onSort(c.sortKey || c.key)}
-                    className={sortBy === (c.sortKey || c.key) ? 'sort-active' : ''}
-                    style={{
-                      cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap',
-                      boxShadow: sortBy === (c.sortKey || c.key) ? 'inset 0 -3px 0 rgba(255,255,255,.85)' : undefined,
-                      transition: 'box-shadow .15s',
-                    }}
-                  >
-                    {c.label}
-                    <SortIndicator field={c.sortKey || c.key} sortBy={sortBy} sortOrder={sortOrder} />
-                  </th>
+                    label={c.label}
+                    field={c.sortKey || c.key}
+                    sortBy={sortBy}
+                    sortOrder={sortOrder}
+                    onSort={onSort}
+                  />
                 ) : (
                   <th key={c.key}>{c.label}</th>
                 )
@@ -210,10 +205,30 @@ export default function DataTable({
                 </div>
               </td></tr>
             ) : renderRow ? (
-              filteredData.map((row, idx) => renderRow(row, idx, visHeaders))
+              // Clone each rendered <tr> to inject row keyboard support
+              // (focusable + arrow-key navigation) without editing every page.
+              filteredData.map((row, idx) => {
+                const el = renderRow(row, idx, visHeaders);
+                if (el && el.type === 'tr') {
+                  return React.cloneElement(el, {
+                    'data-dt-row': true,
+                    tabIndex: 0,
+                    'aria-rowindex': idx + 1,
+                    style: { outlineOffset: -2, ...(el.props?.style || {}) },
+                  });
+                }
+                return el;
+              })
             ) : (
               filteredData.map((row, idx) => (
-                <tr key={row.id || idx} className={idx % 2 === 1 ? 'dt-row-alt' : ''}>
+                <tr
+                  key={row.id || idx}
+                  data-dt-row
+                  tabIndex={0}
+                  aria-rowindex={idx + 1}
+                  className={idx % 2 === 1 ? 'dt-row-alt' : ''}
+                  style={{ outlineOffset: -2 }}
+                >
                   {visHeaders.map(c => (
                     <td key={c.key}>{typeof c.accessor === 'function' ? c.accessor(row, idx) : row[c.key]}</td>
                   ))}

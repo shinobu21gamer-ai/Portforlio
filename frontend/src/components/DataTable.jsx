@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo, useEffect } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import SortableHeader from './SortableHeader';
 import Pagination from './Pagination';
 
@@ -83,6 +83,21 @@ export default function DataTable({
   };
 
   const visHeaders = columns.filter(c => visibleCols.includes(c.key));
+
+  // Keyboard navigation: ArrowUp/Down + Home/End move focus between rows.
+  const onTableKeyDown = (e) => {
+    const row = e.target.closest('tr[data-dt-row]');
+    if (!row) return;
+    const rows = Array.from(tableRef.current.querySelectorAll('tbody tr[data-dt-row]'));
+    const i = rows.indexOf(row);
+    if (i === -1) return;
+    let target = null;
+    if (e.key === 'ArrowDown') target = rows[i + 1];
+    else if (e.key === 'ArrowUp') target = rows[i - 1];
+    else if (e.key === 'Home') target = rows[0];
+    else if (e.key === 'End') target = rows[rows.length - 1];
+    if (target) { e.preventDefault(); target.focus(); }
+  };
 
   const pageSize = pagination?.pageSize || pagination?.limit || pageSizeProp || 10;
   const total = pagination?.total ?? pagination?.totalItems ?? filteredData.length;
@@ -174,7 +189,7 @@ export default function DataTable({
         </div>
       </div>
       <div className="table-wrap" ref={tableRef}>
-        <table>
+        <table onKeyDown={onTableKeyDown} aria-rowcount={filteredData.length}>
           <thead>
             <tr>
               {visHeaders.map(c =>
@@ -204,10 +219,28 @@ export default function DataTable({
                 </td>
               </tr>
             ) : renderRow ? (
-              filteredData.map((row, idx) => renderRow(row, idx, visHeaders))
+              filteredData.map((row, idx) => {
+                const el = renderRow(row, idx, visHeaders);
+                if (el && el.type === 'tr') {
+                  return React.cloneElement(el, {
+                    'data-dt-row': true,
+                    tabIndex: 0,
+                    'aria-rowindex': idx + 1,
+                    style: { outlineOffset: -2, ...(el.props?.style || {}) },
+                  });
+                }
+                return el;
+              })
             ) : (
               filteredData.map((row, idx) => (
-                <tr key={row.id || idx} className={idx % 2 === 1 ? 'dt-row-alt' : ''}>
+                <tr
+                  key={row.id || idx}
+                  data-dt-row
+                  tabIndex={0}
+                  aria-rowindex={idx + 1}
+                  className={idx % 2 === 1 ? 'dt-row-alt' : ''}
+                  style={{ outlineOffset: -2 }}
+                >
                   {visHeaders.map(c => (
                     <td key={c.key}>
                       {typeof c.accessor === 'function' ? c.accessor(row, idx) : row[c.key]}

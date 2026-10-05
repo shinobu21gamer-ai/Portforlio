@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import ErrorState from '../components/ErrorState';
 import { useMyAttendance, useMyClockIn, useMyClockOut } from '../hooks/useApi';
 import { useToast } from '../components/Toast';
 import LoadingSkeleton from '../components/LoadingSkeleton';
@@ -8,7 +9,7 @@ const peso = (v) => v != null ? `₱${Number(v).toLocaleString()}` : '—';
 export default function MyAttendance() {
   const toast = useToast();
   const [page, setPage] = useState(1);
-  const { data, isLoading } = useMyAttendance({ page, limit: 15 });
+  const { data, isLoading, isError, error, refetch } = useMyAttendance({ page, limit: 15 });
   const clockInMut = useMyClockIn();
   const clockOutMut = useMyClockOut();
 
@@ -40,6 +41,14 @@ export default function MyAttendance() {
       toast.error(msg);
     }
   };
+
+  if (isError) {
+    return (
+      <div className="page-error-wrap">
+        <ErrorState message={error?.response?.data?.message || 'Something went wrong while loading this data.'} onRetry={() => refetch()} />
+      </div>
+    );
+  }
 
   return (
     <div className="hrms-page">

@@ -33,6 +33,16 @@ const redirectToLogin = () => {
 api.interceptors.response.use(
   (r) => r,
   async (err) => {
+    // Forced first-login password change: the server returns
+    // 403 { errors: { code: 'MUST_CHANGE_PASSWORD' } } on every protected
+    // route (except change-password/logout) for flagged accounts. Clear the
+    // session and go to the dedicated change screen.
+    if (err.response?.status === 403 && err.response?.data?.errors?.code === 'MUST_CHANGE_PASSWORD') {
+      localStorage.removeItem('hrms_auth');
+      window.location.href = `${import.meta.env.BASE_URL}change-password`;
+      return Promise.reject(err);
+    }
+
     const originalRequest = err.config;
 
     if (err.response?.status === 401 && !originalRequest._retry) {

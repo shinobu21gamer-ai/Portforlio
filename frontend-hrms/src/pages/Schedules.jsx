@@ -1,11 +1,12 @@
 import { useState } from 'react';
+import SortableHeader from '../components/SortableHeader';
 import { useSchedules, useEmployees, usePermanentAssignments, useCreateSchedule, useUpdateSchedule, useDeleteSchedule, useAssignShift, useRemovePermanentAssignment } from '../hooks/useApi';
 
 import LoadingSkeleton from '../components/LoadingSkeleton';
 import Modal from '../components/Modal';
 import { useToast } from '../components/Toast';
 import { useIsAdmin, useIsAdminOrHR } from '../hooks/useRole';
-import { confirmDelete, confirmAction } from '../utils/swal';
+import useConfirm from '../hooks/useConfirm.jsx';
 import useDebounce from '../hooks/useDebounce';
 import { icons } from '../components/ActionButton';
 
@@ -27,7 +28,7 @@ function DaysCheckboxes({ value, onChange }) {
   return (
     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
       {DAY_LABELS.map((label, i) => (
-        <label key={i} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, cursor: 'pointer', padding: '4px 8px', borderRadius: 4, border: '1px solid var(--border)', background: selected.includes(i) ? 'var(--primary)' : 'transparent', color: selected.includes(i) ? '#fff' : 'var(--text)' }}>
+        <label key={i} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, cursor: 'pointer', padding: '4px 8px', borderRadius: 4, border: '1px solid var(--border)', background: selected.includes(i) ? 'var(--primary)' : 'transparent', color: selected.includes(i) ? 'var(--primary-fg)' : 'var(--text)' }}>
           <input type="checkbox" checked={selected.includes(i)} onChange={() => toggle(i)} style={{ display: 'none' }} />
           {label}
         </label>
@@ -37,6 +38,7 @@ function DaysCheckboxes({ value, onChange }) {
 }
 
 export default function Schedules() {
+  const { confirmDelete, confirmAction, confirmDialog } = useConfirm();
   const [schedModal, setSchedModal] = useState(false);
   const [schedEditModal, setSchedEditModal] = useState(false);
   const [schedEditTarget, setSchedEditTarget] = useState(null);
@@ -45,6 +47,12 @@ export default function Schedules() {
   const [editEmp, setEditEmp] = useState(null);
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search);
+  const [sortBy, setSortBy] = useState('createdAt');
+  const [sortOrder, setSortOrder] = useState('DESC');
+  const handleSort = (field) => {
+    if (sortBy === field) setSortOrder((o) => (o === 'ASC' ? 'DESC' : 'ASC'));
+    else { setSortBy(field); setSortOrder('DESC'); }
+  };
   const [form, setForm] = useState({ ...emptyForm });
   const [schedEditForm, setSchedEditForm] = useState({ ...emptyForm });
   const [assignForm, setAssignForm] = useState({ employeeId: '', scheduleId: '' });
@@ -53,7 +61,7 @@ export default function Schedules() {
   const isAdmin = useIsAdmin();
   const canCreateEdit = useIsAdminOrHR();
 
-  const { data: schedData, isLoading: schedLoading } = useSchedules({ limit: 100, search: debouncedSearch || undefined });
+  const { data: schedData, isLoading: schedLoading } = useSchedules({ limit: 100, search: debouncedSearch || undefined, sortBy, sortOrder });
   const { data: empData } = useEmployees({ limit: 100, status: 'active' });
   const { data: permData, isLoading: permLoading } = usePermanentAssignments();
   const createSched = useCreateSchedule();
@@ -195,7 +203,7 @@ export default function Schedules() {
         {schedLoading ? <LoadingSkeleton rows={2} /> : (
           <div className="table-wrap">
             <table className="data-table">
-              <thead><tr><th>Name</th><th>Start</th><th>End</th><th>Days</th><th>Break</th><th>Description</th><th>Actions</th></tr></thead>
+              <thead><tr><SortableHeader label="Name" field="name" sortBy={sortBy} sortOrder={sortOrder} onSort={handleSort} /><SortableHeader label="Start" field="startTime" sortBy={sortBy} sortOrder={sortOrder} onSort={handleSort} /><th>End</th><th>Days</th><th>Break</th><th>Description</th><th>Actions</th></tr></thead>
               <tbody>
                 {schedules.map(s => {
                   const days = toDayArray(s.daysOfWeek);
@@ -324,6 +332,7 @@ export default function Schedules() {
           </div>
         </form>
       </Modal>
+    {confirmDialog}
     </>
   );
 }

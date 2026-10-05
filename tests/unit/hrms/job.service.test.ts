@@ -552,9 +552,13 @@ describe('job.service - scheduleInterview', () => {
   });
 
   it('rejects past time for today', async () => {
-    const today = new Date();
-    const todayStr = today.toISOString().split('T')[0];
-    const pastTime = '08:00'; // Assuming test runs after 8 AM
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0];
+    // Pick a time guaranteed to be in the past (2 minutes ago) so the test
+    // holds at any hour in any timezone — a hardcoded "08:00" broke whenever
+    // the suite ran before 8 AM.
+    const pastMin = Math.max(now.getHours() * 60 + now.getMinutes() - 2, 0);
+    const pastTime = `${String(Math.floor(pastMin / 60)).padStart(2, '0')}:${String(pastMin % 60).padStart(2, '0')}`;
 
     await expect(
       jobService.scheduleInterview({

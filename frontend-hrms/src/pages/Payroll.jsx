@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import SortableHeader from '../components/SortableHeader';
 import { usePayrolls, usePayroll, useGeneratePayroll, useProcessPayroll, usePayPayroll, useEmployees, useDepartments } from '../hooks/useApi';
 
 import LoadingSkeleton from '../components/LoadingSkeleton';
@@ -7,7 +8,7 @@ import { useToast } from '../components/Toast';
 import { peso, formatDate } from '../utils/helpers';
 import { useIsAdmin } from '../hooks/useRole';
 import api from '../api/client';
-import { confirmAction } from '../utils/swal';
+import useConfirm from '../hooks/useConfirm.jsx';
 import useDebounce from '../hooks/useDebounce';
 import { icons } from '../components/ActionButton';
 
@@ -65,9 +66,17 @@ function PrintPayslip({ payroll, payslip, employee }) {
 }
 
 export default function Payroll() {
+  const { confirmAction, confirmDialog } = useConfirm();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search);
+  const [sortBy, setSortBy] = useState('createdAt');
+  const [sortOrder, setSortOrder] = useState('DESC');
+  const handleSort = (field) => {
+    if (sortBy === field) setSortOrder((o) => (o === 'ASC' ? 'DESC' : 'ASC'));
+    else { setSortBy(field); setSortOrder('DESC'); }
+        setPage(1);
+  };
   const [genModal, setGenModal] = useState(false);
   const [payslipModal, setPayslipModal] = useState(false);
   const [printModal, setPrintModal] = useState(false);
@@ -83,7 +92,7 @@ export default function Payroll() {
   const toast = useToast();
   const isAdmin = useIsAdmin();
 
-  const { data, isLoading } = usePayrolls({ page, limit: 10, search: debouncedSearch || undefined });
+  const { data, isLoading } = usePayrolls({ page, limit: 10, search: debouncedSearch || undefined, sortBy, sortOrder });
   const { data: selectedPayroll } = usePayroll(selectedId);
   const generateMut = useGeneratePayroll();
   const processMut = useProcessPayroll();
@@ -226,7 +235,7 @@ export default function Payroll() {
         <div className="table-wrap">
           <table className="data-table">
             <thead>
-              <tr><th>Period</th><th>Status</th><th>Employees</th><th>Gross Pay</th><th>Deductions</th><th>Net Pay</th><th>Actions</th></tr>
+              <tr><SortableHeader label="Period" field="period" sortBy={sortBy} sortOrder={sortOrder} onSort={handleSort} /><SortableHeader label="Status" field="status" sortBy={sortBy} sortOrder={sortOrder} onSort={handleSort} /><th>Employees</th><SortableHeader label="Gross Pay" field="totalGrossPay" sortBy={sortBy} sortOrder={sortOrder} onSort={handleSort} /><th>Deductions</th><SortableHeader label="Net Pay" field="totalNetPay" sortBy={sortBy} sortOrder={sortOrder} onSort={handleSort} /><th>Actions</th></tr>
             </thead>
             <tbody>
               {(data?.payrolls || []).map(p => (
@@ -432,6 +441,7 @@ export default function Payroll() {
           </div>
         )}
       </Modal>
+    {confirmDialog}
     </>
   );
 }

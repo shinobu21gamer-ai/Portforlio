@@ -6,11 +6,42 @@ const config = require('../config');
 const ApiError = require('../utils/ApiError');
 const { Op } = require('sequelize');
 
+// In-memory memo for the per-request blacklist lookup. A DB round-trip on
+// EVERY authenticated request is both a hot path and an availability risk
+// (a DB blip fails the check closed → total lockout). A short TTL keeps
+// revocation latency ≤10s while the DB query becomes rare.
+const BLACKLIST_CACHE_TTL_MS = 10_000;
+const BLACKLIST_CACHE_MAX = 5000;
+const blacklistCache = new Map(); // token -> rememberedAt (insertion-ordered)
+
+function rememberBlacklisted(token) {
+  if (!token || token === 'null' || token === '') return;
+  blacklistCache.delete(token); // refresh recency (Map keeps insertion order)
+  blacklistCache.set(token, Date.now());
+  while (blacklistCache.size > BLACKLIST_CACHE_MAX) {
+    blacklistCache.delete(blacklistCache.keys().next().value);
+  }
+}
+
+function isBlacklistedCached(token) {
+  const at = blacklistCache.get(token);
+  if (!at) return false;
+  if (Date.now() - at > BLACKLIST_CACHE_TTL_MS) {
+    blacklistCache.delete(token);
+    return false;
+  }
+  return true;
+}
+
 class AuthService {
   generateToken(userId, isRefresh = false) {
     const secret = isRefresh ? config.jwt.refreshSecret : config.jwt.secret;
     const expiresIn = isRefresh ? config.jwt.refreshExpiresIn : config.jwt.expiresIn;
-    return jwt.sign({ id: userId }, secret, { expiresIn });
+    // jti: a unique id per token. Without it, two logins in the same second
+    // produce byte-identical JWTs, so blacklisting one (e.g. on logout)
+    // silently revokes the other — and a forced change-password -> re-login
+    // in quick succession locked the user out (Phase 3, AUDIT.md S1).
+    return jwt.sign({ id: userId, jti: crypto.randomUUID() }, secret, { expiresIn });
   }
 
   verifyRefreshToken(token) {
@@ -18,10 +49,15 @@ class AuthService {
   }
 
   async isTokenBlacklisted(token) {
+    if (!token) return false;
+    if (isBlacklistedCached(token)) return true;
     try {
-      const blacklisted = await BlacklistedToken.findOne({ where: { token } });
+      const blacklisted = await BlacklistedToken.findOne({ where: { token }, attributes: ['id'] });
+      if (blacklisted) rememberBlacklisted(token);
       return !!blacklisted;
     } catch (e) {
+      // Fail closed, but only after the cheap cache miss — the cache is what
+      // keeps a transient DB error from taking out the whole API.
       console.error('Token blacklist check failed:', e.message);
       return true;
     }
@@ -33,6 +69,7 @@ class AuthService {
       const decoded = jwt.decode(token);
       const expiresAt = decoded && decoded.exp ? new Date(decoded.exp * 1000) : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
       await BlacklistedToken.findOrCreate({ where: { token }, defaults: { token, expiresAt, userId } });
+      rememberBlacklisted(token); // revoke immediately, don't wait for the TTL
     } catch (e) {
       console.error('Failed to blacklist token:', e);
     }
@@ -64,6 +101,14 @@ class AuthService {
   }
 
   async register(data) {
+    // Off by default in production: a self-registered account is a live POS
+    // login (cashier role + JWT). Stores opt in via ALLOW_PUBLIC_REGISTRATION
+    // or the admin Settings toggle.
+    const settingService = require('../services/setting.service');
+    if (!settingService.isPublicRegistrationAllowed()) {
+      throw ApiError.forbidden('Public registration is disabled on this store. Ask an administrator to create your account.');
+    }
+
     const existing = await User.findOne({ where: { email: data.email } });
     if (existing) throw ApiError.conflict('Email already registered');
 
@@ -159,6 +204,7 @@ class AuthService {
     await user.update({
       password: newPassword,
       passwordChangedAt: new Date(),
+      mustChangePassword: false,
     });
 
     return { message: 'Password changed successfully' };
@@ -180,23 +226,41 @@ class AuthService {
 
     const result = { message: 'If the email exists, a reset link has been sent.' };
 
+    const { sendEmail, isConfigured: isMailConfigured } = require('../utils/mailer');
+    const { passwordResetEmail } = require('../utils/emailTemplates');
+    const { resolvePublicOrigin } = require('../utils/helpers');
+    const config = require('../config');
+    // Derive the reset link from the request origin so it is correct on any
+    // host. It previously fell back to http://localhost:3001, so in
+    // production the email arrived with a dead link inside it. Callers with
+    // no request context (unit tests, CLI) can't resolve an origin — skip the
+    // email rather than throwing, and fall back to a path-only link below.
+    let resetUrl = null;
     try {
-      const { sendEmail } = require('../utils/mailer');
-      const { passwordResetEmail } = require('../utils/emailTemplates');
-      const { resolvePublicOrigin } = require('../utils/helpers');
-      const config = require('../config');
-      // Derive the reset link from the request origin so it is correct on any
-      // host. It previously fell back to http://localhost:3001, so in
-      // production the email arrived with a dead link inside it.
       const frontendOrigin = resolvePublicOrigin(req, config.app.frontendUrl);
-      const resetUrl = `${frontendOrigin}/reset-password?token=${resetToken}`;
-      await sendEmail({
-        to: email,
-        subject: `Password Reset - ${process.env.APP_NAME || 'MiniMart POS'}`,
-        html: passwordResetEmail(user.firstName || user.email, resetUrl),
-      });
-    } catch (err) {
-      console.error('Failed to send reset email:', err.message);
+      resetUrl = `${frontendOrigin}/reset-password?token=${resetToken}`;
+    } catch { /* no origin context — email skipped */ }
+
+    let delivered = false;
+    if (resetUrl) {
+      try {
+        await sendEmail({
+          to: email,
+          subject: `Password Reset - ${process.env.APP_NAME || 'MiniMart POS'}`,
+          html: passwordResetEmail(user.firstName || user.email, resetUrl),
+        });
+        delivered = isMailConfigured(); // sendEmail resolves even when SMTP is off
+      } catch (err) {
+        console.error('Failed to send reset email:', err.message);
+      }
+    }
+
+    // Dev/demo deployments without SMTP would otherwise be stuck: the token
+    // is generated but nowhere to see it. Outside production, hand the link
+    // back to the requester. Production keeps the generic response only
+    // (never expose a usable reset URL over the API).
+    if (!delivered && config.nodeEnv !== 'production') {
+      result.devResetUrl = resetUrl || `/reset-password?token=${resetToken}`;
     }
 
     return result;
@@ -219,6 +283,7 @@ class AuthService {
       passwordResetToken: null,
       passwordResetExpires: null,
       passwordChangedAt: new Date(),
+      mustChangePassword: false,
     });
 
     try {

@@ -26,7 +26,10 @@ const HR_NAV_BASE = [
       { to: '/attendance', label: 'Attendance' },
       { to: '/attendance/calendar', label: 'Calendar View' },
       { to: '/schedules', label: 'Schedules' },
-      { to: '/payroll', label: 'Payroll' },
+      // Payroll is admin/hr only at the API level (authorize('admin','hr')) —
+      // managers get a 403 on every payroll call, so hide the link for them
+      // instead of showing a button that can't work.
+      { to: '/payroll', label: 'Payroll', roles: ['admin', 'hr'] },
     ]
   },
   {
@@ -41,9 +44,13 @@ const HR_NAV_BASE = [
   { to: '/pos', label: 'POS System', icon: 'pos' },
 ];
 
-function NavGroup({ item, openGroups, toggleGroup, counts }) {
+function NavGroup({ item, openGroups, toggleGroup, counts, role }) {
   const location = useLocation();
-  const isOpen = openGroups[item.label] !== undefined ? openGroups[item.label] : item.children.some(c => location.pathname === c.to);
+  // Hide children restricted to other roles (e.g. Payroll for managers), and
+  // drop the whole group if every child is hidden for the current role.
+  const children = item.children.filter(c => !c.roles || c.roles.includes(role));
+  if (children.length === 0) return null;
+  const isOpen = openGroups[item.label] !== undefined ? openGroups[item.label] : children.some(c => location.pathname === c.to);
 
   const getBadge = (path) => {
     if (!counts) return null;
@@ -73,7 +80,7 @@ function NavGroup({ item, openGroups, toggleGroup, counts }) {
       </div>
       {isOpen && (
         <div className="nav-group-children">
-          {item.children.map(child => child.external ? (
+          {children.map(child => child.external ? (
             <a
               key={child.to}
               href={`${import.meta.env.BASE_URL}${child.to.replace(/^\//, '')}`}
@@ -103,6 +110,7 @@ function NavGroup({ item, openGroups, toggleGroup, counts }) {
 
 export default function HrmsLayout({ children }) {
   const user = useAuthStore(s => s.user);
+  const role = user?.role?.slug;
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [counts, setCounts] = useState(null);
@@ -135,7 +143,7 @@ export default function HrmsLayout({ children }) {
         </div>
         <nav className="sidebar-nav" onClick={closeSidebar}>
           {navItems.map(n => n.children ? (
-            <NavGroup key={n.label} item={n} openGroups={openGroups} toggleGroup={toggleGroup} counts={counts} />
+            <NavGroup key={n.label} item={n} openGroups={openGroups} toggleGroup={toggleGroup} counts={counts} role={role} />
           ) : n.external ? (
             <a key={n.label} href={n.to} target="_blank" rel="noopener noreferrer" className="nav-item">
               <span className="nav-icon">{ICONS[n.icon] || n.icon}</span>

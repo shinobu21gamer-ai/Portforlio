@@ -15,7 +15,10 @@ router.post('/update', protect, authorize('admin', 'manager', 'inventory_staff')
   } catch (e) { next(e); }
 });
 
-router.get('/by-purchase/:purchaseId', protect, async (req, res, next) => {
+// Delivery + rider GPS is operations data: restrict to the roles that manage
+// purchases. Previously these were open to ANY authenticated user (IDOR —
+// e.g. a self-registered account could track any delivery).
+router.get('/by-purchase/:purchaseId', protect, authorize('admin', 'manager', 'inventory_staff'), async (req, res, next) => {
   try {
     const { Delivery } = require('../models');
     const delivery = await Delivery.findOne({ where: { orderId: req.params.purchaseId, orderType: 'purchase' } });
@@ -24,7 +27,7 @@ router.get('/by-purchase/:purchaseId', protect, async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-router.get('/delivery/:deliveryId', protect, async (req, res, next) => {
+router.get('/delivery/:deliveryId', protect, authorize('admin', 'manager', 'inventory_staff'), async (req, res, next) => {
   try {
     const delivery = await trackingService.getDelivery(req.params.deliveryId);
     const location = await trackingService.getLatestLocation(req.params.deliveryId);

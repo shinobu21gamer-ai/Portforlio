@@ -247,7 +247,7 @@ router.get('/verify/:saleId', protect, async (req, res, next) => {
   }
 });
 
-router.post('/webhook', async (req, res, next) => {
+router.post('/webhook', async (req, res) => {
   try {
     const sig = req.headers['paymongo-signature'] || '';
 

@@ -20,7 +20,7 @@ export default function ProtectedRoute({ children, allowedRoles }) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', textAlign: 'center' }}>
         <h1 style={{ fontSize: 24, marginBottom: 8 }}>Access Denied</h1>
-        <p style={{ color: '#666', marginBottom: 16 }}>You don't have permission to view this page.</p>
+        <p style={{ color: 'var(--muted-fg)', marginBottom: 16 }}>You don't have permission to view this page.</p>
         <button className="btn btn-primary" onClick={() => navigate('/')}>Go to Dashboard</button>
       </div>
     );

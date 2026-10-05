@@ -65,6 +65,15 @@ class SaleController {
     }
   }
 
+  async completePendingAsCash(req, res, next) {
+    try {
+      const sale = await saleService.completePendingAsCash(req.params.id, req.user);
+      return sendSuccess(res, sale, 'Pending sale completed as cash');
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async getByInvoice(req, res, next) {
     try {
       const sale = await saleService.getByInvoice(req.params.invoiceNo, req.user);
@@ -79,6 +88,24 @@ class SaleController {
       const { startDate, endDate } = req.query;
       const report = await saleService.getSalesReport(startDate, endDate);
       return sendSuccess(res, report, 'Sales report generated successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async refund(req, res, next) {
+    try {
+      const result = await saleService.refund(req.params.id, req.body, req.user);
+      return sendSuccess(res, result, result.fullyRefunded ? 'Sale fully refunded' : 'Partial refund processed');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async emailReceipt(req, res, next) {
+    try {
+      const result = await saleService.sendReceiptEmail(req.params.id);
+      return sendSuccess(res, result, `Receipt sent to ${result.to}`);
     } catch (error) {
       next(error);
     }

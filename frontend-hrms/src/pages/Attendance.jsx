@@ -31,7 +31,7 @@ export default function Attendance() {
     return { date, search: debouncedSearch, page, limit: 50 };
   }, [view, date, weekRange, monthRange, debouncedSearch, page]);
 
-  const { data: attData, isLoading } = useAttendance(queryParams);
+  const { data: attData, isLoading, isError, error, refetch } = useAttendance(queryParams);
   const { data: empData } = useEmployees({ limit: 100, status: 'active' });
   const { data: shiftData } = useShiftAssignments({ date });
   const clockInMut = useBulkClockIn();
@@ -150,6 +150,14 @@ export default function Attendance() {
     const color = name.includes('Morning') ? 'var(--info)' : name.includes('Afternoon') ? 'var(--warning)' : name.includes('Night') ? 'var(--accent)' : 'var(--text-muted)';
     return <span style={{ color }} className="text-xs font-semibold">{shift.name}<br/><span className="font-normal" style={{ opacity: 0.8 }}>{formatTime(shift.startTime)} – {formatTime(shift.endTime)}</span></span>;
   };
+
+  if (isError) {
+    return (
+      <div className="page-error-wrap">
+        <ErrorState message={error?.response?.data?.message || 'Something went wrong while loading this data.'} onRetry={() => refetch()} />
+      </div>
+    );
+  }
 
   return (<>
       <header className="pos-header">

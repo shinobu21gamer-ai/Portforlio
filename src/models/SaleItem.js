@@ -72,6 +72,11 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.DECIMAL(15, 2),
       allowNull: false,
     },
+    refundedQuantity: {
+      type: DataTypes.INTEGER,
+      defaultValue: 0,
+      field: 'refunded_quantity',
+    },
   }, {
     tableName: 'sale_items',
     underscored: true,

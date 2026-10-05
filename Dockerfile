@@ -36,16 +36,31 @@ COPY src ./src
 COPY --from=pos-builder /app/frontend/dist ./frontend/dist
 COPY --from=hrms-builder /app/frontend-hrms/dist ./frontend-hrms/dist
 COPY uploads ./uploads
+# public/ = the public landing/careers site + robots.txt (served by Express);
+# data/settings.defaults.json = committed settings baseline for first boot.
+COPY public ./public
+COPY data ./data
 
 RUN mkdir -p uploads/products uploads/resumes uploads/documents logs data && \
     chown -R appuser:appgroup /app
 
+# CORS: unset = same-origin only (API + frontends share one host). Override
+# at deploy time if a separate frontend origin exists:
+#   docker run -e CORS_ORIGIN=https://pos.example.com ...
+#
+# Security (Phase 3 / AUDIT.md S1+S2):
+#  • AUTO_SETUP is NOT set — demo accounts with weak passwords are dev-only.
+#    On first boot with an empty DB the server creates a single first-run
+#    admin (INITIAL_ADMIN_EMAIL/INITIAL_ADMIN_PASSWORD, or a one-time
+#    generated password in the logs) that must change its password.
+#  • All persistent state (DB, uploads, settings) lives under /data — mount
+#    a volume there (docker-compose.yml already does).
 ENV NODE_ENV=production \
     PORT=8080 \
-    AUTO_SETUP=true \
     DB_DIALECT=sqlite \
     DB_STORAGE=/data/database.sqlite \
-    CORS_ORIGIN=*
+    UPLOAD_DIR=/data/uploads \
+    SETTINGS_FILE=/data/settings.json
 
 EXPOSE 8080
 

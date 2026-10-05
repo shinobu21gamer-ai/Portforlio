@@ -1,9 +1,11 @@
 import { useState } from 'react';
+import ErrorState from '../components/ErrorState';
 import { useQueryClient, useMutation } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import PosLayout from '../layouts/PosLayout';
 import { useCategories } from '../hooks/useApi';
 import { useToast } from '../components/Toast';
+import useDebounce from '../hooks/useDebounce';
 import LoadingSkeleton from '../components/LoadingSkeleton';
 import Modal from '../components/Modal';
 import api from '../api/client';
@@ -19,7 +21,9 @@ export default function Categories() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const toast = useToast();
-  const { data, isLoading } = useCategories();
+  const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounce(search);
+  const { data, isLoading, isError, error, refetch } = useCategories({ search: debouncedSearch || undefined });
   const categories = data?.categories || data?.data?.categories || [];
 
   const [showAddModal, setShowAddModal] = useState(false);
@@ -99,6 +103,14 @@ export default function Categories() {
   const getEmoji = (slug, idx) => EMOJI[slug] || EMOJI_FALLBACK[idx % EMOJI_FALLBACK.length];
   const getColor = (slug) => COLORS[slug] || '#f5f5f5';
 
+  if (isError) {
+    return (
+      <div className="page-error-wrap">
+        <ErrorState message={error?.response?.data?.message || 'Something went wrong while loading this data.'} onRetry={() => refetch()} />
+      </div>
+    );
+  }
+
   return (
     <PosLayout active="categories">
       <header className="pos-header">
@@ -106,7 +118,14 @@ export default function Categories() {
           <h1>Categories</h1>
           <div className="sub">{categories.length} categories</div>
         </div>
-        <button className="btn btn-primary" onClick={openAddModal}>+ Add Category</button>
+        <div className="flex-wrap-sm">
+          <div className="search pos-rel">
+            <svg className="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input className="input with-icon" placeholder="Search categories..." value={search} onChange={(e) => setSearch(e.target.value)} />
+            {search && <button onClick={() => setSearch('')} className="search-clear">×</button>}
+          </div>
+          <button className="btn btn-primary" onClick={openAddModal}>+ Add Category</button>
+        </div>
       </header>
 
       {isLoading ? (
@@ -114,9 +133,18 @@ export default function Categories() {
       ) : categories.length === 0 ? (
         <div className="empty-state">
           <div className="icon">📂</div>
-          <h3>No categories yet</h3>
-          <p className="text-muted mt-sm">Add your first category to organize products.</p>
-          <button className="btn btn-primary mt-md" onClick={openAddModal}>+ Add Category</button>
+          {debouncedSearch ? (
+            <>
+              <h3>No categories match "{debouncedSearch}"</h3>
+              <p className="text-muted mt-sm">Try a different search term.</p>
+            </>
+          ) : (
+            <>
+              <h3>No categories yet</h3>
+              <p className="text-muted mt-sm">Add your first category to organize products.</p>
+              <button className="btn btn-primary mt-md" onClick={openAddModal}>+ Add Category</button>
+            </>
+          )}
         </div>
       ) : (
         <div className="cat-grid">

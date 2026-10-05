@@ -17,7 +17,7 @@ export default function Login() {
         background: 'radial-gradient(1100px 520px at 50% -8%, rgba(99,102,241,0.20) 0%, rgba(99,102,241,0) 62%), linear-gradient(180deg, #eef2ff 0%, #e0e7ff 55%, #eef2ff 100%)',
       }}
     >
-      <p style={{ color: '#4338ca', fontSize: 14, fontWeight: 500 }}>Redirecting to HRMS login...</p>
+      <p style={{ color: 'var(--primary-hover)', fontSize: 14, fontWeight: 500 }}>Redirecting to HRMS login...</p>
     </div>
   );
 }

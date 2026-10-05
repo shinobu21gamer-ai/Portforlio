@@ -3,10 +3,18 @@ const path = require('path');
 const config = require('../config');
 const ApiError = require('../utils/ApiError');
 
-const SETTINGS_FILE = path.resolve(__dirname, '../../data/settings.json');
+// Runtime settings live in data/settings.json by default, which is
+// gitignored (it is rewritten by the settings API). In production point
+// SETTINGS_FILE at the persistent volume (e.g. /data/settings.json).
+// data/settings.defaults.json is the committed dev/demo baseline and is
+// only used to seed the runtime file's first read.
+const SETTINGS_FILE = process.env.SETTINGS_FILE
+  ? path.resolve(process.env.SETTINGS_FILE)
+  : path.resolve(__dirname, '../../data/settings.json');
+const SETTINGS_DEFAULTS_FILE = path.resolve(__dirname, '../../data/settings.defaults.json');
 
 const DEFAULT_KEYS = ['storeName', 'storeAddress', 'storePhone', 'storeEmail', 'taxRate', 'currency', 'lowStockThreshold', 'receiptHeader', 'receiptFooter'];
-const ALLOWED_KEYS = new Set([...DEFAULT_KEYS, 'address', 'phone', 'email', 'gcashNumber', 'mayaNumber']);
+const ALLOWED_KEYS = new Set([...DEFAULT_KEYS, 'address', 'phone', 'email', 'gcashNumber', 'mayaNumber', 'allowPublicRegistration', 'onboardingDismissedAt']);
 
 const DEFAULTS = {
   storeName: config.app.name || 'My Store',
@@ -33,12 +41,15 @@ const filterAllowed = (data) => {
 
 const loadFromFile = () => {
   try {
-    if (fs.existsSync(SETTINGS_FILE)) {
-      const raw = fs.readFileSync(SETTINGS_FILE, 'utf8');
-      const saved = JSON.parse(raw);
+    // Prefer the runtime file; fall back to the committed dev/demo baseline
+    // so a fresh production volume still boots with sensible defaults.
+    for (const file of [SETTINGS_FILE, SETTINGS_DEFAULTS_FILE]) {
+      if (!fs.existsSync(file)) continue;
+      const saved = JSON.parse(fs.readFileSync(file, 'utf8'));
       settings = { ...DEFAULTS, ...filterAllowed(saved) };
+      return;
     }
-  } catch (e) {
+  } catch {
     settings = { ...DEFAULTS };
   }
 };
@@ -50,7 +61,7 @@ const saveToFile = () => {
     const tmpFile = `${SETTINGS_FILE}.tmp`;
     fs.writeFileSync(tmpFile, JSON.stringify(settings, null, 2), 'utf8');
     fs.renameSync(tmpFile, SETTINGS_FILE);
-  } catch (e) {
+  } catch {
     // silent fail — in-memory still works
   }
 };
@@ -59,7 +70,10 @@ loadFromFile();
 
 class SettingService {
   async get() {
-    return { ...settings };
+    // `publicRegistrationEffective` is what actually gates the register API
+    // (env override + setting + environment default), so the UI can display
+    // the true state even when env forces it.
+    return { ...settings, publicRegistrationEffective: this.isPublicRegistrationAllowed() };
   }
 
   async update(data) {
@@ -81,9 +95,34 @@ class SettingService {
       filtered.lowStockThreshold = threshold;
     }
 
+    if ('allowPublicRegistration' in filtered) {
+      filtered.allowPublicRegistration = !!filtered.allowPublicRegistration;
+    }
+
+    // First-run checklist dismissal timestamp (ISO string or null to re-show).
+    if ('onboardingDismissedAt' in filtered) {
+      const v = filtered.onboardingDismissedAt;
+      filtered.onboardingDismissedAt = v === null || v === '' ? null : String(v);
+    }
+
     settings = { ...settings, ...filtered };
     saveToFile();
-    return { ...settings };
+    // Same shape as get() so clients always see publicRegistrationEffective.
+    return this.get();
+  }
+
+  /**
+   * Public self-registration gate (POST /api/v1/auth/register).
+   * Precedence: explicit env ALLOW_PUBLIC_REGISTRATION > admin setting > default.
+   * Default is OFF in production (a stranger-registered account is a live POS
+   * login) and ON in development for convenience.
+   */
+  isPublicRegistrationAllowed() {
+    const envFlag = (process.env.ALLOW_PUBLIC_REGISTRATION || '').toLowerCase();
+    if (envFlag === 'true' || envFlag === '1') return true;
+    if (envFlag === 'false' || envFlag === '0') return false;
+    if (settings.allowPublicRegistration !== undefined) return !!settings.allowPublicRegistration;
+    return config.nodeEnv !== 'production';
   }
 }
 

@@ -1,5 +1,5 @@
 const { Op } = require('sequelize');
-const { Payroll, Payslip, Employee, Attendance, Department, sequelize, Notification } = require('../../models');
+const { Payroll, Payslip, Employee, Attendance, sequelize, Notification } = require('../../models');
 const ApiError = require('../../utils/ApiError');
 const { getPagination, getPaginationMeta, escapeLike } = require('../../utils/helpers');
 const { logActivity } = require('../../utils/audit');
@@ -43,11 +43,6 @@ function getHolidayType(dateStr) {
   }
   if (dow === 0) return 'special';
   return 'none';
-}
-
-function isRestDay(dateStr) {
-  const d = new Date(dateStr + 'T00:00:00');
-  return d.getDay() === 0;
 }
 
 // ─── SSS Contribution Table (2024 + 2025) ────────────────
@@ -256,28 +251,10 @@ function computeTax(income, isSemiMonthly) {
   return parseFloat(computeTaxMonthly(income).toFixed(2));
 }
 
-// ─── Holiday Pay ──────────────────────────────────────────
-function computeHolidayPay(holidayHours, hourlyRate, holidayType, isRestDay) {
-  if (holidayType === 'regular') {
-    if (isRestDay) return holidayHours * hourlyRate * 2.60;
-    return holidayHours * hourlyRate * 2.00;
-  }
-  if (holidayType === 'special') {
-    if (isRestDay) return holidayHours * hourlyRate * 1.50;
-    return holidayHours * hourlyRate * 1.30;
-  }
-  return 0;
-}
-
 // ─── Night Differential ───────────────────────────────────
 const ND_RATE = 0.10;
 function computeNightDiff(nightHours, hourlyRate) {
   return nightHours * hourlyRate * ND_RATE;
-}
-
-// ─── Rest Day Premium ─────────────────────────────────────
-function computeRestDayPay(restDayHours, hourlyRate) {
-  return restDayHours * hourlyRate * 0.30;
 }
 
 // ─── Overtime Rate ────────────────────────────────────────
@@ -382,10 +359,8 @@ function computePayslipForEmployee(emp, empAtt, periodSalary, periodWorkingDays,
 }
 
 // ─── Helper: gather attendance data for a period ───────────
-function gatherAttendance(attendanceRecords, startDate, endDate) {
+function gatherAttendance(attendanceRecords) {
   const byEmployee = {};
-  const d = new Date(startDate + 'T00:00:00');
-  const endD = new Date(endDate + 'T00:00:00');
 
   for (const rec of attendanceRecords) {
     const empId = rec.employeeId;
@@ -437,8 +412,11 @@ class PayrollService {
       });
     }
 
+    const allowedSort = ["createdAt","period","totalGrossPay","totalNetPay","status"];
+    const sortBy = allowedSort.includes(query.sortBy) ? query.sortBy : 'createdAt';
+    const sortOrder = query.sortOrder === 'ASC' ? 'ASC' : 'DESC';
     const { rows, count } = await Payroll.findAndCountAll({
-      where, include, offset, limit, order: [['createdAt', 'DESC']],
+      where, include, offset, limit, order: [[sortBy, sortOrder]],
       distinct: true,
     });
 
@@ -501,12 +479,11 @@ class PayrollService {
         lock: t.LOCK.UPDATE,
       });
 
-      const attendanceByEmployee = gatherAttendance(attendanceRecords, startDate, endDate);
+      const attendanceByEmployee = gatherAttendance(attendanceRecords);
 
       let totalWorkingDays = countWorkingDays(startDate, endDate);
 
       const isDecember = month === 12;
-      const periodWorkingDays = isSemiMonthly => isSemiMonthly ? Math.ceil(totalWorkingDays / 2) : totalWorkingDays;
 
       const payroll = await Payroll.create({
         period, startDate, endDate, status: 'draft',
@@ -596,7 +573,7 @@ class PayrollService {
           }).catch(() => {});
         }
       }
-    } catch (err) { /* email errors should not block payroll processing */ }
+    } catch { /* email errors should not block payroll processing */ }
 
     return this.getById(id);
   }
@@ -688,7 +665,7 @@ class PayrollService {
     const attendanceRecords = await Attendance.findAll({
       where: { date: { [Op.between]: [startDate, endDate] } },
     });
-    const attendanceByEmployee = gatherAttendance(attendanceRecords, startDate, endDate);
+    const attendanceByEmployee = gatherAttendance(attendanceRecords);
 
     const totalWorkingDays = countWorkingDays(startDate, endDate);
 

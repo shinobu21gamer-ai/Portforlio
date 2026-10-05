@@ -84,10 +84,10 @@ export default function PosEmbed({ page, onClose }) {
 
   if (!token) {
     return (
-      <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <div style={{ textAlign: 'center' }}>
-          <div style={{ width: 36, height: 36, border: '3px solid #e2e8f0', borderTopColor: '#6366f1', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 16px' }} />
-          <p style={{ color: '#64748b', fontSize: 14 }}>Authenticating...</p>
+          <div style={{ width: 36, height: 36, border: '3px solid var(--border)', borderTopColor: 'var(--primary)', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 16px' }} />
+          <p style={{ color: 'var(--muted-fg)', fontSize: 14 }}>Authenticating...</p>
         </div>
       </div>
     );
@@ -95,16 +95,16 @@ export default function PosEmbed({ page, onClose }) {
 
   if (authError) {
     return (
-      <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <div style={{ textAlign: 'center', padding: 32, maxWidth: 400 }}>
           <div style={{ fontSize: 48, marginBottom: 16 }}>&#x26A0;</div>
-          <h2 style={{ color: '#0f172a', fontSize: 18, fontWeight: 600, marginBottom: 8 }}>POS Authentication Failed</h2>
-          <p style={{ color: '#64748b', fontSize: 14, marginBottom: 24 }}>{authError}</p>
+          <h2 style={{ color: 'var(--fg-primary)', fontSize: 18, fontWeight: 600, marginBottom: 8 }}>POS Authentication Failed</h2>
+          <p style={{ color: 'var(--muted-fg)', fontSize: 14, marginBottom: 24 }}>{authError}</p>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
             <button
               onClick={() => { setAuthError(null); setRetryCount(0); setLoaded(false); setIframeKey(k => k + 1); }}
               style={{
-                padding: '10px 20px', borderRadius: 8, background: '#6366f1', color: '#fff',
+                padding: '10px 20px', borderRadius: 8, background: 'var(--primary)', color: 'var(--primary-fg)',
                 border: 'none', fontSize: 14, fontWeight: 500, cursor: 'pointer',
               }}
             >
@@ -113,7 +113,7 @@ export default function PosEmbed({ page, onClose }) {
             <button
               onClick={handleClose}
               style={{
-                padding: '10px 20px', borderRadius: 8, background: '#e2e8f0', color: '#0f172a',
+                padding: '10px 20px', borderRadius: 8, background: 'var(--muted)', color: 'var(--text)',
                 border: 'none', fontSize: 14, fontWeight: 500, cursor: 'pointer',
               }}
             >
@@ -126,7 +126,7 @@ export default function PosEmbed({ page, onClose }) {
   }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: '#fff' }}>
+    <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'var(--bg-secondary)' }}>
       <button
         onClick={handleClose}
         style={{
@@ -149,10 +149,10 @@ export default function PosEmbed({ page, onClose }) {
       </button>
 
       {!loaded && (
-        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc' }}>
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)' }}>
           <div style={{ textAlign: 'center' }}>
-            <div style={{ width: 36, height: 36, border: '3px solid #e2e8f0', borderTopColor: '#6366f1', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 16px' }} />
-            <p style={{ color: '#64748b', fontSize: 14 }}>Loading POS...</p>
+            <div style={{ width: 36, height: 36, border: '3px solid var(--border)', borderTopColor: 'var(--primary)', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 16px' }} />
+            <p style={{ color: 'var(--muted-fg)', fontSize: 14 }}>Loading POS...</p>
           </div>
         </div>
       )}

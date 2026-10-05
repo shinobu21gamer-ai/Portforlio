@@ -1,4 +1,4 @@
-const { LeaveRequest, Employee, Department, Attendance, Notification, sequelize } = require('../../models');
+const { LeaveRequest, Employee, Attendance, Notification, sequelize } = require('../../models');
 const ApiError = require('../../utils/ApiError');
 const { getPagination, getPaginationMeta, escapeLike, sanitizeObject } = require('../../utils/helpers');
 const { Op } = require('sequelize');
@@ -38,8 +38,11 @@ class LeaveService {
       };
     }
 
+    const allowedSort = ["createdAt","startDate","endDate","days","status","leaveType"];
+    const sortBy = allowedSort.includes(query.sortBy) ? query.sortBy : 'createdAt';
+    const sortOrder = query.sortOrder === 'ASC' ? 'ASC' : 'DESC';
     const { rows, count } = await LeaveRequest.findAndCountAll({
-      where, include, offset, limit, order: [['createdAt', 'DESC']],
+      where, include, offset, limit, order: [[sortBy, sortOrder]],
       distinct: true,
     });
     return { leaves: rows, pagination: getPaginationMeta(count, page, limit) };
@@ -291,7 +294,7 @@ class LeaveService {
               html: leaveStatusEmail(emp.firstName || emp.email, leave.leaveType, 'approved', leave.startDate, leave.endDate),
             }).catch(() => {});
           }
-        } catch (err) { /* email errors should not block leave approval */ }
+        } catch { /* email errors should not block leave approval */ }
       }
 
       return this.getById(id);

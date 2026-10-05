@@ -1,241 +1,12 @@
-﻿const express = require('express');
-const cors = require('cors');
-const helmet = require('helmet');
-const morgan = require('morgan');
-const rateLimit = require('express-rate-limit');
-const path = require('path');
-const fs = require('fs');
-const cookieParser = require('cookie-parser');
-const swaggerUi = require('swagger-ui-express');
-const cron = require('node-cron');
-
+// Bootstrap: connect DB, auto-setup, cron jobs, listen.
+// The Express app itself lives in src/app.js so integration tests can
+// build it against a test database without binding a port.
 const config = require('./config');
 const { connectDB } = require('./config/database');
-const routes = require('./routes');
-const { errorHandler, requestIdMiddleware } = require('./middleware/errorHandler');
-const specs = require('./docs/swagger');
-const { protect, authorize } = require('./middleware/auth');
+const cron = require('node-cron');
+const { app, io, server } = require('./app');
+const { ensureFirstAdmin } = require('./services/setup.service');
 
-const app = express();
-
-app.set('trust proxy', 1);
-
-// â”€â”€â”€ Security Middleware â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      scriptSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com', 'https://unpkg.com'],
-      imgSrc: ["'self'", 'data:', 'blob:', 'https://unpkg.com', 'https://*.tile.openstreetmap.org'],
-      fontSrc: ["'self'", 'https://fonts.gstatic.com'],
-      connectSrc: ["'self'"],
-      frameAncestors: ["'self'"],
-    },
-  },
-  crossOriginEmbedderPolicy: false,
-  frameguard: { action: 'sameorigin' },
-  referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
-}));
-
-const allowedOrigins = (() => {
-  const configured = process.env.CORS_ORIGIN
-    ? process.env.CORS_ORIGIN.split(',').map((o) => o.trim()).filter(Boolean)
-    : [];
-  if (config.nodeEnv === 'production' && configured.length === 0) {
-    console.error('CORS_ORIGIN must be set in production for security');
-    throw new Error('CORS_ORIGIN must be set in production');
-  }
-  return configured.length > 0
-    ? configured
-    : ['http://localhost:3001', 'http://localhost:5173', 'http://localhost:5000'];
-})();
-
-app.use((req, res, next) => {
-  cors({
-    origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
-      // Single-app deployment: always allow same-origin requests.
-      try {
-        if (new URL(origin).host === (req.headers.host || '')) return callback(null, true);
-      } catch (e) { /* invalid origin header */ }
-      callback(new Error('Not allowed by CORS'));
-    },
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    credentials: true,
-  })(req, res, next);
-});
-
-app.use(cookieParser());
-
-const server = require('http').createServer(app);
-const { Server } = require('socket.io');
-const io = new Server(server, { cors: { origin: true, credentials: true } });
-io.on('connection', (socket) => { socket.on('join-delivery', (id) => socket.join(String(id))); });
-
-// â”€â”€â”€ Rate Limiting â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-const isDev = config.nodeEnv === 'development';
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: isDev ? 9999 : 200,
-  message: { success: false, message: 'Too many requests, please try again later.' },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-app.use('/api', limiter);
-
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: isDev ? 9999 : 20,
-  message: { success: false, message: 'Too many attempts, please try again later.' },
-});
-const registerLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000,
-  max: isDev ? 100 : 5,
-  message: { success: false, message: 'Too many registration attempts. Please try again later.' },
-});
-app.use('/api/v1/auth/login', authLimiter);
-app.use('/api/v1/auth/register', registerLimiter);
-app.use('/api/v1/auth/forgot-password', authLimiter);
-app.use('/api/v1/auth/reset-password', authLimiter);
-app.use('/api/v1/auth/refresh-token', rateLimit({ windowMs: 15 * 60 * 1000, max: isDev ? 9999 : 30, message: { success: false, message: 'Too many token refresh attempts.' } }));
-
-// â”€â”€â”€ Body Parsing â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-app.use(express.json({ limit: '1mb', verify: (req, _res, buf) => { req.rawBody = buf; } }));
-app.use(express.urlencoded({ extended: true, limit: '1mb' }));
-
-// â”€â”€â”€ Logging â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-if (config.nodeEnv === 'development') {
-  app.use(morgan('dev'));
-} else {
-  app.use(morgan('combined', { stream: { write: (message) => console.log(message.trim()) } }));
-}
-
-// â”€â”€â”€ Static Files â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// Only product images (under uploads/products) are served publicly.
-// Private HR files (uploads/resumes, uploads/documents, uploads/products/resumes)
-// must be retrieved through authenticated API routes.
-const uploadsRoot = path.join(__dirname, '..', 'uploads');
-const PRIVATE_UPLOAD_SEGMENTS = ['resumes', 'documents', 'hr'];
-app.use('/uploads/products', (req, res, next) => {
-  const seg = (req.path.split('/').filter(Boolean)[0] || '').toLowerCase();
-  if (PRIVATE_UPLOAD_SEGMENTS.includes(seg)) {
-    return res.status(404).json({ success: false, message: 'Not found' });
-  }
-  next();
-}, express.static(path.join(uploadsRoot, 'products'), { dotfiles: 'deny', index: false }));
-
-// â”€â”€â”€ Request ID â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-app.use(requestIdMiddleware);
-
-// â”€â”€â”€ API Documentation (protected in production) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-if (config.nodeEnv === 'production') {
-  const { authorize } = require('./middleware/auth');
-  app.use('/api-docs', protect, authorize('admin'), swaggerUi.serve, swaggerUi.setup(specs, {
-    customCss: '.swagger-ui .topbar { display: none }',
-    customSiteTitle: 'MiniMart POS API Docs',
-  }));
-} else {
-  app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(specs, {
-    customCss: '.swagger-ui .topbar { display: none }',
-    customSiteTitle: 'MiniMart POS API Docs',
-  }));
-}
-
-// â”€â”€â”€ Health Check â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-app.get('/health', (req, res) => {
-  res.json({ success: true, message: 'MiniMart POS API is running', timestamp: new Date().toISOString() });
-});
-
-// â”€â”€â”€ Prometheus Metrics â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-const startTime = Date.now();
-let requestCount = 0;
-
-// â”€â”€â”€ Metrics Endpoint â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-app.get('/metrics', protect, authorize('admin'), (req, res) => {
-  const mem = process.memoryUsage();
-  const uptime = process.uptime();
-  const metrics = [
-    '# HELP app_uptime_seconds Application uptime in seconds',
-    '# TYPE app_uptime_seconds gauge',
-    `app_uptime_seconds ${uptime.toFixed(2)}`,
-    '# HELP app_memory_rss_bytes Resident set size in bytes',
-    '# TYPE app_memory_rss_bytes gauge',
-    `app_memory_rss_bytes ${mem.rss}`,
-    '# HELP app_memory_heap_used_bytes Heap used in bytes',
-    '# TYPE app_memory_heap_used_bytes gauge',
-    `app_memory_heap_used_bytes ${mem.heapUsed}`,
-    '# HELP app_memory_heap_total_bytes Heap total in bytes',
-    '# TYPE app_memory_heap_total_bytes gauge',
-    `app_memory_heap_total_bytes ${mem.heapTotal}`,
-    '# HELP app_cpu_user_seconds User CPU time in seconds',
-    '# TYPE app_cpu_user_seconds gauge',
-    `app_cpu_user_seconds ${(process.cpuUsage().user / 1e6).toFixed(2)}`,
-    '# HELP app_cpu_system_seconds System CPU time in seconds',
-    '# TYPE app_cpu_system_seconds gauge',
-    `app_cpu_system_seconds ${(process.cpuUsage().system / 1e6).toFixed(2)}`,
-    '# HELP app_node_version Node.js version',
-    '# TYPE app_node_version gauge',
-    `app_node_version{version="${process.version}"} 1`,
-    '# HELP app_requests_total Total HTTP requests (since start)',
-    '# TYPE app_requests_total counter',
-    `app_requests_total ${requestCount}`,
-  ].join('\n');
-  res.setHeader('Content-Type', 'text/plain; version=0.0.4');
-  res.send(metrics);
-});
-
-app.use((req, res, next) => { requestCount++; next(); });
-
-// â”€â”€â”€ Routes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-app.use(routes);
-
-// Redirect root to Job Portal (landing page)
-app.get('/', (req, res) => {
-  res.redirect('/hrms/careers');
-});
-
-// â”€â”€â”€ HRMS Frontend Static Files (served at /hrms) â”€â”€â”€â”€â”€â”€â”€â”€â”€
-const hrmsDist = path.join(__dirname, '..', 'frontend-hrms', 'dist');
-if (fs.existsSync(hrmsDist)) {
-  app.use('/hrms/assets', express.static(path.join(hrmsDist, 'assets'), { immutable: true, maxAge: '1y' }));
-  app.use('/hrms', express.static(hrmsDist, { index: 'index.html' }));
-  app.get('/hrms/*', (req, res, next) => {
-    if (req.originalUrl.startsWith('/api')) return next();
-    if (path.extname(req.path)) return res.status(404).send('Not found');
-    res.sendFile(path.join(hrmsDist, 'index.html'), { headers: { 'Cache-Control': 'no-store, must-revalidate' } }, (err) => { if (err) next(); });
-  });
-  console.log('HRMS frontend served at /hrms');
-} else {
-  console.warn('HRMS frontend dist not found â€” skipping /hrms');
-}
-
-// â”€â”€â”€ POS Frontend Static Files (served at /) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-const frontendDist = path.join(__dirname, '..', 'frontend', 'dist');
-if (fs.existsSync(frontendDist)) {
-  app.use('/assets', express.static(path.join(frontendDist, 'assets'), { immutable: true, maxAge: '1y' }));
-  app.use(express.static(frontendDist, { index: false }));
-  app.get('*', (req, res, next) => {
-    if (req.originalUrl.startsWith('/api') || req.originalUrl.startsWith('/uploads') || req.originalUrl.startsWith('/api-docs') || req.originalUrl.startsWith('/health')) {
-      return next();
-    }
-    if (path.extname(req.path)) return res.status(404).send('Not found');
-    res.sendFile(path.join(frontendDist, 'index.html'), { headers: { 'Cache-Control': 'no-store, must-revalidate' } }, (err) => {
-      if (err) next();
-    });
-  });
-} else {
-  console.warn('Frontend dist not found â€” running API-only mode.');
-}
-
-// â”€â”€â”€ 404 Handler â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-app.use((req, res) => {
-  res.status(404).json({ success: false, message: 'Route not found' });
-});
-
-// â”€â”€â”€ Error Handler â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-app.use(errorHandler);
 
 // â”€â”€â”€ Scheduled Tasks â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const { sequelize } = require('./config/database');
@@ -290,14 +61,15 @@ const scheduleContractExpiryCheck = () => {
 };
 
 // â”€â”€â”€ Start Server â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-let srv;
-
-const runAutoSetup = async () => {
+// ─── Bootstrap (all environments) ─────────────────────────────────────
+// Schema migrations, table sync, roles and permissions. Required in
+// production too, but never creates users or demo data (AUDIT.md S1).
+const runBootstrap = async () => {
   try {
-    const { Role, User, Category, ExpenseCategory, Product, Customer, Supplier, Department, Position, Schedule, Discount, Permission, Employee, Branch } = require('./models');
+    const { Role, Permission } = require('./models');
     const { sequelize: db } = require('./config/database');
 
-    const isSQLite = (process.env.DB_DIALECT || 'mysql') === 'sqlite';
+    const isSQLite = config.dbDialect === 'sqlite';
     const safeAddColumn = async (table, column, type) => {
       try {
         if (isSQLite) {
@@ -361,6 +133,7 @@ const runAutoSetup = async () => {
 
     await safeAddColumn('users', 'branch_id', 'INTEGER');
     await safeAddColumn('users', 'reports_to_id', 'INTEGER');
+    await safeAddColumn('users', 'must_change_password', 'BOOLEAN DEFAULT 0');
     await safeAddColumn('products', 'branch_id', 'INTEGER');
     await safeAddColumn('products', 'supplier_id', 'INTEGER');
     await safeAddColumn('sales', 'branch_id', 'INTEGER');
@@ -417,6 +190,11 @@ const runAutoSetup = async () => {
       await safeAddColumn('attendances', 'clock_in_lng', 'DECIMAL(10,7)');
       await safeAddColumn('attendances', 'geofence_distance_meters', 'INTEGER');
       await safeAddColumn('attendances', 'is_geofence_verified', 'BOOLEAN');
+      // Phase 4 — refunds (cumulative refund tracking per sale / per line)
+      await safeAddColumn('sales', 'refunded_amount', 'DECIMAL(15,2) DEFAULT 0');
+      await safeAddColumn('sale_items', 'refunded_quantity', 'INTEGER DEFAULT 0');
+      // Phase 4 — split payments: sales paid across multiple methods
+      await safeModifyEnum('sales', 'payment_method', "'cash', 'gcash', 'maya', 'credit_card', 'debit_card', 'bank_transfer', 'other', 'split'");
       // Indexes for existing databases (see safeAddIndex for why this is needed).
       await safeAddIndex('leave_requests', 'idx_leave_employee_start', ['employee_id', 'start_date']);
       await safeAddIndex('leave_requests', 'idx_leave_status', ['status']);
@@ -456,50 +234,6 @@ const runAutoSetup = async () => {
         where: { slug: 'employee' },
         defaults: { name: 'Employee', slug: 'employee', description: 'Basic employee access' }
       });
-
-      await User.findOrCreate({
-        where: { email: 'admin@minimart.com' },
-        defaults:         { firstName: 'Maria', lastName: 'Santos', email: 'admin@minimart.com', password: 'admin123', roleId: adminRole.id, isActive: true }
-      });
-      await User.findOrCreate({
-        where: { email: 'hr@minimart.com' },
-        defaults:         { firstName: 'Ana', lastName: 'Reyes', email: 'hr@minimart.com', password: 'hr123', roleId: hrRole.id, isActive: true }
-      });
-      await User.findOrCreate({
-        where: { email: 'manager@minimart.com' },
-        defaults:         { firstName: 'Carlos', lastName: 'Garcia', email: 'manager@minimart.com', password: 'admin123', roleId: managerRole.id, isActive: true }
-      });
-      await User.findOrCreate({
-        where: { email: 'cashier@minimart.com' },
-        defaults: { firstName: 'Joy', lastName: 'Dela Cruz', email: 'cashier@minimart.com', password: 'cashier123', roleId: cashierRole.id, isActive: true }
-      });
-      await User.findOrCreate({
-        where: { email: 'ligma1@gmail.com' },
-        defaults: { firstName: 'Ligma', lastName: 'One', email: 'ligma1@gmail.com', password: 'employee123', roleId: employeeRole.id, isActive: true }
-      });
-      await User.findOrCreate({
-        where: { email: 'inventory@minimart.com' },
-        defaults: { firstName: 'Rico', lastName: 'Dela PeÃ±a', email: 'inventory@minimart.com', password: 'inventory123', roleId: inventoryStaffRole.id, isActive: true }
-      });
-
-      const seedAccounts = [
-        { email: 'admin@minimart.com', password: 'admin123' },
-        { email: 'hr@minimart.com', password: 'hr123' },
-        { email: 'manager@minimart.com', password: 'admin123' },
-        { email: 'cashier@minimart.com', password: 'cashier123' },
-        { email: 'ligma1@gmail.com', password: 'employee123' },
-        { email: 'inventory@minimart.com', password: 'inventory123' },
-      ];
-      const bcrypt = require('bcryptjs');
-      for (const acct of seedAccounts) {
-        const u = await User.findOne({ where: { email: acct.email } });
-        if (u) {
-          const hashed = await bcrypt.hash(acct.password, 10);
-          await User.update({ password: hashed }, { where: { id: u.id }, individualHooks: false });
-        }
-      }
-
-      console.log('Seed data ready');
 
       const permissions = [
         { name: 'View Dashboard', slug: 'dashboard.view', module: 'dashboard' },
@@ -594,6 +328,65 @@ const runAutoSetup = async () => {
         }
       }
       console.log('Role permissions assigned');
+      console.log('Bootstrap complete (schema, roles, permissions)');
+      return { adminRole, hrRole, managerRole, cashierRole, employeeRole, inventoryStaffRole };
+    } catch (error) {
+      console.error('Bootstrap failed:', error.message);
+      throw error;
+    }
+  };
+
+// ─── Demo seed (non-production only) ───────────────────────────────────
+// Demo accounts + demo store data. Never runs in production (AUDIT.md S1):
+// production must never boot with known weak credentials.
+const seedDemoData = async (roles) => {
+  try {
+    const { User, Category, ExpenseCategory, Product, Customer, Supplier, Department, Position, Schedule, Discount, Employee, Branch, JobPosting } = require('./models');
+    const { adminRole, hrRole, managerRole, cashierRole, employeeRole, inventoryStaffRole } = roles;
+
+      await User.findOrCreate({
+        where: { email: 'admin@minimart.com' },
+        defaults:         { firstName: 'Maria', lastName: 'Santos', email: 'admin@minimart.com', password: 'admin123', roleId: adminRole.id, isActive: true }
+      });
+      await User.findOrCreate({
+        where: { email: 'hr@minimart.com' },
+        defaults:         { firstName: 'Ana', lastName: 'Reyes', email: 'hr@minimart.com', password: 'hr123', roleId: hrRole.id, isActive: true }
+      });
+      await User.findOrCreate({
+        where: { email: 'manager@minimart.com' },
+        defaults:         { firstName: 'Carlos', lastName: 'Garcia', email: 'manager@minimart.com', password: 'admin123', roleId: managerRole.id, isActive: true }
+      });
+      await User.findOrCreate({
+        where: { email: 'cashier@minimart.com' },
+        defaults: { firstName: 'Joy', lastName: 'Dela Cruz', email: 'cashier@minimart.com', password: 'cashier123', roleId: cashierRole.id, isActive: true }
+      });
+      await User.findOrCreate({
+        where: { email: 'ligma1@gmail.com' },
+        defaults: { firstName: 'Ligma', lastName: 'One', email: 'ligma1@gmail.com', password: 'employee123', roleId: employeeRole.id, isActive: true }
+      });
+      await User.findOrCreate({
+        where: { email: 'inventory@minimart.com' },
+        defaults: { firstName: 'Rico', lastName: 'Dela Peña', email: 'inventory@minimart.com', password: 'inventory123', roleId: inventoryStaffRole.id, isActive: true }
+      });
+
+      const seedAccounts = [
+        { email: 'admin@minimart.com', password: 'admin123' },
+        { email: 'hr@minimart.com', password: 'hr123' },
+        { email: 'manager@minimart.com', password: 'admin123' },
+        { email: 'cashier@minimart.com', password: 'cashier123' },
+        { email: 'ligma1@gmail.com', password: 'employee123' },
+        { email: 'inventory@minimart.com', password: 'inventory123' },
+      ];
+      const bcrypt = require('bcryptjs');
+      for (const acct of seedAccounts) {
+        const u = await User.findOne({ where: { email: acct.email } });
+        if (u) {
+          const hashed = await bcrypt.hash(acct.password, 10);
+          await User.update({ password: hashed }, { where: { id: u.id }, individualHooks: false });
+        }
+      }
+
+      console.log('Seed data ready');
 
       const categories = [
         { name: 'Beverages', slug: 'beverages', description: 'Drinks and refreshments' },
@@ -758,9 +551,77 @@ const runAutoSetup = async () => {
       }
       console.log('Schedules seeded');
 
+      // Demo job postings so the public careers page is never an empty grid on
+      // a fresh deploy. Idempotent: findOrCreate on (title, departmentId).
+      // Only seeded when no open postings exist yet, so a store that has
+      // already managed real jobs is left untouched.
+      const openCount = await JobPosting.count({ where: { status: 'open' } });
+      if (openCount === 0) {
+        const adminUser = await User.findOne({ where: { email: 'admin@minimart.com' } });
+        const closingIn45Days = new Date(Date.now() + 45 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        const demoJobs = [
+          {
+            title: 'Cashier',
+            departmentId: deptMap.Operations,
+            positionId: posMap['Cashier'],
+            scheduleId: schedMap['Full Day'],
+            description: 'Join our front-line team and be the friendly face of MiniMart. You will operate the POS, handle cash and digital payments (GCash, Maya, PayMongo), manage the register, and keep the checkout area clean and customer-ready.',
+            requirements: 'High school graduate or above. 1+ year retail or cashiering experience preferred. Honest, accurate with numbers, and able to stand for a full shift. Customer service and teamwork are a must.',
+            salaryMin: 13000, salaryMax: 18000, employmentType: 'full-time', paymentFrequency: 'semi-monthly', openings: 2,
+            location: 'Main Branch', status: 'open', approvedAt: new Date(), closingDate: closingIn45Days, postedBy: adminUser?.id,
+          },
+          {
+            title: 'Sales Associate',
+            departmentId: deptMap.Sales,
+            positionId: posMap['Sales Associate'],
+            scheduleId: schedMap['Full Day'],
+            description: 'Help customers find what they need, keep shelves stocked and faced, support promotions, and drive daily sales. A great first role for people who love helping others and want to grow toward supervisory positions.',
+            requirements: 'High school graduate or above. Reliable and energetic with a can-do attitude. Basic product knowledge is a plus. Willingness to work a rotating shift schedule.',
+            salaryMin: 13000, salaryMax: 17000, employmentType: 'full-time', paymentFrequency: 'monthly', openings: 3,
+            location: 'Main Branch', status: 'open', approvedAt: new Date(), closingDate: closingIn45Days, postedBy: adminUser?.id,
+          },
+          {
+            title: 'Warehouse Staff',
+            departmentId: deptMap.Warehouse,
+            positionId: posMap['Warehouse Staff'],
+            scheduleId: schedMap['Morning Shift'],
+            description: 'Receive stock, check deliveries against purchase orders, organize the stockroom, and prepare items for the sales floor. You are the backbone that keeps our shelves from running empty.',
+            requirements: 'High school graduate or above. Physically fit to lift and move stock. Basic bookkeeping or inventory experience is a plus. Honest and detail-oriented with stock counts.',
+            salaryMin: 13000, salaryMax: 18000, employmentType: 'full-time', paymentFrequency: 'semi-monthly', openings: 2,
+            location: 'Main Branch', status: 'open', approvedAt: new Date(), closingDate: closingIn45Days, postedBy: adminUser?.id,
+          },
+          {
+            title: 'HR Officer',
+            departmentId: deptMap['Human Resources'],
+            positionId: posMap['HR Officer'],
+            scheduleId: schedMap['Morning Shift'],
+            description: 'Support end-to-end people operations: onboarding, attendance and leave management, payroll inputs, performance reviews, and employee relations. A hands-on role in a fast-growing retail team.',
+            requirements: 'BS in Business Administration, HR Management, or a related field. 1+ year HR experience preferred. Proficient with spreadsheets and HR systems. Strong communication and confidentiality discipline.',
+            salaryMin: 20000, salaryMax: 30000, employmentType: 'full-time', paymentFrequency: 'monthly', openings: 1,
+            location: 'Main Branch', status: 'open', approvedAt: new Date(), closingDate: closingIn45Days, postedBy: adminUser?.id,
+          },
+          {
+            title: 'Accountant',
+            departmentId: deptMap.Finance,
+            positionId: posMap['Accountant'],
+            scheduleId: schedMap['Morning Shift'],
+            description: 'Own day-to-day bookkeeping, reconciliations, cash and GCash settlements, expense tracking, and month-end reporting. Help management make clear, data-driven decisions about the business.',
+            requirements: 'BS in Accountancy. CPA license preferred. 1+ year retail or SME accounting experience. Strong with Excel and accounting software; accuracy and integrity are non-negotiable.',
+            salaryMin: 22000, salaryMax: 35000, employmentType: 'full-time', paymentFrequency: 'monthly', openings: 1,
+            location: 'Main Branch', status: 'open', approvedAt: new Date(), closingDate: closingIn45Days, postedBy: adminUser?.id,
+          },
+        ];
+        for (const j of demoJobs) {
+          await JobPosting.findOrCreate({ where: { title: j.title, departmentId: j.departmentId }, defaults: j });
+        }
+        console.log(`Demo job postings seeded (${demoJobs.length})`);
+      } else {
+        console.log('Job postings already present — skipping demo seed');
+      }
+
       const employees = [
         { firstName: 'Joy', lastName: 'Dela Cruz', email: 'cashier@minimart.com', departmentId: deptMap.Operations, positionId: posMap['Cashier'], salary: 15000, userId: (await User.findOne({ where: { email: 'cashier@minimart.com' } }))?.id, status: 'active', hireDate: '2026-01-15' },
-        { firstName: 'Rico', lastName: 'Dela PeÃ±a', email: 'inventory@minimart.com', departmentId: deptMap.Warehouse, positionId: posMap['Warehouse Staff'], salary: 15000, userId: (await User.findOne({ where: { email: 'inventory@minimart.com' } }))?.id, status: 'active', hireDate: '2026-01-15' },
+        { firstName: 'Rico', lastName: 'Dela Peña', email: 'inventory@minimart.com', departmentId: deptMap.Warehouse, positionId: posMap['Warehouse Staff'], salary: 15000, userId: (await User.findOne({ where: { email: 'inventory@minimart.com' } }))?.id, status: 'active', hireDate: '2026-01-15' },
         { firstName: 'Ligma', lastName: 'One', email: 'ligma1@gmail.com', departmentId: deptMap.Sales, positionId: posMap['Sales Associate'], salary: 15000, userId: (await User.findOne({ where: { email: 'ligma1@gmail.com' } }))?.id, status: 'active', hireDate: '2026-01-15' },
       ];
       let empNum = 1001;
@@ -787,23 +648,30 @@ const runAutoSetup = async () => {
 
       console.log('All seed data ready');
     } catch (error) {
-      console.error('Auto-setup failed:', error.message);
+      console.error('Demo seed failed:', error.message);
     }
   };
 
   const startServer = async () => {
     try {
-      console.log('[DEBUG] startServer: before connectDB');
       await connectDB();
-      console.log('[DEBUG] startServer: after connectDB');
 
-      const shouldAutoSetup = config.nodeEnv === 'development' || process.env.AUTO_SETUP === 'true';
-      console.log('[DEBUG] startServer: shouldAutoSetup=', shouldAutoSetup);
-      if (shouldAutoSetup) {
-        console.log('Auto-setup running in background...');
-        runAutoSetup().catch((e) => console.error('Auto-setup crashed:', e));
-      }
-      console.log('[DEBUG] startServer: after runAutoSetup fire');
+      // Bootstrap (schema/roles/permissions) runs in every environment.
+      // Production never seeds the demo accounts (AUDIT.md S1): with an
+      // empty database it creates a single first-run admin with a strong
+      // password (env-provided or generated once) and forces a change at
+      // first login (mustChangePassword).
+      const isProd = config.nodeEnv === 'production';
+      const shouldSeedDemo = !isProd && (config.nodeEnv === 'development' || process.env.AUTO_SETUP === 'true');
+      runBootstrap()
+        .then((roles) => {
+          if (isProd) return ensureFirstAdmin();
+          if (shouldSeedDemo) {
+            console.log('Auto-setup (demo data) running in background...');
+            return seedDemoData(roles);
+          }
+        })
+        .catch((e) => console.error('Auto-setup crashed:', e.message));
 
       scheduleLowStockCheck();
       scheduleExpiryCheck();
@@ -903,13 +771,12 @@ const runAutoSetup = async () => {
         if (expiredSales.length) console.log(`Auto-cancelled ${expiredSales.length} expired pending sales`);
       } catch (err) { console.error('Pending sale expiry cron failed:', err.message); }
     });
-    console.log('[DEBUG] startServer: about to call server.listen');
 
     server.on('error', (err) => {
       console.error('Server error:', err);
     });
 
-    srv = server.listen(config.port, '0.0.0.0', () => {
+    server.listen(config.port, '0.0.0.0', () => {
       const addr = server.address();
       console.log(`Server bound to: ${JSON.stringify(addr)}`);
       console.log(`Server running on port ${config.port} in ${config.nodeEnv} mode`);

@@ -10,7 +10,7 @@ import { useToast } from '../components/Toast';
 import { formatDate, peso } from '../utils/helpers';
 import { useIsAdmin, useIsAdminOrHR } from '../hooks/useRole';
 import useDebounce from '../hooks/useDebounce';
-import { confirmApprove, confirmReject, confirmTerminate } from '../utils/swal';
+import useConfirm from '../hooks/useConfirm.jsx';
 import { icons } from '../components/ActionButton';
 
 const columns = [
@@ -35,6 +35,7 @@ const POS_ROLES = [
 ];
 
 export default function Employees() {
+  const { confirmApprove, confirmReject, confirmTerminate, confirmDialog } = useConfirm();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search);
@@ -117,7 +118,16 @@ export default function Employees() {
 
   const handleApprove = async (emp) => {
     if (!(await confirmApprove(`Approve ${emp.firstName}?`))) return;
-    try { await approveMut.mutateAsync(emp.id); toast.success('Employee approved'); }
+    try {
+      const result = await approveMut.mutateAsync(emp.id);
+      // Temp password is one-time: it is also emailed to the employee, and the
+      // account is forced to change it at first login.
+      if (result?.tempPassword) {
+        toast.success(`Approved. One-time login password: ${result.tempPassword} (sent by email — must be changed at first login)`);
+      } else {
+        toast.success('Employee approved');
+      }
+    }
     catch (err) { const errors = err.response?.data?.errors; if (errors?.length) toast.error(errors.join('. ')); else toast.error(err.response?.data?.message || 'Approval failed'); }
   };
 
@@ -334,6 +344,7 @@ export default function Employees() {
           </button>
         </div>
       </Modal>
+    {confirmDialog}
     </>
   );
 }

@@ -11,10 +11,13 @@ class PositionService {
     if (query.search) where.title = { [Op.like]: `%${escapeLike(query.search)}%` };
     if (query.departmentId) where.departmentId = query.departmentId;
 
+    const allowedSort = ["createdAt","title","minSalary"];
+    const sortBy = allowedSort.includes(query.sortBy) ? query.sortBy : 'createdAt';
+    const sortOrder = query.sortOrder === 'ASC' ? 'ASC' : 'DESC';
     const { rows, count } = await Position.findAndCountAll({
       where,
       include: [{ association: 'department', attributes: ['id', 'name'] }],
-      offset, limit, order: [['createdAt', 'DESC']],
+      offset, limit, order: [[sortBy, sortOrder]],
     });
 
     return { positions: rows, pagination: getPaginationMeta(count, page, limit) };

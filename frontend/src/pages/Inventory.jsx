@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import ErrorState from '../components/ErrorState';
 import PosLayout from '../layouts/PosLayout';
 import { useInventoryMovements, useProducts, useStockIn, useStockOut } from '../hooks/useApi';
 import { useToast } from '../components/Toast';
@@ -30,7 +31,7 @@ export default function Inventory() {
 
   const toast = useToast();
   const debouncedSearch = useDebounce(search, 300);
-  const { data, isLoading } = useInventoryMovements({ page, limit: 15, type: activeTab === 'in' ? 'in' : activeTab === 'out' ? 'out' : undefined, search: debouncedSearch || undefined, startDate: dateFrom || undefined, endDate: dateTo || undefined, sortBy, sortOrder });
+  const { data, isLoading, isError, error, refetch } = useInventoryMovements({ page, limit: 15, type: activeTab === 'in' ? 'in' : activeTab === 'out' ? 'out' : undefined, search: debouncedSearch || undefined, startDate: dateFrom || undefined, endDate: dateTo || undefined, sortBy, sortOrder });
   const { data: prodData } = useProducts({ limit: 100 });
   const stockInMut = useStockIn();
   const stockOutMut = useStockOut();
@@ -71,6 +72,14 @@ export default function Inventory() {
       toast.error(err.response?.data?.message || 'Operation failed');
     }
   };
+
+  if (isError) {
+    return (
+      <div className="page-error-wrap">
+        <ErrorState message={error?.response?.data?.message || 'Something went wrong while loading this data.'} onRetry={() => refetch()} />
+      </div>
+    );
+  }
 
   return (
     <PosLayout active="inventory">

@@ -1,13 +1,14 @@
 import { useMyContracts } from '../hooks/useApi';
+import ErrorState from '../components/ErrorState';
 import LoadingSkeleton from '../components/LoadingSkeleton';
 
 const peso = (v) => v != null ? `₱${Number(v).toLocaleString()}` : '—';
 
 export default function MyContracts() {
-  const { data, isLoading, error } = useMyContracts();
+  const { data, isLoading, error, refetch } = useMyContracts();
   const contracts = data?.contracts || data || [];
 
-  if (error) return <div className="hrms-page"><div className="empty-state">Failed to load contracts</div></div>;
+  if (error) return <div className="hrms-page"><div className="page-error-wrap"><ErrorState message={error?.response?.data?.message || 'Something went wrong while loading this data.'} onRetry={() => refetch()} /></div></div>;
 
   return (
     <div className="hrms-page">

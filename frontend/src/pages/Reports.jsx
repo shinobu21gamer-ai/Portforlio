@@ -1,8 +1,13 @@
 import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import PosLayout from '../layouts/PosLayout';
 import { useSalesReport, useSales, useExpenseReport } from '../hooks/useApi';
+import { useToast } from '../components/Toast';
 import LoadingSkeleton from '../components/LoadingSkeleton';
+import Modal from '../components/Modal';
+import Button from '../components/Button';
 import { peso, formatDate, formatDateTime, statusBadge, useDebounce } from '../utils/helpers';
+import api from '../api/client';
 
 function downloadCsv(filename, rows, headers) {
   const csvContent = [headers.join(','), ...rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(','))].join('\n');
@@ -32,6 +37,84 @@ export default function Reports() {
   const reportData = salesReport || {};
   const expenseData = expenseReport || {};
   const salesList = salesData?.sales || salesData?.data?.sales || [];
+
+  // ── Refund / void ───────────────────────────────────────────────────
+  const toast = useToast();
+  const qc = useQueryClient();
+  const [refundSale, setRefundSale] = useState(null);
+  const [refundItems, setRefundItems] = useState([]);
+  const [refundReason, setRefundReason] = useState('');
+  const [refundLoading, setRefundLoading] = useState(false);
+  const [refundSubmitting, setRefundSubmitting] = useState(false);
+
+  const openRefund = async (sale) => {
+    setRefundSale(sale);
+    setRefundItems([]);
+    setRefundReason('');
+    setRefundLoading(true);
+    try {
+      const res = await api.get(`/sales/${sale.id}`);
+      const full = res.data?.data || {};
+      setRefundItems((full.items || []).map(i => ({
+        id: i.id,
+        name: i.product?.name || i.productName || 'Item',
+        quantity: i.quantity,
+        alreadyRefunded: i.refundedQuantity || 0,
+        unitTotal: i.total / i.quantity,
+        refundQty: 0,
+      })));
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Could not load sale details');
+      setRefundSale(null);
+    } finally {
+      setRefundLoading(false);
+    }
+  };
+
+  const setRefundQty = (id, val) => {
+    setRefundItems(prev => prev.map(it => (it.id === id ? { ...it, refundQty: val } : it)));
+  };
+
+  const selectableLines = refundItems.filter(i => i.quantity - i.alreadyRefunded > 0);
+  const fullRefundQty = selectableLines.reduce((s, i) => s + (i.quantity - i.alreadyRefunded), 0);
+  const selectedQty = refundItems.reduce((s, i) => s + (i.refundQty || 0), 0);
+  const refundAmount = Math.round(refundItems.reduce((s, i) => s + (i.refundQty || 0) * i.unitTotal, 0) * 100) / 100;
+  const isFullRefund = fullRefundQty > 0 && selectedQty >= fullRefundQty;
+
+  const [receiptSending, setReceiptSending] = useState(null);
+  const sendReceipt = async (sale) => {
+    setReceiptSending(sale.id);
+    try {
+      const res = await api.post(`/sales/${sale.id}/email-receipt`);
+      toast.success(res.data?.message || 'Receipt sent');
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Could not send receipt (sale may have no customer email)');
+    } finally {
+      setReceiptSending(null);
+    }
+  };
+
+  const submitRefund = async () => {
+    if (!refundSale) return;
+    if (refundReason.trim().length < 3) { toast.error('A reason is required (min 3 characters)'); return; }
+    setRefundSubmitting(true);
+    try {
+      const body = { reason: refundReason.trim() };
+      if (!isFullRefund) {
+        body.items = refundItems
+          .filter(i => (i.refundQty || 0) > 0)
+          .map(i => ({ saleItemId: i.id, quantity: i.refundQty }));
+      }
+      await api.post(`/sales/${refundSale.id}/refund`, body);
+      toast.success(isFullRefund ? 'Sale fully refunded' : 'Partial refund processed');
+      setRefundSale(null);
+      qc.invalidateQueries({ queryKey: ['sales'] });
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Refund failed');
+    } finally {
+      setRefundSubmitting(false);
+    }
+  };
 
   const exportSalesCsv = () => {
     const days = Object.entries(reportData.dailyBreakdown || {});
@@ -181,25 +264,124 @@ export default function Reports() {
           ) : (
             <div className="table-wrap">
               <table>
-                <thead><tr><th>Invoice</th><th>Customer</th><th>Cashier</th><th>Total</th><th>Payment</th><th>Status</th><th>Date</th></tr></thead>
+                <thead><tr><th>Invoice</th><th>Customer</th><th>Cashier</th><th>Total</th><th>Payment</th><th>Status</th><th>Date</th><th>Actions</th></tr></thead>
                 <tbody>
-                  {salesList.map(s => (
-                    <tr key={s.id}>
-                      <td><strong>{s.invoiceNo}</strong></td>
-                      <td>{s.customer ? `${s.customer.firstName || ''} ${s.customer.lastName || ''}`.trim() || 'Walk-in' : 'Walk-in'}</td>
-                      <td>{s.user ? `${s.user.firstName || ''} ${s.user.lastName || ''}`.trim() : 'N/A'}</td>
-                      <td>{peso(s.total)}</td>
-                      <td><span className="badge info">{(s.paymentMethod || 'cash').replace(/_/g, ' ')}</span></td>
-                      <td>{statusBadge(s.status)}</td>
-                      <td>{formatDateTime(s.createdAt)}</td>
-                    </tr>
-                  ))}
+                  {salesList.map(s => {
+                    const refunded = parseFloat(s.refundedAmount) || 0;
+                    const refundable = s.status === 'completed' && ['paid', 'partially_refunded'].includes(s.paymentStatus);
+                    return (
+                      <tr key={s.id}>
+                        <td><strong>{s.invoiceNo}</strong>{refunded > 0 && <div style={{ fontSize: 11, color: 'var(--warning, #d97706)' }}>refunded {peso(refunded)}</div>}</td>
+                        <td>{s.customer ? `${s.customer.firstName || ''} ${s.customer.lastName || ''}`.trim() || 'Walk-in' : 'Walk-in'}</td>
+                        <td>{s.user ? `${s.user.firstName || ''} ${s.user.lastName || ''}`.trim() : 'N/A'}</td>
+                        <td>{peso(s.total)}</td>
+                        <td><span className="badge info">{(s.paymentMethod || 'cash').replace(/_/g, ' ')}</span></td>
+                        <td>{statusBadge(s.status)}</td>
+                        <td>{formatDateTime(s.createdAt)}</td>
+                        <td>
+                          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                            {s.customer?.email && s.status === 'completed' && (
+                              <Button variant="secondary" size="sm" disabled={receiptSending === s.id} onClick={() => sendReceipt(s)}>
+                                {receiptSending === s.id ? 'Sending…' : 'Receipt'}
+                              </Button>
+                            )}
+                            {refundable && (
+                              <Button variant="danger" size="sm" onClick={() => openRefund(s)}>Refund</Button>
+                            )}
+                            {!refundable && !(s.customer?.email && s.status === 'completed') && (
+                              <span style={{ color: 'var(--fg-tertiary)', fontSize: 12 }}>—</span>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           )
         )
       )}
+
+      <Modal
+        open={!!refundSale}
+        onClose={() => setRefundSale(null)}
+        title={`Refund ${refundSale?.invoiceNo || ''}`}
+        size="lg"
+      >
+        {refundLoading ? (
+          <div className="flex-center" style={{ minHeight: 120 }}><LoadingSkeleton rows={4} cols={3} /></div>
+        ) : (
+          <>
+            {refundSale && (
+              <p className="text-sm text-muted mb-md">
+                {refundSale.paymentMethod === 'cash' && (
+                  <span style={{ color: 'var(--warning, #d97706)' }}>Cash sale — the refunded amount is pulled from the open shift’s till. </span>
+                )}
+                Refunded stock is returned to inventory automatically. Enter how many units of each item to refund, or select all for a full refund.
+              </p>
+            )}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {refundItems.map(item => {
+                const maxQty = item.quantity - item.alreadyRefunded;
+                const disabled = maxQty <= 0;
+                return (
+                  <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-md)', opacity: disabled ? 0.6 : 1 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 'var(--font-semibold)', fontSize: 'var(--text-sm)' }}>{item.name}</div>
+                      <div style={{ fontSize: 'var(--text-xs)', color: 'var(--fg-tertiary)' }}>
+                        Sold {item.quantity}{item.alreadyRefunded > 0 && ` · ${item.alreadyRefunded} already refunded`} · {peso(item.unitTotal)} each
+                      </div>
+                    </div>
+                    {disabled ? (
+                      <span style={{ fontSize: 'var(--text-xs)', color: 'var(--fg-tertiary)' }}>fully refunded</span>
+                    ) : (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontSize: 'var(--text-xs)' }}>Refund</span>
+                        <input
+                          type="number"
+                          min="0"
+                          max={maxQty}
+                          value={item.refundQty}
+                          onChange={e => {
+                            const v = parseInt(e.target.value, 10);
+                            setRefundQty(item.id, Number.isNaN(v) ? 0 : Math.max(0, Math.min(maxQty, v)));
+                          }}
+                          style={{ width: 72, padding: '6px 8px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 14, textAlign: 'center' }}
+                        />
+                        <Button variant="ghost" size="sm" onClick={() => setRefundQty(item.id, maxQty)}>All</Button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            <div className="flex-between mt-md" style={{ fontSize: 'var(--text-sm)' }}>
+              <span>{isFullRefund ? 'Full refund' : 'Partial refund'}</span>
+              <strong style={{ fontSize: 'var(--text-lg)' }}>{peso(refundAmount)}</strong>
+            </div>
+            <div className="field mt-md">
+              <label>Reason (required)</label>
+              <input
+                className="input"
+                value={refundReason}
+                onChange={e => setRefundReason(e.target.value)}
+                placeholder="e.g. Customer returned items, counter mistake..."
+              />
+            </div>
+            <div className="modal__footer" style={{ justifyContent: 'flex-end', gap: '8px' }}>
+              <Button variant="secondary" onClick={() => setRefundSale(null)}>Cancel</Button>
+              <Button
+                variant="danger"
+                disabled={refundSubmitting || selectedQty <= 0 || refundReason.trim().length < 3}
+                onClick={submitRefund}
+              >
+                {refundSubmitting ? 'Processing…' : `Refund ${peso(refundAmount)}`}
+              </Button>
+            </div>
+          </>
+        )}
+      </Modal>
     </PosLayout>
   );
 }

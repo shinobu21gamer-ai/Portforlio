@@ -11,7 +11,16 @@ const requestIdMiddleware = (req, res, next) => {
 const errorHandler = (err, req, res, _next) => {
   const requestId = req.id || 'unknown';
 
-  console.error(`[${requestId}] ${err.stack || err.message}`);
+  const expected =
+    (err instanceof ApiError && err.statusCode < 500) ||
+    ['SequelizeValidationError', 'SequelizeUniqueConstraintError', 'SequelizeForeignKeyConstraintError',
+      'JsonWebTokenError', 'TokenExpiredError', 'MulterError'].includes(err.name);
+
+  if (expected) {
+    console.warn(`[${requestId}] ${err.statusCode || '4xx'} ${req.method} ${req.path}`);
+  } else {
+    console.error(`[${requestId}] ${err.stack || err.message}`);
+  }
 
   if (err instanceof ApiError) {
     return res.status(err.statusCode).json({

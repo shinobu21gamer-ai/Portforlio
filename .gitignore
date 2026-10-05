@@ -8,6 +8,9 @@ uploads/products/*
 !uploads/products/*.svg
 uploads/resumes/*
 !uploads/resumes/.gitkeep
+# Uploaded documents (resumes, HR files) are private runtime data — never commit
+uploads/documents/*
+!uploads/documents/.gitkeep
 exports/*
 !exports/.gitkeep
 dist/
@@ -22,3 +25,7 @@ coverage/
 
 # Local dev secrets (JWT keys) - never commit
 .dev-secrets.json
+
+# Runtime settings (rewritten by the settings API). The committed demo
+# baseline is data/settings.defaults.json.
+data/settings.json

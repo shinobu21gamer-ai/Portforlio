@@ -11,12 +11,11 @@ class SettingController {
 
   async update(req, res, next) {
     try {
-      const allowedFields = ['storeName', 'storeAddress', 'storePhone', 'storeEmail', 'address', 'phone', 'email', 'taxRate', 'lowStockThreshold', 'currency', 'receiptHeader', 'receiptFooter', 'gcashNumber', 'mayaNumber'];
-      const filtered = {};
-      for (const key of allowedFields) {
-        if (req.body[key] !== undefined) filtered[key] = req.body[key];
-      }
-      const settings = await settingService.update(filtered);
+      // Field allow-listing lives in two places and stays consistent on its
+      // own: the Joi updateSettings schema (stripUnknown) and the service's
+      // ALLOWED_KEYS. A third list here previously dropped new fields
+      // (allowPublicRegistration) silently.
+      const settings = await settingService.update(req.body);
       sendSuccess(res, settings, 'Settings updated successfully');
     } catch (err) { next(err); }
   }

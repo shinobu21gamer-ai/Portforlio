@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import ErrorState from '../components/ErrorState';
 import { useMyPayslips } from '../hooks/useApi';
 import LoadingSkeleton from '../components/LoadingSkeleton';
 import Modal from '../components/Modal';
@@ -8,7 +9,7 @@ const peso = (v) => v != null ? `₱${Number(v).toLocaleString()}` : '—';
 export default function MyPayslips() {
   const [page, setPage] = useState(1);
   const [viewPayslip, setViewPayslip] = useState(null);
-  const { data, isLoading, error } = useMyPayslips({ page, limit: 15 });
+  const { data, isLoading, error, refetch } = useMyPayslips({ page, limit: 15 });
 
   const payslips = data?.payslips || [];
 
@@ -21,7 +22,7 @@ export default function MyPayslips() {
     w.print();
   };
 
-  if (error) return <div className="hrms-page"><div className="empty-state">Failed to load payslips</div></div>;
+  if (error) return <div className="hrms-page"><div className="page-error-wrap"><ErrorState message={error?.response?.data?.message || 'Something went wrong while loading this data.'} onRetry={() => refetch()} /></div></div>;
 
   return (
     <div className="hrms-page">

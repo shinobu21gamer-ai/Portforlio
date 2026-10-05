@@ -329,13 +329,18 @@ describe('employee.service - approve', () => {
   });
 
   it('approves pending employee and activates user', async () => {
-    const emp = await employeeService.approve(employeeId);
+    const { employee: emp, tempPassword } = await employeeService.approve(employeeId);
 
     expect(emp.status).toBe('active');
     expect(emp.approvedAt).toBeDefined();
 
     const user = await User.findByPk(emp.userId);
     expect(user.isActive).toBe(true);
+    // Phase 4: approve issues a generated one-time password (never the old
+    // fixed 'employee123') and forces a change at first login.
+    expect(tempPassword).toBeTruthy();
+    expect(tempPassword).not.toBe('employee123');
+    expect(user.mustChangePassword).toBe(true);
   });
 
   it('throws for non-existent employee', async () => {

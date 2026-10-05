@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import ErrorState from '../components/ErrorState';
 import { useQuery } from '@tanstack/react-query';
 import posApi from '../api/posClient';
 import DataTable from '../components/DataTable';
@@ -20,13 +21,21 @@ export default function InvProducts() {
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['inv-products', page, debouncedSearch],
     queryFn: () => posApi.get('/products', { params: { page, limit: 15, search: debouncedSearch || undefined } }).then(r => r.data.data),
   });
 
   const products = data?.products || [];
   const pagination = data?.pagination;
+
+  if (isError) {
+    return (
+      <div className="page-error-wrap">
+        <ErrorState message={error?.response?.data?.message || 'Something went wrong while loading this data.'} onRetry={() => refetch()} />
+      </div>
+    );
+  }
 
   return (
     <>

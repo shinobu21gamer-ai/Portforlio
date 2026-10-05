@@ -31,8 +31,11 @@ class ContractService {
       };
     }
 
+    const allowedSort = ["createdAt","startDate","endDate","salary","status","contractType"];
+    const sortBy = allowedSort.includes(query.sortBy) ? query.sortBy : 'createdAt';
+    const sortOrder = query.sortOrder === 'ASC' ? 'ASC' : 'DESC';
     const { rows, count } = await Contract.findAndCountAll({
-      where, include, offset, limit, order: [['createdAt', 'DESC']],
+      where, include, offset, limit, order: [[sortBy, sortOrder]],
       distinct: true,
     });
     return { contracts: rows, pagination: getPaginationMeta(count, page, limit) };
@@ -190,7 +193,7 @@ class ContractService {
     return this.getById(id);
   }
 
-  async renew(id, data, approvedBy) {
+  async renew(id, data, _approvedBy) {
     const oldContract = await Contract.findByPk(id);
     if (!oldContract) throw ApiError.notFound('Contract not found');
     if (oldContract.status !== 'active') throw ApiError.badRequest('Only active contracts can be renewed');

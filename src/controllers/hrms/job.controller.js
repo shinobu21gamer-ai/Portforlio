@@ -2,6 +2,7 @@ const jobService = require('../../services/hrms/job.service');
 const { sendSuccess } = require('../../utils/response');
 const path = require('path');
 const fs = require('fs');
+const config = require('../../config');
 const ApiError = require('../../utils/ApiError');
 
 class JobController {
@@ -19,7 +20,7 @@ class JobController {
   async downloadResume(req, res, next) {
     try {
       const filename = path.basename(req.params.filename);
-      const filePath = path.resolve('uploads/resumes', filename);
+      const filePath = path.join(path.resolve(config.upload.base), 'resumes', filename);
       if (!fs.existsSync(filePath)) throw ApiError.notFound('Resume not found');
       res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
       res.setHeader('Content-Type', 'application/octet-stream');

@@ -2,19 +2,23 @@ const { Op, fn, col } = require('sequelize');
 const {
   Sale, SaleItem, Product, Customer, Expense, sequelize,
 } = require('../models');
+const { localDayBounds, localDateStr, localMonthBounds, sqlLocalDateExpr } = require('../utils/timezone');
 
 class DashboardService {
   async getDashboard() {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
+    // All day/month boundaries are in the business timezone (default
+    // Asia/Manila), not the server's local zone — a UTC host must still
+    // report a PH store's "today" as the PH calendar day.
+    const tz = require('../config').app.timezone;
+    const now = new Date();
+    const { start: today, end: tomorrow } = localDayBounds(tz, now);
+    const { start: monthStart } = localMonthBounds(tz, now);
 
-    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-
-    const todayStr = today.toISOString().split('T')[0];
-    const tomorrowStr = tomorrow.toISOString().split('T')[0];
-    const monthStartStr = monthStart.toISOString().split('T')[0];
+    const todayStr = localDateStr(tz, now);
+    const tomorrowStr = localDateStr(tz, tomorrow);
+    const monthStartStr = localDateStr(tz, monthStart);
+    // Calendar-day expression for raw SQL (UTC column -> local day).
+    const localDayExpr = sqlLocalDateExpr('created_at', tz, sequelize.getDialect(), now);
 
     const [
       todaySalesResult,
@@ -30,7 +34,7 @@ class DashboardService {
           [fn('COALESCE', fn('SUM', col('total')), 0), 'totalRevenue'],
           [fn('COALESCE', fn('SUM', col('profit')), 0), 'totalProfit'],
         ],
-        where: { createdAt: { [Op.between]: [today, tomorrow] }, status: 'completed' },
+        where: { createdAt: { [Op.gte]: today, [Op.lt]: tomorrow }, status: 'completed' },
         raw: true,
       }),
       Sale.findOne({
@@ -105,22 +109,16 @@ class DashboardService {
 
     let dailySales;
     try {
-      const isSQLite = sequelize.getDialect() === 'sqlite';
-      const dateExpr = isSQLite ? "date(created_at)" : "DATE(created_at)";
-      const dateParam = isSQLite ? `'${monthStartStr}'` : ':startDate';
       const rawDaily = await sequelize.query(`
-        SELECT ${dateExpr} as date,
+        SELECT ${localDayExpr} as date,
                COUNT(*) as sales,
                COALESCE(SUM(total), 0) as revenue,
                COALESCE(SUM(profit), 0) as profit
         FROM sales
-        WHERE ${dateExpr} >= ${dateParam} AND status = 'completed'
-        GROUP BY ${dateExpr}
-        ORDER BY ${dateExpr} ASC
-      `, {
-        replacements: isSQLite ? {} : { startDate: monthStartStr },
-        type: sequelize.QueryTypes.SELECT,
-      });
+        WHERE ${localDayExpr} >= '${monthStartStr}' AND status = 'completed'
+        GROUP BY ${localDayExpr}
+        ORDER BY ${localDayExpr} ASC
+      `, { type: sequelize.QueryTypes.SELECT });
       dailySales = rawDaily.map((d) => ({
         date: d.date,
         label: d.date,
@@ -134,20 +132,14 @@ class DashboardService {
 
     let paymentMethods;
     try {
-      const isSQLite = sequelize.getDialect() === 'sqlite';
-      const dateExpr = isSQLite ? "date(created_at)" : "DATE(created_at)";
-      const dateParam = isSQLite ? `'${monthStartStr}'` : ':startDate';
       const rawPayments = await sequelize.query(`
         SELECT payment_method as method,
                COUNT(*) as count,
                COALESCE(SUM(total), 0) as total
         FROM sales
-        WHERE ${dateExpr} >= ${dateParam} AND status = 'completed'
+        WHERE ${localDayExpr} >= '${monthStartStr}' AND status = 'completed'
         GROUP BY payment_method
-      `, {
-        replacements: isSQLite ? {} : { startDate: monthStartStr },
-        type: sequelize.QueryTypes.SELECT,
-      });
+      `, { type: sequelize.QueryTypes.SELECT });
       paymentMethods = rawPayments.map((pm) => ({
         method: pm.method || 'unknown',
         count: parseInt(pm.count, 10),
