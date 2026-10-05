@@ -1,6 +1,6 @@
 # MiniMart POS + HRMS — System Review & Improvement Plan
 
-**Date:** 2026-10-05 · **Status:** EXECUTING — Phase 1 (P0) complete, Phase 2 (P1 security) complete, P2 in progress
+**Date:** 2026-10-05 · **Status:** EXECUTING — P0 + P1 complete, P2 core (landing + jobs) complete; next: P2 login polish, then P3
 **Scope:** backend API, POS frontend, HRMS frontend, public site, database, security, tests, deployment
 
 ### Progress log
@@ -27,6 +27,22 @@
 - `CORS_ORIGIN` wildcard removed from render.yaml/Dockerfile; documented in `.env.example`
 - `uploads/documents/*` gitignored; the two committed PDFs untracked
 - `/api/v1/tracking/:id` GETs role-restricted (cashier 403 / admin 200)
+
+**Done — P2 public site (core):**
+- **Landing page** at `/` (static, no build step — `public/site/`): hero with store brand
+  (hydrated from the new brand-safe `GET /api/v1/public/settings` — never exposes
+  payment numbers/tax rate), open-roles grid, company/visit strip, footer with staff
+  login + HRMS portal CTAs, skeleton loaders, designed empty state, responsive,
+  dark-mode aware, SEO (title/description/OG/JSON-LD Organization+JobPosting),
+  XSS-safe rendering (textContent only), `robots.txt`. `/hrms/careers` unchanged as
+  the full application portal; both SPAs already ship designed 404 pages.
+- **Demo jobs seed** (idempotent): 5 open postings (Cashier, Sales Associate,
+  Warehouse Staff, HR Officer, Accountant) with real descriptions, salaries,
+  45-day closing dates — only when no open postings exist, so real stores are
+  never touched.
+- New `tests/integration/public.routes.integration.test.ts` (9 tests: open-only
+  listing, closed-job 400, unknown 404, settings field-exposure guard, apply
+  validation). Full suite now 18/18 files.
 
 **Done — tests:** new route-level integration suite `tests/integration/sale.routes.integration.test.ts`
 (16 tests against the real Express app: sale totals incl. item discounts, 422s, role gates,

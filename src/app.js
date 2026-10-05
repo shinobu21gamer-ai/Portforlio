@@ -277,9 +277,26 @@ app.use((req, res, next) => { requestCount++; next(); });
 // â”€â”€â”€ Routes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.use(routes);
 
-// Redirect root to Job Portal (landing page)
+// ── Public landing page (static, no build step) ───────────────────────
+// Company + careers front door. Job cards and store info are hydrated
+// client-side from /api/v1/public/jobs and /api/v1/public/settings.
+// /hrms/careers remains the full application portal.
+const siteRoot = path.join(__dirname, '..', 'public');
+app.use('/site', express.static(path.join(siteRoot, 'site'), { maxAge: '1h' }));
+app.get('/robots.txt', (req, res) => {
+  res.sendFile(path.join(siteRoot, 'robots.txt'), (err) => {
+    if (err) res.status(404).send('Not found');
+  });
+});
 app.get('/', (req, res) => {
-  res.redirect('/hrms/careers');
+  const landing = path.join(siteRoot, 'site', 'index.html');
+  if (fs.existsSync(landing)) {
+    res.sendFile(landing, { headers: { 'Cache-Control': 'no-store, must-revalidate' } }, (err) => {
+      if (err) res.redirect('/hrms/careers');
+    });
+  } else {
+    res.redirect('/hrms/careers'); // landing missing → keep old behaviour
+  }
 });
 
 // â”€â”€â”€ HRMS Frontend Static Files (served at /hrms) â”€â”€â”€â”€â”€â”€â”€â”€â”€

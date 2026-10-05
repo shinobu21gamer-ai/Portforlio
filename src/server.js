@@ -64,7 +64,7 @@ let srv;
 
 const runAutoSetup = async () => {
   try {
-    const { Role, User, Category, ExpenseCategory, Product, Customer, Supplier, Department, Position, Schedule, Discount, Permission, Employee, Branch } = require('./models');
+    const { Role, User, Category, ExpenseCategory, Product, Customer, Supplier, Department, Position, Schedule, Discount, Permission, Employee, Branch, JobPosting } = require('./models');
     const { sequelize: db } = require('./config/database');
 
     const isSQLite = config.dbDialect === 'sqlite';
@@ -527,6 +527,74 @@ const runAutoSetup = async () => {
         schedMap[s.name] = sch.id;
       }
       console.log('Schedules seeded');
+
+      // Demo job postings so the public careers page is never an empty grid on
+      // a fresh deploy. Idempotent: findOrCreate on (title, departmentId).
+      // Only seeded when no open postings exist yet, so a store that has
+      // already managed real jobs is left untouched.
+      const openCount = await JobPosting.count({ where: { status: 'open' } });
+      if (openCount === 0) {
+        const adminUser = await User.findOne({ where: { email: 'admin@minimart.com' } });
+        const closingIn45Days = new Date(Date.now() + 45 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        const demoJobs = [
+          {
+            title: 'Cashier',
+            departmentId: deptMap.Operations,
+            positionId: posMap['Cashier'],
+            scheduleId: schedMap['Full Day'],
+            description: 'Join our front-line team and be the friendly face of MiniMart. You will operate the POS, handle cash and digital payments (GCash, Maya, PayMongo), manage the register, and keep the checkout area clean and customer-ready.',
+            requirements: 'High school graduate or above. 1+ year retail or cashiering experience preferred. Honest, accurate with numbers, and able to stand for a full shift. Customer service and teamwork are a must.',
+            salaryMin: 13000, salaryMax: 18000, employmentType: 'full-time', paymentFrequency: 'semi-monthly', openings: 2,
+            location: 'Main Branch', status: 'open', approvedAt: new Date(), closingDate: closingIn45Days, postedBy: adminUser?.id,
+          },
+          {
+            title: 'Sales Associate',
+            departmentId: deptMap.Sales,
+            positionId: posMap['Sales Associate'],
+            scheduleId: schedMap['Full Day'],
+            description: 'Help customers find what they need, keep shelves stocked and faced, support promotions, and drive daily sales. A great first role for people who love helping others and want to grow toward supervisory positions.',
+            requirements: 'High school graduate or above. Reliable and energetic with a can-do attitude. Basic product knowledge is a plus. Willingness to work a rotating shift schedule.',
+            salaryMin: 13000, salaryMax: 17000, employmentType: 'full-time', paymentFrequency: 'monthly', openings: 3,
+            location: 'Main Branch', status: 'open', approvedAt: new Date(), closingDate: closingIn45Days, postedBy: adminUser?.id,
+          },
+          {
+            title: 'Warehouse Staff',
+            departmentId: deptMap.Warehouse,
+            positionId: posMap['Warehouse Staff'],
+            scheduleId: schedMap['Morning Shift'],
+            description: 'Receive stock, check deliveries against purchase orders, organize the stockroom, and prepare items for the sales floor. You are the backbone that keeps our shelves from running empty.',
+            requirements: 'High school graduate or above. Physically fit to lift and move stock. Basic bookkeeping or inventory experience is a plus. Honest and detail-oriented with stock counts.',
+            salaryMin: 13000, salaryMax: 18000, employmentType: 'full-time', paymentFrequency: 'semi-monthly', openings: 2,
+            location: 'Main Branch', status: 'open', approvedAt: new Date(), closingDate: closingIn45Days, postedBy: adminUser?.id,
+          },
+          {
+            title: 'HR Officer',
+            departmentId: deptMap['Human Resources'],
+            positionId: posMap['HR Officer'],
+            scheduleId: schedMap['Morning Shift'],
+            description: 'Support end-to-end people operations: onboarding, attendance and leave management, payroll inputs, performance reviews, and employee relations. A hands-on role in a fast-growing retail team.',
+            requirements: 'BS in Business Administration, HR Management, or a related field. 1+ year HR experience preferred. Proficient with spreadsheets and HR systems. Strong communication and confidentiality discipline.',
+            salaryMin: 20000, salaryMax: 30000, employmentType: 'full-time', paymentFrequency: 'monthly', openings: 1,
+            location: 'Main Branch', status: 'open', approvedAt: new Date(), closingDate: closingIn45Days, postedBy: adminUser?.id,
+          },
+          {
+            title: 'Accountant',
+            departmentId: deptMap.Finance,
+            positionId: posMap['Accountant'],
+            scheduleId: schedMap['Morning Shift'],
+            description: 'Own day-to-day bookkeeping, reconciliations, cash and GCash settlements, expense tracking, and month-end reporting. Help management make clear, data-driven decisions about the business.',
+            requirements: 'BS in Accountancy. CPA license preferred. 1+ year retail or SME accounting experience. Strong with Excel and accounting software; accuracy and integrity are non-negotiable.',
+            salaryMin: 22000, salaryMax: 35000, employmentType: 'full-time', paymentFrequency: 'monthly', openings: 1,
+            location: 'Main Branch', status: 'open', approvedAt: new Date(), closingDate: closingIn45Days, postedBy: adminUser?.id,
+          },
+        ];
+        for (const j of demoJobs) {
+          await JobPosting.findOrCreate({ where: { title: j.title, departmentId: j.departmentId }, defaults: j });
+        }
+        console.log(`Demo job postings seeded (${demoJobs.length})`);
+      } else {
+        console.log('Job postings already present — skipping demo seed');
+      }
 
       const employees = [
         { firstName: 'Joy', lastName: 'Dela Cruz', email: 'cashier@minimart.com', departmentId: deptMap.Operations, positionId: posMap['Cashier'], salary: 15000, userId: (await User.findOne({ where: { email: 'cashier@minimart.com' } }))?.id, status: 'active', hireDate: '2026-01-15' },
