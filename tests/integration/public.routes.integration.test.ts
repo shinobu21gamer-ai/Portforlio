@@ -9,6 +9,18 @@
  * in-memory SQLite database.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+
+// Must be set before any src module is required (src/config captures
+// process.env values at require time; beforeAll runs too late).
+process.env.NODE_ENV = 'test';
+process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-jwt-secret-for-ci-only-32chars!!';
+process.env.JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'test-refresh-secret-for-ci-only-32chars';
+process.env.JWT_EXPIRES_IN = '1h';
+process.env.JWT_REFRESH_EXPIRES_IN = '7d';
+process.env.DB_DIALECT = 'sqlite';
+process.env.DB_STORAGE = ':memory:';
+process.env.ALLOW_PUBLIC_REGISTRATION = '';
+
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -28,12 +40,6 @@ let settingsBackup: string | null = null;
 const api = axios.create({ timeout: 10000 });
 
 beforeAll(async () => {
-  process.env.NODE_ENV = 'test';
-  process.env.JWT_SECRET = 'integration-test-jwt-secret-32chars!!';
-  process.env.JWT_REFRESH_SECRET = 'integration-test-refresh-secret-32char!';
-  process.env.DATABASE_URL = 'sqlite::memory:';
-  process.env.ALLOW_PUBLIC_REGISTRATION = '';
-
   const { server: appServer } = require('../../src/app');
   server = appServer;
   await new Promise<void>((resolve) => server.listen(0, resolve));

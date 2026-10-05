@@ -13,9 +13,23 @@ const isSQLite = config.dbDialect === 'sqlite';
 // ':memory:' must be passed through untouched. path.resolve() would turn it
 // into a real file named ':memory:', which silently leaks to disk and lets
 // separate connections miss each other's tables.
-const sqliteStorage = process.env.DB_STORAGE === ':memory:'
-  ? ':memory:'
-  : path.resolve(__dirname, '..', '..', process.env.DB_STORAGE || './database.sqlite');
+//
+// Belt-and-braces for tests: if NODE_ENV is test but DB_STORAGE was not
+// explicitly pointed at an in-memory database (e.g. a test file that
+// requires src before its env setup runs), fall back to ':memory:' instead
+// of the real data file. Test suites call sync({ force: true }) — pointed
+// at the real database that is a data wipe.
+const envDbStorage = process.env.DB_STORAGE;
+let sqliteStorage;
+if (envDbStorage === ':memory:') {
+  sqliteStorage = ':memory:';
+} else if (envDbStorage) {
+  sqliteStorage = path.resolve(__dirname, '..', '..', envDbStorage);
+} else if (process.env.NODE_ENV === 'test') {
+  sqliteStorage = ':memory:';
+} else {
+  sqliteStorage = path.resolve(__dirname, '..', '..', './database.sqlite');
+}
 
 const sequelize = isSQLite
   ? new Sequelize({

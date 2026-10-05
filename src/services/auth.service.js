@@ -221,23 +221,41 @@ class AuthService {
 
     const result = { message: 'If the email exists, a reset link has been sent.' };
 
+    const { sendEmail, isConfigured: isMailConfigured } = require('../utils/mailer');
+    const { passwordResetEmail } = require('../utils/emailTemplates');
+    const { resolvePublicOrigin } = require('../utils/helpers');
+    const config = require('../config');
+    // Derive the reset link from the request origin so it is correct on any
+    // host. It previously fell back to http://localhost:3001, so in
+    // production the email arrived with a dead link inside it. Callers with
+    // no request context (unit tests, CLI) can't resolve an origin — skip the
+    // email rather than throwing, and fall back to a path-only link below.
+    let resetUrl = null;
     try {
-      const { sendEmail } = require('../utils/mailer');
-      const { passwordResetEmail } = require('../utils/emailTemplates');
-      const { resolvePublicOrigin } = require('../utils/helpers');
-      const config = require('../config');
-      // Derive the reset link from the request origin so it is correct on any
-      // host. It previously fell back to http://localhost:3001, so in
-      // production the email arrived with a dead link inside it.
       const frontendOrigin = resolvePublicOrigin(req, config.app.frontendUrl);
-      const resetUrl = `${frontendOrigin}/reset-password?token=${resetToken}`;
-      await sendEmail({
-        to: email,
-        subject: `Password Reset - ${process.env.APP_NAME || 'MiniMart POS'}`,
-        html: passwordResetEmail(user.firstName || user.email, resetUrl),
-      });
-    } catch (err) {
-      console.error('Failed to send reset email:', err.message);
+      resetUrl = `${frontendOrigin}/reset-password?token=${resetToken}`;
+    } catch { /* no origin context — email skipped */ }
+
+    let delivered = false;
+    if (resetUrl) {
+      try {
+        await sendEmail({
+          to: email,
+          subject: `Password Reset - ${process.env.APP_NAME || 'MiniMart POS'}`,
+          html: passwordResetEmail(user.firstName || user.email, resetUrl),
+        });
+        delivered = isMailConfigured(); // sendEmail resolves even when SMTP is off
+      } catch (err) {
+        console.error('Failed to send reset email:', err.message);
+      }
+    }
+
+    // Dev/demo deployments without SMTP would otherwise be stuck: the token
+    // is generated but nowhere to see it. Outside production, hand the link
+    // back to the requester. Production keeps the generic response only
+    // (never expose a usable reset URL over the API).
+    if (!delivered && config.nodeEnv !== 'production') {
+      result.devResetUrl = resetUrl || `/reset-password?token=${resetToken}`;
     }
 
     return result;

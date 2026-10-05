@@ -7,12 +7,17 @@ export default function ForgotPassword() {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
+  // Present only outside production when SMTP is not configured — the server
+  // hands back the reset link so a dev/demo deployment can still complete a
+  // reset. Production never includes this field.
+  const [devResetUrl, setDevResetUrl] = useState('');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     try {
-      await api.post('/auth/forgot-password', { email }, { baseURL: '/api/v1' });
+      const res = await api.post('/auth/forgot-password', { email }, { baseURL: '/api/v1' });
+      setDevResetUrl(res.data?.data?.devResetUrl || '');
       setSent(true);
     } catch (err) {
       Swal.fire({ icon: 'error', title: 'Error', text: err.response?.data?.message || 'Something went wrong' });
@@ -34,6 +39,13 @@ export default function ForgotPassword() {
             <div className="p-md mb-md text-sm" style={{ background: 'var(--success-bg, #d4edda)', borderRadius: 8 }}>
               If the email <strong>{email}</strong> exists in our system, a reset link has been sent.
             </div>
+            {devResetUrl ? (
+              <div className="p-md mb-md text-sm" style={{ background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 8, textAlign: 'left' }}>
+                <strong>Dev mode — SMTP is not configured.</strong><br />
+                Your reset link (valid 1 hour):<br />
+                <a href={devResetUrl} style={{ wordBreak: 'break-all' }}>{devResetUrl}</a>
+              </div>
+            ) : null}
             <Link to="/login" className="btn btn-primary btn-block">← Back to Login</Link>
           </div>
         ) : (

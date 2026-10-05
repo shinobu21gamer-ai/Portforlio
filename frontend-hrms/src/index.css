@@ -444,7 +444,9 @@
 .login-brand h1 { font-size: 28px; font-weight: 800; color: var(--fg-primary); margin: 0; letter-spacing: -0.5px; }
 .login-brand p { font-size: 13px; color: var(--text-muted); margin: 6px 0 0; }
 .login-form { display: flex; flex-direction: column; gap: 16px; }
-.auth-options { display: flex; justify-content: flex-end; margin-top: -2px; }
+.auth-options { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: -2px; }
+.remember-me { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 500; color: var(--text-secondary, #64748b); cursor: pointer; user-select: none; }
+.remember-me input { margin: 0; width: 15px; height: 15px; cursor: pointer; }
 .auth-link { font-size: 13px; font-weight: 500; color: var(--primary); text-decoration: none; }
 .auth-link:hover { text-decoration: underline; }
 .auth-submit { margin-top: 4px; }

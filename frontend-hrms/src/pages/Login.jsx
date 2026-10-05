@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import useAuthStore from '../store/authStore';
 import { useToast } from '../components/Toast';
@@ -27,21 +27,41 @@ function isPathAllowed(pathname, roleSlug) {
   return true;
 }
 
+const REMEMBER_KEY = 'hrms_login_email';
+
 export default function Login() {
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(() => localStorage.getItem(REMEMBER_KEY) || '');
   const [password, setPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
+  const [remember, setRemember] = useState(() => Boolean(localStorage.getItem(REMEMBER_KEY)));
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  // Store branding for the login card, sourced from the brand-safe public
+  // settings endpoint; falls back to the static defaults below on failure.
+  const [storeName, setStoreName] = useState('MiniMart');
   const login = useAuthStore(s => s.login);
   const navigate = useNavigate();
   const location = useLocation();
   const toast = useToast();
   const from = location.state?.from?.pathname || '/';
 
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/v1/public/settings', { headers: { Accept: 'application/json' } })
+      .then(r => (r.ok ? r.json() : null))
+      .then(payload => {
+        if (!cancelled && payload?.data?.storeName) setStoreName(payload.data.storeName);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setError('');
     if (!email.trim() || !password) {
       toast.error('Please fill in all fields');
+      setError('Please fill in all fields');
       return;
     }
     setLoading(true);
@@ -56,6 +76,12 @@ export default function Login() {
       const { user, token, refreshToken } = json.data;
       login(user, token, refreshToken);
 
+      // Persist/forget the remembered email (the checkbox reflects intent).
+      try {
+        if (remember) localStorage.setItem(REMEMBER_KEY, email.trim());
+        else localStorage.removeItem(REMEMBER_KEY);
+      } catch { /* private-mode storage can throw — non-fatal */ }
+
       const roleSlug = user?.role?.slug;
       const redirectPath = ROLE_REDIRECTS[roleSlug];
       if (redirectPath) {
@@ -69,7 +95,9 @@ export default function Login() {
         navigate('/', { replace: true });
       }
     } catch (err) {
-      toast.error(err.response?.data?.message || err.message || 'Login failed');
+      const message = err.response?.data?.message || err.message || 'Login failed';
+      setError(message);
+      toast.error(message);
     } finally {
       setLoading(false);
     }
@@ -88,8 +116,8 @@ export default function Login() {
               <path d="M16 16l6 12M28 16l-6 12" stroke="#fff" strokeWidth="1.5" strokeLinecap="round"/>
             </svg>
           </div>
-          <h1>HRMS</h1>
-          <p>Human Resource Management System</p>
+          <h1>{storeName} HRMS</h1>
+          <p>Sign in to your staff account</p>
         </div>
         <form onSubmit={handleSubmit} className="login-form">
           <Input
@@ -124,12 +152,37 @@ export default function Login() {
             )}
           />
           <div className="auth-options">
+            <label className="remember-me" title="Pre-fill your email next time">
+              <input
+                type="checkbox"
+                checked={remember}
+                onChange={e => setRemember(e.target.checked)}
+                style={{ accentColor: 'var(--primary)' }}
+              />
+              Remember email
+            </label>
             <Link to="/forgot-password" className="auth-link">Forgot Password?</Link>
-            <a href="/" className="auth-link" style={{ marginLeft: 'auto' }}>← Back to Home</a>
           </div>
+          {error ? (
+            <div
+              role="alert"
+              style={{
+                padding: '10px 14px',
+                borderRadius: 10,
+                background: 'var(--danger-light, rgba(239, 68, 68, .09))',
+                border: '1px solid var(--color-danger-200, rgba(239, 68, 68, .35))',
+                color: 'var(--danger, #b91c1c)',
+                fontSize: 13.5,
+                fontWeight: 500,
+              }}
+            >
+              {error}
+            </div>
+          ) : null}
           <Button className="auth-submit" type="submit" size="lg" fullWidth loading={loading} disabled={loading}>
             {loading ? 'Signing in...' : 'Sign In'}
           </Button>
+          <a href="/" className="auth-link" style={{ display: 'block', textAlign: 'center', marginTop: 12 }}>← Back to Home</a>
         </form>
       </div>
     </div>
