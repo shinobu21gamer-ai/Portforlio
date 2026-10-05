@@ -179,7 +179,7 @@ export default function LiveTracking({ deliveryId }) {
         <span style={{ fontSize: 18 }}>{info.icon}</span>
         <div>
           <div style={{ fontWeight: 600, color: info.color, fontSize: 14 }}>{info.label}</div>
-          <div style={{ fontSize: 12, color: '#64748b' }}>
+          <div style={{ fontSize: 12, color: 'var(--muted-fg)' }}>
             {pos ? `${pos[0].toFixed(6)}, ${pos[1].toFixed(6)}` : 'Waiting for rider...'}
           </div>
         </div>
@@ -266,7 +266,7 @@ export default function LiveTracking({ deliveryId }) {
       </MapContainer>
 
       {!pos && (
-        <div style={{ padding: 40, textAlign: 'center', color: '#64748b', fontSize: 14 }}>
+        <div style={{ padding: 40, textAlign: 'center', color: 'var(--muted-fg)', fontSize: 14 }}>
           <div style={{ fontSize: 32, marginBottom: 8 }}>🛰️</div>
           Waiting for rider location updates...
         </div>

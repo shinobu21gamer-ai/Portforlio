@@ -38,8 +38,11 @@ class LeaveService {
       };
     }
 
+    const allowedSort = ["createdAt","startDate","endDate","days","status","leaveType"];
+    const sortBy = allowedSort.includes(query.sortBy) ? query.sortBy : 'createdAt';
+    const sortOrder = query.sortOrder === 'ASC' ? 'ASC' : 'DESC';
     const { rows, count } = await LeaveRequest.findAndCountAll({
-      where, include, offset, limit, order: [['createdAt', 'DESC']],
+      where, include, offset, limit, order: [[sortBy, sortOrder]],
       distinct: true,
     });
     return { leaves: rows, pagination: getPaginationMeta(count, page, limit) };

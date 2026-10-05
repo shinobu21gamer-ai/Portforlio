@@ -5,7 +5,6 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import App from './App';
 import './index.css';
 import 'leaflet/dist/leaflet.css';
-import 'sweetalert2/dist/sweetalert2.min.css';
 
 const queryClient = new QueryClient({
   defaultOptions: {

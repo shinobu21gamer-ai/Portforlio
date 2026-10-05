@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import ErrorState from '../components/ErrorState';
 import { useQuery } from '@tanstack/react-query';
 import api from '../api/client';
 import LoadingSkeleton from '../components/LoadingSkeleton';
@@ -21,7 +22,7 @@ export default function AttendanceCalendar() {
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [deptFilter, setDeptFilter] = useState('');
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['att-calendar', year, month, deptFilter],
     queryFn: () => api.get('/attendance/calendar', { params: { year, month, ...(deptFilter ? { departmentId: deptFilter } : {}) } }).then(r => r.data.data),
   });
@@ -58,6 +59,14 @@ export default function AttendanceCalendar() {
   };
 
   const employees = data?.employees || [];
+
+  if (isError) {
+    return (
+      <div className="page-error-wrap">
+        <ErrorState message={error?.response?.data?.message || 'Something went wrong while loading this data.'} onRetry={() => refetch()} />
+      </div>
+    );
+  }
 
   return (
     <>

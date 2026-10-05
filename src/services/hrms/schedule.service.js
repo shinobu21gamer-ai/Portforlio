@@ -9,8 +9,11 @@ class ScheduleService {
     const { page, limit, offset } = getPagination(query.page, query.limit);
     const where = {};
     if (query.search) where.name = { [Op.like]: `%${escapeLike(query.search)}%` };
+    const allowedSort = ["createdAt","name","startTime"];
+    const sortBy = allowedSort.includes(query.sortBy) ? query.sortBy : 'createdAt';
+    const sortOrder = query.sortOrder === 'ASC' ? 'ASC' : 'DESC';
     const { rows, count } = await Schedule.findAndCountAll({
-      where, offset, limit, order: [['createdAt', 'DESC']],
+      where, offset, limit, order: [[sortBy, sortOrder]],
     });
     return { schedules: rows, pagination: getPaginationMeta(count, page, limit) };
   }

@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import api from '../api/client';
-import Swal from 'sweetalert2';
+import { useToast } from '../components/Toast';
 
 export default function ResetPassword() {
+  const toast = useToast();
   const [searchParams] = useSearchParams();
   const [token, setToken] = useState(searchParams.get('token') || '');
   const [password, setPassword] = useState('');
@@ -15,15 +16,15 @@ export default function ResetPassword() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (password !== confirmPassword) {
-      Swal.fire({ icon: 'error', title: 'Mismatch', text: 'Passwords do not match' });
+      toast.error('Passwords do not match', { title: 'Mismatch' });
       return;
     }
     if (password.length < 8) {
-      Swal.fire({ icon: 'error', title: 'Too short', text: 'Password must be at least 8 characters' });
+      toast.error('Password must be at least 8 characters', { title: 'Too short' });
       return;
     }
     if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(password)) {
-      Swal.fire({ icon: 'error', title: 'Weak password', text: 'Password must include uppercase, lowercase, and a number' });
+      toast.error('Password must include uppercase, lowercase, and a number', { title: 'Weak password' });
       return;
     }
     setLoading(true);
@@ -31,7 +32,7 @@ export default function ResetPassword() {
       await api.post('/auth/reset-password', { token, password }, { baseURL: '/api/v1' });
       setSuccess(true);
     } catch (err) {
-      Swal.fire({ icon: 'error', title: 'Error', text: err.response?.data?.message || 'Invalid or expired token' });
+      toast.error(err.response?.data?.message || 'Invalid or expired token', { title: 'Error' });
     } finally {
       setLoading(false);
     }
@@ -47,7 +48,7 @@ export default function ResetPassword() {
         </div>
         {success ? (
           <div style={{ textAlign: 'center' }}>
-            <div style={{ padding: 16, background: 'var(--success-bg, #d4edda)', borderRadius: 8, marginBottom: 16, fontSize: 14 }}>
+            <div style={{ padding: 16, background: 'var(--success-light)', borderRadius: 8, marginBottom: 16, fontSize: 14 }}>
               <strong>Password reset successful!</strong><br />
               You can now log in with your new password.
             </div>

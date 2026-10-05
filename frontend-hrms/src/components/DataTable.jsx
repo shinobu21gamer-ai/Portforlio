@@ -1,21 +1,5 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
-
-function SortIndicator({ field, sortBy, sortOrder }) {
-  const isActive = sortBy === field;
-  return (
-    <span className={isActive ? 'sort-indicator active' : 'sort-indicator'} aria-hidden="true">
-      {isActive ? (
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" focusable="false">
-          <path d={sortOrder === 'ASC' ? 'M12 6l6 8H6z' : 'M12 18l-6-8h12z'} />
-        </svg>
-      ) : (
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" focusable="false">
-          <path d="M12 5l5 7H7zM12 19l-5-7h10z" />
-        </svg>
-      )}
-    </span>
-  );
-}
+import SortableHeader from './SortableHeader';
 
 export default function DataTable({
   columns,
@@ -110,10 +94,6 @@ export default function DataTable({
     else if (e.key === 'End') target = rows[rows.length - 1];
     if (target) { e.preventDefault(); target.focus(); }
   };
-  const onHeaderKeyDown = (e, field) => {
-    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSort(field); }
-  };
-
   const total = pagination?.total || pagination?.totalItems || filteredData.length;
   const page = pagination?.page || 1;
   const totalPages = pagination?.totalPages || 1;
@@ -202,23 +182,14 @@ export default function DataTable({
             <tr>
               {visHeaders.map(c =>
                 c.sortable ? (
-                  <th
+                  <SortableHeader
                     key={c.key}
-                    onClick={() => onSort(c.sortKey || c.key)}
-                    onKeyDown={(e) => onHeaderKeyDown(e, c.sortKey || c.key)}
-                    tabIndex={0}
-                    role="columnheader"
-                    aria-sort={sortBy === (c.sortKey || c.key) ? (sortOrder === 'ASC' ? 'ascending' : 'descending') : 'none'}
-                    className={sortBy === (c.sortKey || c.key) ? 'sort-active' : ''}
-                    style={{
-                      cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap',
-                      boxShadow: sortBy === (c.sortKey || c.key) ? 'inset 0 -3px 0 rgba(255,255,255,.85)' : undefined,
-                      transition: 'box-shadow .15s',
-                    }}
-                  >
-                    {c.label}
-                    <SortIndicator field={c.sortKey || c.key} sortBy={sortBy} sortOrder={sortOrder} />
-                  </th>
+                    label={c.label}
+                    field={c.sortKey || c.key}
+                    sortBy={sortBy}
+                    sortOrder={sortOrder}
+                    onSort={onSort}
+                  />
                 ) : (
                   <th key={c.key}>{c.label}</th>
                 )

@@ -298,9 +298,9 @@
   --border-error: var(--color-danger-400);
   --border-success: var(--color-success-400);
 
-  --primary: var(--color-primary-500);
-  --primary-hover: var(--color-primary-400);
-  --primary-active: var(--color-primary-600);
+  --primary: var(--color-primary-600);
+  --primary-hover: var(--color-primary-700);
+  --primary-active: var(--color-primary-800);
   --primary-light: var(--color-primary-900);
   --primary-fg: var(--color-neutral-950);
 

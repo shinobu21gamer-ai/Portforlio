@@ -8,7 +8,7 @@ import Modal from '../components/Modal';
 import { useToast } from '../components/Toast';
 import { useIsAdmin } from '../hooks/useRole';
 import { peso } from '../utils/helpers';
-import { confirmDelete } from '../utils/swal';
+import useConfirm from '../hooks/useConfirm.jsx';
 import useDebounce from '../hooks/useDebounce';
 import { icons } from '../components/ActionButton';
 
@@ -68,6 +68,7 @@ function OrgChart() {
 }
 
 export default function Departments() {
+  const { confirmDelete, confirmDialog } = useConfirm();
   const [tab, setTab] = useState('departments');
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search);
@@ -244,6 +245,7 @@ export default function Departments() {
           </div>
         </form>
       </Modal>
+    {confirmDialog}
     </>
   );
 }

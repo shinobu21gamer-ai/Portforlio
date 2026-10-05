@@ -31,8 +31,11 @@ class ContractService {
       };
     }
 
+    const allowedSort = ["createdAt","startDate","endDate","salary","status","contractType"];
+    const sortBy = allowedSort.includes(query.sortBy) ? query.sortBy : 'createdAt';
+    const sortOrder = query.sortOrder === 'ASC' ? 'ASC' : 'DESC';
     const { rows, count } = await Contract.findAndCountAll({
-      where, include, offset, limit, order: [['createdAt', 'DESC']],
+      where, include, offset, limit, order: [[sortBy, sortOrder]],
       distinct: true,
     });
     return { contracts: rows, pagination: getPaginationMeta(count, page, limit) };

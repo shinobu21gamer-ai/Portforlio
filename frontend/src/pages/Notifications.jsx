@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import ErrorState from '../components/ErrorState';
 import PosLayout from '../layouts/PosLayout';
 import { useNotifications, useMarkNotificationsRead, useMarkAllNotificationsRead, useDeleteNotification } from '../hooks/useApi';
 import { useToast } from '../components/Toast';
@@ -21,7 +22,7 @@ export default function Notifications() {
   const [page, setPage] = useState(1);
   const [showRead, setShowRead] = useState(false);
   const toast = useToast();
-  const { data, isLoading, refetch } = useNotifications({ page, limit: 20, isRead: showRead ? undefined : 'false' });
+  const { data, isLoading, isError, error, refetch } = useNotifications({ page, limit: 20, isRead: showRead ? undefined : 'false' });
   const markReadMut = useMarkNotificationsRead();
   const markAllMut = useMarkAllNotificationsRead();
   const deleteMut = useDeleteNotification();
@@ -43,6 +44,14 @@ export default function Notifications() {
     try { await deleteMut.mutateAsync(id); toast.success('Notification deleted'); }
     catch { toast.error('Failed to delete'); }
   };
+
+  if (isError) {
+    return (
+      <div className="page-error-wrap">
+        <ErrorState message={error?.response?.data?.message || 'Something went wrong while loading this data.'} onRetry={() => refetch()} />
+      </div>
+    );
+  }
 
   return (
     <PosLayout active="notifications">

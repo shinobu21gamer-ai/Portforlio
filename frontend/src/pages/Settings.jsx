@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import ErrorState from '../components/ErrorState';
 import PosLayout from '../layouts/PosLayout';
 import useAuthStore from '../store/authStore';
 import { useSettings, useUpdateSettings } from '../hooks/useApi';
@@ -7,7 +8,7 @@ import { useToast } from '../components/Toast';
 export default function Settings() {
   const user = useAuthStore(s => s.user);
   const toast = useToast();
-  const { data: serverSettings, isLoading: loadingSettings } = useSettings();
+  const { data: serverSettings, isLoading: loadingSettings, isError, error, refetch } = useSettings();
   const updateSettingsMut = useUpdateSettings();
   const [form, setForm] = useState({
     storeName: '',
@@ -63,6 +64,14 @@ export default function Settings() {
       toast.error('Failed to save settings');
     }
   };
+
+  if (isError) {
+    return (
+      <div className="page-error-wrap">
+        <ErrorState message={error?.response?.data?.message || 'Something went wrong while loading this data.'} onRetry={() => refetch()} />
+      </div>
+    );
+  }
 
   return (
     <PosLayout active="settings">
@@ -124,7 +133,7 @@ export default function Settings() {
                 Off by default in production; enable only if you want walk-up self-serve sign-ups.
               </span>
               {serverSettings && serverSettings.publicRegistrationEffective !== form.allowPublicRegistration && (
-                <span className="text-sm" style={{ display: 'block', marginTop: 4, color: '#b45309' }}>
+                <span className="text-sm" style={{ display: 'block', marginTop: 4, color: 'var(--warning-fg)' }}>
                   Note: this store's environment configuration currently overrides this toggle (effective: {serverSettings.publicRegistrationEffective ? 'enabled' : 'disabled'}).
                 </span>
               )}

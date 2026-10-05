@@ -197,7 +197,7 @@ export default function Purchases() {
               {p.paymentStatus !== 'paid' && <button className="btn btn-primary btn-sm" onClick={() => { setPayModal(p); setPayAmount(String(parseFloat(p.total) - parseFloat(p.paidAmount || 0)).toFixed(2)); }}>₱ Pay</button>}
               {p.status === 'pending' && <button className="btn btn-destructive btn-sm" onClick={() => setCancelConfirm(p)}>Cancel</button>}
               {p.status !== 'received' && p.status !== 'cancelled' && (
-                <button className="btn btn-sm" style={{ background: '#6366f1', color: '#fff' }} onClick={() => setTrackModal(p)}>🗺️ Track</button>
+                <button className="btn btn-sm" style={{ background: 'var(--primary)', color: 'var(--primary-fg)' }} onClick={() => setTrackModal(p)}>🗺️ Track</button>
               )}
             </td>,
           };
@@ -274,7 +274,7 @@ export default function Purchases() {
               </div>
               <div className="field"><label>Payment Amount</label><input className="input-block" type="number" min="0" step="0.01" value={payAmount} onChange={e => setPayAmount(e.target.value)} /></div>
               {amount > 0 && (
-                <div className="text-sm" style={{ padding: '8px 12px', borderRadius: 8, background: overpay > 0 ? '#dcfce7' : 'var(--muted)', marginBottom: 12 }}>
+                <div className="text-sm" style={{ padding: '8px 12px', borderRadius: 8, background: overpay > 0 ? 'var(--success-light)' : 'var(--muted)', marginBottom: 12 }}>
                   {overpay > 0 ? (
                   <span className="text-success font-semibold">Change: {peso(overpay)}</span>
                   ) : amount < remaining ? (
@@ -353,7 +353,7 @@ export default function Purchases() {
         ) : trackModal ? (
           <div style={{ textAlign: 'center', padding: 32 }}>
             <div style={{ fontSize: 32, marginBottom: 12 }}>📦</div>
-            <p style={{ color: '#64748b', marginBottom: 16 }}>No delivery tracking for this order yet.</p>
+            <p style={{ color: 'var(--muted-fg)', marginBottom: 16 }}>No delivery tracking for this order yet.</p>
             <button className="btn btn-primary btn-sm" onClick={() => { setTrackModal(null); setShipModal(trackModal); }}>
               🚚 Start Delivery
             </button>
@@ -362,7 +362,7 @@ export default function Purchases() {
       </Modal>
 
       <Modal open={!!shipModal} onClose={() => setShipModal(null)} title={`Ship Order — ${shipModal?.orderNo || ''}`}>
-        <p style={{ fontSize: 14, color: '#64748b', marginBottom: 16 }}>Select the destination branch for the rider.</p>
+        <p style={{ fontSize: 14, color: 'var(--muted-fg)', marginBottom: 16 }}>Select the destination branch for the rider.</p>
         <div className="field">
           <label>Destination Branch</label>
           <select className="input-block" value={destBranchId} onChange={e => {

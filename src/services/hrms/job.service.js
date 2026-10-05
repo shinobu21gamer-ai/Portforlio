@@ -22,8 +22,11 @@ class JobPostingService {
     if (query.search) {
       where.title = { [Op.like]: `%${escapeLike(query.search)}%` };
     }
+    const allowedSort = ["createdAt","title","salaryMin","salaryMax","status","closingDate"];
+    const sortBy = allowedSort.includes(query.sortBy) ? query.sortBy : 'createdAt';
+    const sortOrder = query.sortOrder === 'ASC' ? 'ASC' : 'DESC';
     const { rows, count } = await JobPosting.findAndCountAll({
-      where, offset, limit, order: [['createdAt', 'DESC']],
+      where, offset, limit, order: [[sortBy, sortOrder]],
       include: [
         { association: 'department', attributes: ['id', 'name'] },
         { association: 'position', attributes: ['id', 'title'] },

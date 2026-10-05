@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import ErrorState from '../components/ErrorState';
 import { useNavigate, Navigate } from 'react-router-dom';
 import { useDashboard, useMyProfile, useMyAttendance, useMyLeaveBalance, usePendingCounts } from '../hooks/useApi';
 
@@ -87,7 +88,7 @@ function AdminDashboard() {
     return {};
   }, [view, weekRange, monthRange]);
 
-  const { data, isLoading, error } = useDashboard(dashParams);
+  const { data, isLoading, error, refetch } = useDashboard(dashParams);
 
   const { data: pendingCounts } = usePendingCounts(isAdmin || isHR);
 
@@ -102,7 +103,7 @@ function AdminDashboard() {
   const viewLabel = view === 'day' ? formatDate(date) : view === 'week' ? weekRange.label : monthRange.label;
 
   if (isLoading) return <LoadingSkeleton rows={5} />;
-  if (error) return <div className="empty-state"><h3>Error loading dashboard</h3><p>{error.message}</p></div>;
+  if (error) return <div className="page-error-wrap"><ErrorState message={error?.response?.data?.message || 'Something went wrong while loading this data.'} onRetry={() => refetch()} /></div>;
 
   const emp = data?.employees || {};
   const activeCount = data?.activeCount || 0;

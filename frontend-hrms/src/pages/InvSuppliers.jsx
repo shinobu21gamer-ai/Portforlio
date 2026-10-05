@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import ErrorState from '../components/ErrorState';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import posApi from '../api/posClient';
 import DataTable from '../components/DataTable';
@@ -60,7 +61,7 @@ export default function InvSuppliers() {
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [viewItem, setViewItem] = useState(null);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['inv-suppliers', page, debouncedSearch, sortBy, sortOrder, categoryFilter, statusFilter],
     queryFn: () => posApi.get('/suppliers', {
       params: {
@@ -143,6 +144,14 @@ export default function InvSuppliers() {
   const handleDelete = async (id) => {
     await deleteMut.mutateAsync(id);
   };
+
+  if (isError) {
+    return (
+      <div className="page-error-wrap">
+        <ErrorState message={error?.response?.data?.message || 'Something went wrong while loading this data.'} onRetry={() => refetch()} />
+      </div>
+    );
+  }
 
   return (
     <>

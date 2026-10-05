@@ -102,7 +102,7 @@ export default function ResetPassword() {
                   </button>
                 </div>
                 {confirmPassword.length > 0 && (
-                  <span style={{ fontSize: 12, marginTop: 4, display: 'block', color: password === confirmPassword ? 'var(--success, #22c55e)' : '#ef4444' }}>
+                  <span style={{ fontSize: 12, marginTop: 4, display: 'block', color: password === confirmPassword ? 'var(--success)' : 'var(--danger)' }}>
                     {password === confirmPassword ? '\u2713 Passwords match' : '\u2717 Passwords do not match'}
                   </span>
                 )}

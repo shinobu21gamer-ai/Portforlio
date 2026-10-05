@@ -16,9 +16,9 @@ export default function ProtectedRoute({ children, roles }) {
       const hrmsOrigin = HRMS_URL ? new URL(HRMS_URL).origin : window.parent.origin;
       window.parent.postMessage({ type: 'pos-auth-failed', error: 'Not authenticated' }, hrmsOrigin);
       return (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: '#f8fafc' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: 'var(--bg)' }}>
           <div style={{ textAlign: 'center', padding: 32 }}>
-            <p style={{ color: '#64748b', fontSize: 14 }}>Authentication required. Please return to HRMS.</p>
+            <p style={{ color: 'var(--muted-fg)', fontSize: 14 }}>Authentication required. Please return to HRMS.</p>
           </div>
         </div>
       );

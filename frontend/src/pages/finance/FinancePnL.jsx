@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import ErrorState from '../../components/ErrorState';
 import { useFinanceReport, useCashflow } from '../../hooks/useApi';
 import DataTable from '../../components/DataTable';
 import { peso } from '../../utils/helpers';
@@ -40,8 +41,8 @@ export default function FinancePnL() {
   if (dateFrom) params.startDate = dateFrom;
   if (dateTo) params.endDate = dateTo;
 
-  const { data: pnlData, isLoading: pnlLoading } = useFinanceReport(params);
-  const { data: cfData, isLoading: cfLoading } = useCashflow(params);
+  const { data: pnlData, isLoading: pnlLoading, isError: pnlError, refetch: refetchPnl } = useFinanceReport(params);
+  const { data: cfData, isLoading: cfLoading, isError: cfError } = useCashflow(params);
 
   const report = pnlData?.data;
   const cashflow = cfData?.data;
@@ -57,6 +58,14 @@ export default function FinancePnL() {
   const clearDates = () => { setDateFrom(''); setDateTo(''); setActivePreset(''); };
 
   const marginClass = (s.profitMargin || 0) >= 0 ? 'positive' : 'negative';
+
+  if (pnlError || cfError) {
+    return (
+      <div className="page-error-wrap">
+        <ErrorState message={null || 'Something went wrong while loading this data.'} onRetry={() => refetchPnl()} />
+      </div>
+    );
+  }
 
   return (
     <>
@@ -123,7 +132,7 @@ export default function FinancePnL() {
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
           </div>
           <div className="stat-label">Tax Collected</div>
-          <div className="stat-value" style={{ color: '#8b5cf6' }}>{peso(s.totalTax)}</div>
+          <div className="stat-value" style={{ color: 'var(--accent)' }}>{peso(s.totalTax)}</div>
           <div className="stat-sub">{peso(s.totalDiscounts)} discounts</div>
         </div>
       </div>
@@ -182,7 +191,7 @@ export default function FinancePnL() {
                 </div>
                 <div className={`finance-cashflow-card net ${(cashflow.netCashflow || 0) >= 0 ? 'positive' : 'negative'}`}>
                   <div className="cf-label">Net Cash Flow</div>
-                  <div className="cf-value" style={{ color: (cashflow.netCashflow || 0) >= 0 ? '#166534' : '#991b1b' }}>{peso(cashflow.netCashflow)}</div>
+                  <div className="cf-value" style={{ color: (cashflow.netCashflow || 0) >= 0 ? 'var(--color-success-800)' : 'var(--color-danger-800)' }}>{peso(cashflow.netCashflow)}</div>
                 </div>
               </div>
 

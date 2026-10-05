@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../api/client';
-import Swal from 'sweetalert2';
+import { useToast } from '../components/Toast';
 import { safeParse } from '../utils/helpers';
 
 /**
@@ -13,6 +13,7 @@ import { safeParse } from '../utils/helpers';
  * the user to this screen.
  */
 export default function ChangePassword() {
+  const toast = useToast();
   const stored = safeParse(localStorage.getItem('hrms_auth'));
   const email = stored?.user?.email || stored?.email || '';
   const [currentPassword, setCurrentPassword] = useState('');
@@ -23,13 +24,16 @@ export default function ChangePassword() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (newPassword.length < 8) {
-      return Swal.fire({ icon: 'error', title: 'Too short', text: 'New password must be at least 8 characters.' });
+      toast.error('New password must be at least 8 characters.', { title: 'Too short' });
+      return;
     }
     if (!/[A-Z]/.test(newPassword) || !/[a-z]/.test(newPassword) || !/\d/.test(newPassword)) {
-      return Swal.fire({ icon: 'error', title: 'Weak password', text: 'Password must contain at least one uppercase letter, one lowercase letter, and one number.' });
+      toast.error('Password must contain at least one uppercase letter, one lowercase letter, and one number.', { title: 'Weak password' });
+      return;
     }
     if (newPassword !== confirm) {
-      return Swal.fire({ icon: 'error', title: 'Mismatch', text: 'New passwords do not match.' });
+      toast.error('New passwords do not match.', { title: 'Mismatch' });
+      return;
     }
     setLoading(true);
     try {
@@ -39,7 +43,7 @@ export default function ChangePassword() {
       localStorage.removeItem('hrms_auth');
       window.location.href = `${import.meta.env.BASE_URL}login`;
     } catch (err) {
-      Swal.fire({ icon: 'error', title: 'Error', text: err.response?.data?.message || 'Could not change password' });
+      toast.error(err.response?.data?.message || 'Could not change password', { title: 'Error' });
       setLoading(false);
     }
   };

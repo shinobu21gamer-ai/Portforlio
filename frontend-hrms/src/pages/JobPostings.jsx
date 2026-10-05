@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import SortableHeader from '../components/SortableHeader';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../api/client';
 
@@ -13,7 +14,7 @@ function useBranches() {
   return useQuery({ queryKey: ['branches'], queryFn: () => api.get('/branches', { baseURL: '/api/v1' }).then(r => r.data.data?.branches || r.data.data || []) });
 }
 import { useIsAdmin, useIsAdminOrHR } from '../hooks/useRole';
-import { confirmApprove, confirmReject, confirmAction, confirmDelete } from '../utils/swal';
+import useConfirm from '../hooks/useConfirm.jsx';
 import useDebounce from '../hooks/useDebounce';
 import { icons } from '../components/ActionButton';
 
@@ -70,10 +71,18 @@ function useScheduleInterview() {
 }
 
 export default function JobPostings() {
+  const { confirmApprove, confirmReject, confirmAction, confirmDelete, confirmDialog } = useConfirm();
   const [tab, setTab] = useState('jobs');
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search);
+  const [sortBy, setSortBy] = useState('createdAt');
+  const [sortOrder, setSortOrder] = useState('DESC');
+  const handleSort = (field) => {
+    if (sortBy === field) setSortOrder((o) => (o === 'ASC' ? 'DESC' : 'ASC'));
+    else { setSortBy(field); setSortOrder('DESC'); }
+        setPage(1);
+  };
   const [createModal, setCreateModal] = useState(false);
   const [editModal, setEditModal] = useState(false);
   const [detailModal, setDetailModal] = useState(false);
@@ -109,7 +118,7 @@ export default function JobPostings() {
   const schedules = schedData?.schedules || [];
   const { data: branchesData } = useBranches();
   const branches = Array.isArray(branchesData) ? branchesData : (branchesData?.branches || branchesData?.data?.branches || []);
-  const { data, isLoading } = useJobs({ page, limit: 10, status: statusFilter || undefined, search: debouncedSearch || undefined });
+  const { data, isLoading } = useJobs({ page, limit: 10, status: statusFilter || undefined, search: debouncedSearch || undefined, sortBy, sortOrder });
   const { data: appData, isLoading: appLoading } = useApplications({ page, limit: 20, status: statusFilter || undefined });
   const { data: interviewData } = useAllInterviews();
   const { data: interviewers } = useInterviewers();
@@ -399,7 +408,7 @@ export default function JobPostings() {
       {tab === 'jobs' && (isLoading ? <LoadingSkeleton rows={4} /> : (
         <div className="table-wrap">
           <table className="data-table">
-            <thead><tr><th>Title</th><th>Department</th><th>Type</th><th>Pay</th><th>Location</th><th>Schedule</th><th>Salary Range</th><th>Openings</th><th>Applicants</th><th>Closing</th><th>Status</th><th>Approved</th><th>Actions</th></tr></thead>
+            <thead><tr><SortableHeader label="Title" field="title" sortBy={sortBy} sortOrder={sortOrder} onSort={handleSort} /><th>Department</th><th>Type</th><th>Pay</th><th>Location</th><th>Schedule</th><SortableHeader label="Salary Range" field="salaryMin" sortBy={sortBy} sortOrder={sortOrder} onSort={handleSort} /><th>Openings</th><th>Applicants</th><SortableHeader label="Closing" field="closingDate" sortBy={sortBy} sortOrder={sortOrder} onSort={handleSort} /><th>Status</th><th>Approved</th><th>Actions</th></tr></thead>
             <tbody>
               {(data?.jobs || []).map(j => (
                 <tr key={j.id}>
@@ -781,6 +790,7 @@ export default function JobPostings() {
           </div>
         )}
       </Modal>
+    {confirmDialog}
     </>
   );
 }

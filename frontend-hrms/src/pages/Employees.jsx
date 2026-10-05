@@ -10,7 +10,7 @@ import { useToast } from '../components/Toast';
 import { formatDate, peso } from '../utils/helpers';
 import { useIsAdmin, useIsAdminOrHR } from '../hooks/useRole';
 import useDebounce from '../hooks/useDebounce';
-import { confirmApprove, confirmReject, confirmTerminate } from '../utils/swal';
+import useConfirm from '../hooks/useConfirm.jsx';
 import { icons } from '../components/ActionButton';
 
 const columns = [
@@ -35,6 +35,7 @@ const POS_ROLES = [
 ];
 
 export default function Employees() {
+  const { confirmApprove, confirmReject, confirmTerminate, confirmDialog } = useConfirm();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search);
@@ -343,6 +344,7 @@ export default function Employees() {
           </button>
         </div>
       </Modal>
+    {confirmDialog}
     </>
   );
 }

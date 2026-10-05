@@ -9,7 +9,7 @@ import { useToast } from '../components/Toast';
 import { formatDate, peso } from '../utils/helpers';
 import { useDepartments, usePositions, useSchedules, useAssignPosAccess, useRevokePosAccess } from '../hooks/useApi';
 import { useIsAdmin, useIsAdminOrHR } from '../hooks/useRole';
-import { confirmTerminate, confirmDelete } from '../utils/swal';
+import useConfirm from '../hooks/useConfirm.jsx';
 import { icons } from '../components/ActionButton';
 
 const POS_ROLES = [
@@ -23,6 +23,7 @@ function useEmployeeDetail(id) {
 }
 
 export default function EmployeeDetail() {
+  const { confirmTerminate, confirmDelete, confirmDialog } = useConfirm();
   const { id } = useParams();
   const navigate = useNavigate();
   const toast = useToast();
@@ -479,6 +480,7 @@ export default function EmployeeDetail() {
           </button>
         </div>
       </Modal>
+    {confirmDialog}
     </>
   );
 }

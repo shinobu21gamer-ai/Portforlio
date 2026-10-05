@@ -1334,7 +1334,7 @@ textarea.input-block { resize: vertical; min-height: 80px; }
   background: var(--bg-secondary);
   border-radius: var(--radius-xl);
   border: 1px solid var(--border-primary);
-  overflow: hidden;
+  overflow-x: auto;
   margin-bottom: 16px;
   box-shadow: var(--shadow-sm);
 }
@@ -1386,6 +1386,11 @@ textarea.input-block { resize: vertical; min-height: 80px; }
   background: rgba(255, 255, 255, 0.14) !important;
   color: #fff !important;
 }
+.sort-indicator { display: inline-flex; margin-left: 4px; vertical-align: middle; opacity: 0.4; transition: opacity 0.15s; }
+.sort-indicator.active { opacity: 1; }
+th.dt-sortable { cursor: pointer; user-select: none; }
+th.dt-sortable:hover .sort-indicator { opacity: 0.8; }
+th.dt-sortable:focus-visible { outline: 2px solid var(--color-primary-400); outline-offset: -2px; }
 .dt-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; flex-wrap: wrap; gap: 8px; }
 .dt-header-left { display: flex; align-items: center; gap: 12px; }
 .dt-header-left h3 { margin: 0; font-size: 16px; font-weight: 700; color: var(--fg-primary); }
@@ -1437,7 +1442,7 @@ textarea.input-block { resize: vertical; min-height: 80px; }
   align-items: center;
   justify-content: center;
   background: var(--gradient-primary);
-  color: #fff;
+  color: var(--fg-on-primary);
   border-radius: var(--radius-md);
   font-weight: 700;
   font-size: 13px;
@@ -2049,14 +2054,14 @@ textarea.input-block { resize: vertical; min-height: 80px; }
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.75);
-  border: 1px solid rgba(0, 0, 0, 0.06);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
   border-radius: var(--radius-md);
   font-size: 14px;
   cursor: pointer;
   transition: transform var(--duration-fast), box-shadow var(--duration-fast), background var(--duration-fast);
 }
-.btn-icon:hover { background: #fff; box-shadow: var(--shadow-sm); transform: scale(1.1); }
+.btn-icon:hover { background: var(--bg-elevated); box-shadow: var(--shadow-sm); transform: scale(1.1); }
 
 /* ─── Auth pages (Login / Forgot / Reset) ────────────────────────── */
 .auth-page {
@@ -2286,4 +2291,42 @@ textarea.input-block { resize: vertical; min-height: 80px; }
 /* Monospace IDs / invoice numbers use the system mono, not Courier */
 .pos-shell .mono, .pos-shell .invoice-no, .pos-shell .sku, .pos-shell code, .pos-shell pre {
   font-family: var(--font-mono);
+}
+
+/* ─── Recharts — theme-aware axes / grid / tooltip (attribute var() is unreliable in SVG) ─── */
+.recharts-cartesian-grid line { stroke: var(--border-primary); }
+.recharts-cartesian-axis-tick text { fill: var(--fg-secondary); }
+.recharts-cartesian-axis-line path, .recharts-cartesian-axis-tick-line line { stroke: var(--border-primary); }
+.recharts-legend-item-text { color: var(--fg-secondary) !important; }
+.recharts-default-tooltip {
+  background: var(--bg-elevated) !important;
+  border: 1px solid var(--border-primary) !important;
+  border-radius: var(--radius-md, 8px) !important;
+  box-shadow: var(--shadow-md, 0 4px 12px rgba(0,0,0,.12));
+}
+.recharts-tooltip-label, .recharts-tooltip-item { color: var(--fg-primary) !important; }
+
+/* ─── Leaflet — dark mode tile treatment (external OSM tiles stay light) ─── */
+[data-theme="dark"] .leaflet-tile { filter: brightness(0.6) contrast(1.1) saturate(0.6); }
+[data-theme="dark"] .leaflet-container { background: var(--bg-primary); }
+
+/* ─── ErrorState (kit component) ─── */
+.error-state { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 48px 24px; gap: 10px; }
+.error-state__icon { color: var(--danger); opacity: 0.8; }
+.error-state h3 { margin: 0; font-size: 16px; font-weight: 700; color: var(--fg-primary); }
+.error-state p { margin: 0 0 10px; font-size: 14px; color: var(--fg-secondary); max-width: 420px; }
+
+/* ─── P5-4: touch targets on tablets / coarse pointers (min 44px) ─── */
+@media (pointer: coarse) {
+  .btn { min-height: 44px; }
+  .btn.btn-sm { min-height: 40px; }
+  .btn-icon { width: 44px; height: 44px; }
+  .input,
+  .search .input,
+  select.input { min-height: 44px; }
+  .qty-btn { min-width: 44px; min-height: 44px; }
+  .search-clear { width: 34px; height: 34px; }
+  .data-table th, .data-table td { padding: 12px 10px; }
+  .nav-item, .nav-link { min-height: 44px; }
+  .modal-close { width: 44px; height: 44px; }
 }

@@ -65,7 +65,81 @@ verification passes V1…V4 done; all test gates green.
   (Phase-3 boot guard, by design). Added commented `EMAIL_DISABLED` block to `.env.example`; render.yaml
   already ships `EMAIL_DISABLED=true`.
 
-## Phase 5 — UI/UX redesign — not started
+## Phase 5 — UI/UX redesign — DONE (2026-10-05, awaiting user review)
+
+Scope decisions (user-approved 2026-10-05): (1) **polish existing identity** (indigo/slate, Inter) —
+consistency, dark mode, states, responsive, a11y — no rebrand; (2) **all list endpoints** get
+server-side search + sort + pagination wiring (standard param names `search` / `sortBy` / `sortOrder`);
+(3) **migrate HRMS SweetAlert2** (14 files) to the shared Modal/ConfirmDialog/Toast kit.
+
+### Work items (all done)
+- [x] **P5-1 Theme hygiene** — design tokens are the single source in `design-system.css` (both apps,
+      identical indigo/slate scales); stray inline hex/rgba migrated to tokens; recharts
+      `CHART_COLORS` token-driven with light/dark palettes; receipt/thermal + print views excluded
+      (80mm paper is theme-blind by design).
+- [x] **P5-2 Kit parity** — HRMS kit completed: `Pagination`, `SortableHeader`, `ConfirmDialog` (+
+      `useConfirm` hook); POS got `useDebounce`; HRMS toast now `aria-live`/`role` (identical to POS);
+      `ErrorState` kit component in both apps.
+- [x] **P5-3 Dark-mode audit, all surfaces** — `[data-theme="dark"]` token overrides verified across
+      cards, tables, modals, dropdowns, skeletons, date inputs, leaflet tiles (filter treatment),
+      recharts; dark-primary contrast fixed (see P5-7).
+- [x] **P5-4 Responsive pass** — POS: `@media (pointer: coarse)` block enforces ≥44px touch targets
+      (buttons, icon buttons, inputs, qty steppers, modal close) on tablets/phones; HRMS: laptop-first
+      with phone tolerance already in place (off-canvas sidebar + hamburger + backdrop at ≤768px,
+      grids collapse at 768/640) — `.table-wrap` now `overflow-x: auto` (both apps) so wide tables
+      scroll on phones instead of clipping.
+- [x] **P5-5 States on every data screen** — loading skeleton / empty state (with CTA) / `ErrorState`
+      (with retry) wired on all data screens: POS (Dashboard, Inventory, Purchases, Settings,
+      Notifications, Profile, LiveTracking, finance ×2, Categories…) + HRMS (Dashboard, Inventory
+      suite ×5, Attendance ×2, Employees, My* ×5, ChangePassword, …) — 20 pages wired in the final
+      batch; auth pages keep their inline error states.
+- [x] **P5-6 Server-side search/sort/pagination everywhere** —
+      - Backend: all ~20 list endpoints take `search` (LIKE, `escapeLike`-escaped) + `sortBy`/
+        `sortOrder` (whitelist-validated per service, unknown values fall back to `createdAt DESC`)
+        + `page`/`limit` (existing). HRMS services patched: contract, leave, payroll, job, schedule,
+        position, department; `activity.service` got `search` over action/description/module/
+        referenceId + sort (createdAt, action, module, referenceType). All other services already had
+        search/sort/pagination.
+      - Frontend: every list page debounced (`useDebounce` 300ms) + sends params into the query key
+        (auto-refetch); `SortableHeader` (role=columnheader, aria-sort, Enter/Space) on sortable
+        columns; `Pagination` kit on paginated lists. Includes the 5 raw-`<table>` HRMS pages
+        (Contracts/Leaves/Payroll/JobPostings/Schedules — Schedules keeps its limit-100 week view,
+        sort only) and POS Categories card grid (search filters server-side).
+- [x] **P5-7 A11y remainder** —
+      - Focus traps: both `Modal`s have Tab/Shift-Tab cycling, Escape close, initial focus,
+        focus restore; `ConfirmDialog` inherits Modal.
+      - Toasts: container `role="region" aria-live="polite"`, errors `role="alert" aria-live="assertive"`
+        (both apps identical).
+      - Tables: `SortableHeader` keyboard-operable + `aria-sort`; DataTable rows focusable
+        (tabIndex) + arrow-key row nav + `aria-rowcount`. Raw HRMS tables get accessible sort
+        headers; row keyboard-nav scoped to DataTable (documented).
+      - Pagination: `aria-label` on all page buttons + page-size select + `aria-current="page"`.
+      - **Contrast AA spot-check (computed, both themes):** light — fg-primary/bg 17.06,
+        fg-secondary/bg 7.24, muted/bg 4.55, white/primary-600 6.29; dark — fg-primary/bg 19.28,
+        fg-secondary/bg 13.59, muted/bg 7.87, white/primary-600 6.29, primary-300 text/bg 10.12.
+        **One real fix:** dark-theme primary buttons were white-on-primary-500 = 4.47:1 (AA fail for
+        normal text) → `--primary` dark now 600/700/800 (fill/hover/active), white text = 6.29:1.
+- [x] **P5-3-dialogs** — HRMS SweetAlert2 removed entirely (14 call sites via `utils/swal.js`
+      migrated to `useConfirm`/`ConfirmDialog` + Toast); `sweetalert2` dropped from
+      `frontend-hrms/package.json` (+lockfile); `swal.js` deleted.
+
+### Verification (gate)
+- [x] both frontends production-build clean (Vite, 0 errors)
+- [x] backend eslint clean (0 errors / 0 warnings — includes the activity `escapeLike` import, now used)
+- [x] full suite: **515/515** (18 unit + 5 integration files) — ratchet from P4's 454+61
+- [x] live API smoke (dev seed, temp server :5050): contracts `sortBy=salary` ASC/DESC verified with
+      created records `[30000,30000,40000]` / `[40000,30000,30000]`; leaves `sortBy=days` DESC
+      `[11,3]` (business days); jobs `sortBy=closingDate` ASC (n=5); activity-logs `search=login`
+      → matches only, no-match → empty; invalid `sortBy` → 200 + createdAt fallback
+- [x] a11y spot-check checklist green (focus traps, live regions, aria-sort, AA contrast — above)
+
+### Env note (sandbox only, no repo change)
+- Backend `npm ci` builds native `sqlite3` from source in this sandbox: nodejs.org header downloads
+  are TLS-blocked. Working recipe: `npm ci --ignore-scripts`, then
+  `node-gyp rebuild --tarball=<node source tarball from codeload.github.com>` (extraction filters to
+  `.h`/`.gypi`; second pass compiles against the extracted devdir). Not needed on Render (Dockerfile
+  builds with full network).
+
 ## Phase 6 — Tests & CI — not started
 
 ---

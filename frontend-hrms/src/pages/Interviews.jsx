@@ -8,7 +8,7 @@ import Map from '../components/Map';
 import { useToast } from '../components/Toast';
 import { formatDate } from '../utils/helpers';
 import { useIsAdmin } from '../hooks/useRole';
-import { confirmDelete } from '../utils/swal';
+import useConfirm from '../hooks/useConfirm.jsx';
 import useDebounce from '../hooks/useDebounce';
 import { icons } from '../components/ActionButton';
 
@@ -35,6 +35,7 @@ function useDeleteInterview() {
 }
 
 export default function Interviews() {
+  const { confirmDelete, confirmDialog } = useConfirm();
   const [dateFilter, setDateFilter] = useState('');
   const [resultFilter, setResultFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
@@ -292,6 +293,7 @@ export default function Interviews() {
           </div>
         )}
       </Modal>
+    {confirmDialog}
     </>
   );
 }

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import ErrorState from '../components/ErrorState';
 import { useMyLeaves, useMyLeaveBalance, useCreateMyLeave } from '../hooks/useApi';
 import { useToast } from '../components/Toast';
 import LoadingSkeleton from '../components/LoadingSkeleton';
@@ -11,7 +12,7 @@ export default function MyLeaves() {
   const [page, setPage] = useState(1);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ leaveType: 'sick', startDate: '', endDate: '', reason: '' });
-  const { data, isLoading } = useMyLeaves({ page, limit: 15 });
+  const { data, isLoading, isError, error, refetch } = useMyLeaves({ page, limit: 15 });
   const { data: balance } = useMyLeaveBalance();
   const createMut = useCreateMyLeave();
 
@@ -34,6 +35,14 @@ export default function MyLeaves() {
   };
 
   const leaves = data?.leaves || [];
+
+  if (isError) {
+    return (
+      <div className="page-error-wrap">
+        <ErrorState message={error?.response?.data?.message || 'Something went wrong while loading this data.'} onRetry={() => refetch()} />
+      </div>
+    );
+  }
 
   return (
     <div className="hrms-page">
