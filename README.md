@@ -1,83 +1,68 @@
 # MiniMart POS + HRMS
 
-A complete Point of Sale and HR management system built with Node.js, Express.js, and SQLite (or MySQL).
+A complete Point of Sale and HR management system: Node.js / Express API, a React POS register, and a React HRMS, served from one process.
 
 One app, one deploy:
-- **POS app** → `http://localhost:5000/`
-- **HRMS app** → `http://localhost:5000/hrms`
-- **REST API** → `http://localhost:5000/api/v1` (and `/api/v1/hrms`)
+
+- **POS** → `http://localhost:5000/pos`
+- **HRMS** → `http://localhost:5000/hrms`
+- **Public site / careers** → `http://localhost:5000/`
+- **REST API** → `http://localhost:5000/api/v1` (HRMS under `/api/v1/hrms`)
+- **API docs** → `http://localhost:5000/api-docs` (Swagger)
+
+![POS terminal](docs/screenshots/pos-terminal.png)
+![HRMS dashboard](docs/screenshots/hrms-dashboard.png)
+![Sale receipt](docs/screenshots/pos-receipt.png)
+
+> Screenshots are captured by the Playwright suite (`tests/e2e`). If they are missing in a fresh clone, run `npm run build && npx playwright install chromium && npm run test:e2e`.
 
 ## Features
 
-- **Authentication & Authorization** - JWT-based auth, bcrypt password hashing, role-based access (Admin, Manager, Cashier)
-- **Product Management** - CRUD, categories/subcategories, barcode/SKU, images, stock tracking, bulk import/export
-- **Inventory Management** - Stock in/out, adjustments, movement history, low-stock alerts, expiry notifications
-- **Sales Module** - Shopping cart, barcode scanning, discounts, multiple payment methods (Cash, GCash, Credit/Debit Card), invoice generation, refunds
-- **Purchase Module** - Purchase orders, receive inventory, auto-stock update
-- **Customer Management** - Profiles, loyalty points, purchase history
-- **Supplier Management** - Contact details, purchase history, outstanding balances
-- **Expenses Module** - CRUD, categories, daily/monthly reports
-- **Dashboard & Reports** - Sales, profit/loss, inventory, best-sellers, exports to PDF/Excel
-- **Notifications** - Low-stock, expiring products, new purchases
-- **Audit Trail** - Track all user actions, timestamps, modified records
-- **Swagger Documentation** - Interactive API docs at `/api-docs`
+- **Auth** — JWT + refresh, bcrypt, role-based access (admin, manager, cashier, HR, inventory staff, employee). First-run production admin must change password.
+- **POS** — barcode scan, cart, discounts, cash / GCash / Maya / split tender, held transactions, 80mm receipts, PayMongo pending + manager cash override, cashier shifts.
+- **Inventory & purchasing** — stock in/out/adjust, POs, receiving, supplier balances, low-stock / expiry.
+- **HRMS** — employees, attendance (clock-in/out, geofence, OT / holiday / rest-day math), leave, payroll (SSS / PhilHealth / Pag-IBIG / TRAIN), contracts, jobs, interviews.
+- **Finance** — expenses, petty cash, dashboard / cashflow (business timezone, default `Asia/Manila`).
+- **Public job portal** — open postings + apply (rate-limited).
 
-## Tech Stack
+## Tech stack
 
-- **Runtime:** Node.js
-- **Framework:** Express.js
-- **Frontend:** React + Vite (POS and HRMS, built into this app)
-- **Database:** SQLite (default) or MySQL 8.0+
-- **ORM:** Sequelize 6
-- **Auth:** JWT (jsonwebtoken + bcryptjs)
-- **Validation:** Joi
-- **File Upload:** Multer
-- **API Docs:** Swagger/OpenAPI
+Node.js 18+ · Express · Sequelize (SQLite default, MySQL 8 optional) · React + Vite (POS + HRMS) · JWT · Joi · Vitest · Playwright
 
-## Project Structure
-
-```
-src/
-├── config/          - Database and app configuration
-├── controllers/     - Route handlers
-├── middleware/       - Auth, validation, error handling, audit, upload
-├── models/          - Sequelize models (15+ tables)
-├── routes/          - Express route definitions
-├── services/        - Business logic layer
-├── utils/           - Helpers, ApiError, logger, response
-├── validators/      - Joi validation schemas
-├── docs/            - Swagger configuration
-└── server.js        - Application entry point (serves API + both frontends)
-frontend/            - POS frontend (React + Vite), served at /
-frontend-hrms/       - HRMS frontend (React + Vite), served at /hrms
-database.sqlite      - SQLite database file (created automatically)
-```
-
-## Quick Start
+## Quick start (development)
 
 ### Prerequisites
 
-- Node.js >= 18 (Node 20+ recommended)
+- Node.js >= 18 (20+ recommended)
 - npm
 
-No database server needed — SQLite is used by default and the database is created
-and seeded automatically on first run.
-
-### Installation & Run
+No database server is required. SQLite is created and seeded on first boot.
 
 ```bash
-npm install
-npm run build     # build the POS + HRMS frontends
-npm start         # http://localhost:5000
+git clone <this-repo>
+cd Portforlio          # repository root
+cp .env.example .env   # optional; defaults work for local SQLite
+npm run install:all    # root + frontend + frontend-hrms
+npm run build          # production bundles, served by Express
+npm start              # http://localhost:5000
 ```
 
-- POS:  `http://localhost:5000`
+Dev loop (API + Vite HMR):
+
+```bash
+npm run dev:api        # Express on :5000
+npm run dev:pos        # Vite POS on :5173 (proxies /api)
+npm run dev:hrms       # Vite HRMS on :3001 (proxies /api)
+```
+
+- POS: `http://localhost:5000/pos` (or the Vite origin in HMR)
 - HRMS: `http://localhost:5000/hrms`
 - API docs: `http://localhost:5000/api-docs`
+- Health: `http://localhost:5000/health`
 
 ### Using MySQL instead of SQLite
 
-Set these in `.env` (or the environment) and restart:
+Set these in `.env` and restart:
 
 ```
 DB_DIALECT=mysql
@@ -88,201 +73,152 @@ DB_USER=root
 DB_PASSWORD=yourpassword
 ```
 
-Server starts at `http://localhost:5000`
+## Demo credentials (development only)
 
-## Default Users
+Seeded when `NODE_ENV=development` or `AUTO_SETUP=true`. **Never used in production** — production boots with a single first-run admin (`INITIAL_ADMIN_EMAIL` / `INITIAL_ADMIN_PASSWORD`, 12+ chars, or a generated password printed once to the logs) flagged `mustChangePassword`.
 
-| Role           | Email                     | Password     |
-|----------------|---------------------------|--------------|
-| Admin          | admin@minimart.com        | admin123     |
-| HR             | hr@minimart.com           | hr123        |
-| Manager        | manager@minimart.com      | admin123     |
-| Cashier        | cashier@minimart.com      | cashier123   |
-| Inventory      | inventory@minimart.com    | inventory123 |
-| Employee       | ligma1@gmail.com          | employee123  |
+| Role            | Email                     | Password      |
+|-----------------|---------------------------|---------------|
+| Admin           | admin@minimart.com        | admin123      |
+| HR              | hr@minimart.com           | hr123         |
+| Manager         | manager@minimart.com      | admin123      |
+| Cashier         | cashier@minimart.com      | cashier123    |
+| Inventory staff | inventory@minimart.com    | inventory123  |
+| Employee        | ligma1@gmail.com          | employee123   |
 
-## API Documentation
+Sign in at `/hrms/login`. POS roles (cashier, manager, inventory staff) are redirected into the register.
 
-Interactive Swagger docs available at:
+## Tests & CI
+
+```bash
+npm run lint                 # eslint, 0 warnings
+npm test                     # unit + integration (SQLite :memory:)
+npm run test:coverage        # same, with v8 coverage + ratchet
+npm run test:e2e:install     # Playwright Chromium
+npm run build && npm run test:e2e
+```
+
+- **Unit** — money / tax / stock / payroll / attendance math, services (`tests/unit`).
+- **API** — real Express app, ephemeral port, in-memory SQLite. Every protected route has a 401 case; list endpoints and core mutations have a happy path (`tests/integration`).
+- **E2E** — Playwright, one Chromium project. Per-role login → main job → logout; POS cash sale + receipt; pending online pay → admin cash override (`tests/e2e/specs`).
+- **CI** (`.github/workflows/ci.yml`) — lint → unit+integration+coverage (SQLite) → build both frontends → Playwright E2E → optional MySQL schema-migration job. Coverage is uploaded as an artifact (and to Codecov when a token is present).
+
+Coverage thresholds in `vitest.config.ts` only move up.
+
+## Deploy (Render)
+
+See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md). Short version:
+
+1. Push this repo to GitHub.
+2. Render → **New → Blueprint** → `render.yaml`.
+3. One web service. Persistent disk at `/data` for SQLite + uploads. Set `JWT_SECRET` and `JWT_REFRESH_SECRET`. Outbound email: configure `SMTP_*` or keep `EMAIL_DISABLED=true`.
+
+```
+POS   https://<service>.onrender.com/pos
+HRMS  https://<service>.onrender.com/hrms
+Docs  https://<service>.onrender.com/api-docs   (admin-only in production)
+```
+
+Docker:
+
+```bash
+docker build -t minimart-pos .
+docker run -p 8080:8080 \
+  -e JWT_SECRET=... -e JWT_REFRESH_SECRET=... \
+  -e EMAIL_DISABLED=true \
+  -v minimart-data:/data \
+  minimart-pos
+```
+
+## Environment variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `NODE_ENV` | `development` / `test` / `production` | development |
+| `PORT` | HTTP port | 5000 |
+| `AUTO_SETUP` | Dev/test only: seed demo accounts + catalog. **Ignored in production.** | — |
+| `INITIAL_ADMIN_EMAIL` / `INITIAL_ADMIN_PASSWORD` | Production first-run admin (password 12+). Unset password → generated once, printed to logs. | admin@minimart.com / — |
+| `DB_DIALECT` | `sqlite` or `mysql` | sqlite |
+| `DB_STORAGE` | SQLite file (use a persistent volume in production) | `./database.sqlite` |
+| `DB_HOST` / `DB_PORT` / `DB_NAME` / `DB_USER` / `DB_PASSWORD` | MySQL | — |
+| `UPLOAD_DIR` | Uploads root | `./uploads` |
+| `SETTINGS_FILE` | Runtime settings (baseline is `data/settings.defaults.json`) | `./data/settings.json` |
+| `APP_TIMEZONE` | Business timezone for report day bounds | `Asia/Manila` |
+| `JWT_SECRET` / `JWT_REFRESH_SECRET` | Required in production (boot fails without them) | generated in dev |
+| `JWT_EXPIRES_IN` | Access-token TTL | 7d |
+| `CORS_ORIGIN` | Extra allowed origins (comma-separated). Unset = same-origin. | same-origin |
+| `EMAIL_DISABLED` | `true` disables outbound email in production (otherwise `SMTP_HOST` is required) | — |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` / `EMAIL_FROM` | Mail (resets, payslips, receipts) | — |
+| `PAYMONGO_SECRET_KEY` / `PAYMONGO_PUBLIC_KEY` / `PAYMONGO_WEBHOOK_SECRET` | Online payments | — |
+| `FRONTEND_URL` / `POS_FRONTEND_URL` | Public origin for email links / PayMongo redirects. Unset = request origin. | — |
+
+Full template: [`.env.example`](.env.example).
+
+## API documentation
+
+Interactive Swagger UI:
 
 ```
 http://localhost:5000/api-docs
 ```
 
-## API Endpoints
+A Postman collection lives at [`postman_collection.json`](postman_collection.json). All protected endpoints take:
+
+```
+Authorization: Bearer <access_token>
+```
+
+Prefix every path below with `/api/v1`.
 
 ### Authentication
-| Method | Endpoint              | Description        |
-|--------|-----------------------|--------------------|
-| POST   | /api/v1/auth/login    | Login             |
-| POST   | /api/v1/auth/register | Register          |
-| GET    | /api/v1/auth/profile  | Get profile       |
-| PUT    | /api/v1/auth/profile  | Update profile    |
-| POST   | /api/v1/auth/change-password | Change password |
-| POST   | /api/v1/auth/forgot-password | Forgot password |
-| POST   | /api/v1/auth/refresh-token | Refresh JWT    |
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/auth/login` | Login |
+| POST | `/auth/register` | Register (off in production unless enabled) |
+| GET | `/auth/profile` | Current user |
+| PUT | `/auth/profile` | Update profile |
+| POST | `/auth/change-password` | Change password |
+| POST | `/auth/forgot-password` | Forgot password |
+| POST | `/auth/reset-password` | Reset password |
+| POST | `/auth/refresh-token` | Refresh JWT |
+| POST | `/auth/logout` | Revoke access token |
 
-### Dashboard
-| Method | Endpoint               | Description        |
-|--------|------------------------|--------------------|
-| GET    | /api/v1/dashboard      | Dashboard data     |
+### POS / inventory (selected)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/dashboard` | Dashboard |
+| GET/POST | `/products` | List / create |
+| GET | `/products/barcode/:barcode` | Scan |
+| GET/POST | `/sales` | List / cash (or split) sale |
+| POST | `/sales/pending` | Hold stock for online pay |
+| POST | `/sales/pending/:id/cash-complete` | Admin/manager cash override |
+| POST | `/sales/:id/refund` | Refund |
+| POST | `/inventory/stock-in` · `/stock-out` · `/adjust` | Stock movements |
+| GET/POST | `/purchases` | Purchase orders |
+| GET/POST | `/shifts` | Cashier shifts |
 
-### Products
-| Method | Endpoint                      | Description           |
-|--------|-------------------------------|-----------------------|
-| GET    | /api/v1/products              | List products         |
-| GET    | /api/v1/products/:id          | Get product           |
-| POST   | /api/v1/products              | Create product        |
-| PUT    | /api/v1/products/:id          | Update product        |
-| DELETE | /api/v1/products/:id          | Delete product        |
-| GET    | /api/v1/products/barcode/:barcode | Find by barcode   |
-| GET    | /api/v1/products/low-stock    | Low stock products    |
-| GET    | /api/v1/products/expiring     | Expiring products     |
-| GET    | /api/v1/products/best-sellers | Best sellers          |
+### HRMS (selected, under `/hrms`)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET/POST | `/hrms/employees` | Employees |
+| POST | `/hrms/attendance/clock-in` · `/clock-out` | Attendance |
+| GET/POST | `/hrms/leaves` | Leave |
+| GET/POST | `/hrms/payrolls` | Payroll |
+| GET | `/hrms/me` | Self-service profile |
+| GET | `/public/jobs` | Public job board |
 
-### Categories
-| Method | Endpoint                  | Description        |
-|--------|---------------------------|--------------------|
-| GET    | /api/v1/categories        | List categories    |
-| GET    | /api/v1/categories/tree   | Category tree      |
-| GET    | /api/v1/categories/:id    | Get category       |
-| POST   | /api/v1/categories        | Create category    |
-| PUT    | /api/v1/categories/:id    | Update category    |
-| DELETE | /api/v1/categories/:id    | Delete category    |
-
-### Sales
-| Method | Endpoint                     | Description        |
-|--------|------------------------------|--------------------|
-| GET    | /api/v1/sales                | List sales         |
-| GET    | /api/v1/sales/:id            | Get sale           |
-| POST   | /api/v1/sales                | Create sale        |
-| POST   | /api/v1/sales/:id/cancel     | Cancel sale        |
-| GET    | /api/v1/sales/invoice/:no    | Find by invoice    |
-| GET    | /api/v1/sales/report         | Sales report       |
-
-### Purchases
-| Method | Endpoint                         | Description            |
-|--------|----------------------------------|------------------------|
-| GET    | /api/v1/purchases                | List purchases         |
-| GET    | /api/v1/purchases/:id            | Get purchase           |
-| POST   | /api/v1/purchases                | Create purchase order  |
-| PUT    | /api/v1/purchases/:id/receive    | Receive purchase       |
-| POST   | /api/v1/purchases/:id/cancel     | Cancel purchase        |
-
-### Inventory
-| Method | Endpoint                         | Description        |
-|--------|----------------------------------|--------------------|
-| POST   | /api/v1/inventory/stock-in       | Stock in           |
-| POST   | /api/v1/inventory/stock-out      | Stock out          |
-| POST   | /api/v1/inventory/adjust         | Adjust stock       |
-| GET    | /api/v1/inventory/movements      | Stock movements    |
-| GET    | /api/v1/inventory/logs           | Inventory logs     |
-
-### Customers
-| Method | Endpoint                  | Description        |
-|--------|---------------------------|--------------------|
-| GET    | /api/v1/customers         | List customers     |
-| GET    | /api/v1/customers/:id     | Get customer       |
-| POST   | /api/v1/customers         | Create customer    |
-| PUT    | /api/v1/customers/:id     | Update customer    |
-| DELETE | /api/v1/customers/:id     | Delete customer    |
-
-### Suppliers
-| Method | Endpoint                            | Description              |
-|--------|-------------------------------------|--------------------------|
-| GET    | /api/v1/suppliers                   | List suppliers           |
-| GET    | /api/v1/suppliers/outstanding-balances | Outstanding balances  |
-| GET    | /api/v1/suppliers/:id               | Get supplier             |
-| POST   | /api/v1/suppliers                   | Create supplier          |
-| PUT    | /api/v1/suppliers/:id               | Update supplier          |
-| DELETE | /api/v1/suppliers/:id               | Delete supplier          |
-
-### Expenses
-| Method | Endpoint                    | Description         |
-|--------|-----------------------------|---------------------|
-| GET    | /api/v1/expenses            | List expenses       |
-| GET    | /api/v1/expenses/:id        | Get expense         |
-| POST   | /api/v1/expenses            | Create expense      |
-| PUT    | /api/v1/expenses/:id        | Update expense      |
-| DELETE | /api/v1/expenses/:id        | Delete expense      |
-| GET    | /api/v1/expenses/report     | Expense report      |
-
-### Notifications
-| Method | Endpoint                               | Description          |
-|--------|----------------------------------------|----------------------|
-| GET    | /api/v1/notifications                  | List notifications   |
-| GET    | /api/v1/notifications/unread-count     | Unread count         |
-| PUT    | /api/v1/notifications/mark-read        | Mark read            |
-| PUT    | /api/v1/notifications/mark-all-read    | Mark all read        |
-
-### Activity Logs
-| Method | Endpoint                       | Description        |
-|--------|--------------------------------|--------------------|
-| GET    | /api/v1/activity-logs          | List logs          |
-| GET    | /api/v1/activity-logs/user/:id | User logs          |
-
-### Users (Admin)
-| Method | Endpoint           | Description     |
-|--------|--------------------|-----------------|
-| GET    | /api/v1/users      | List users      |
-| GET    | /api/v1/users/:id  | Get user        |
-| POST   | /api/v1/users      | Create user     |
-| PUT    | /api/v1/users/:id  | Update user     |
-| DELETE | /api/v1/users/:id  | Delete user     |
-
-## Authentication
-
-All protected endpoints require a Bearer token:
+## Project structure
 
 ```
-Authorization: Bearer <your_jwt_token>
+src/                 API (Express, Sequelize, services)
+frontend/            POS (React + Vite) → /
+frontend-hrms/       HRMS (React + Vite) → /hrms
+tests/unit           Vitest unit tests
+tests/integration    HTTP tests against the real app
+tests/e2e/specs      Playwright
+.github/workflows    CI
+docs/                Deployment + screenshots
 ```
-
-## Postman Collection
-
-Import `postman_collection.json` into Postman for a complete set of API requests.
-
-## Database
-
-### Tables
-
-- `roles`, `permissions`, `role_permissions` - RBAC
-- `users` - System users
-- `branches` - Multi-branch support (future)
-- `categories` - Product categories/subcategories
-- `products` - Product catalog
-- `suppliers` - Supplier management
-- `customers` - Customer profiles
-- `sales`, `sale_items` - Sales transactions
-- `payments` - Payment records
-- `purchases`, `purchase_items` - Purchase orders
-- `stock_movements` - Stock movement history
-- `inventories` - Inventory audit log
-- `expenses`, `expense_categories` - Expense tracking
-- `loyalty_points` - Customer loyalty program
-- `notifications` - System notifications
-- `activity_logs` - Audit trail
-
-## Environment Variables
-
-| Variable              | Description          | Default     |
-|-----------------------|----------------------|-------------|
-| NODE_ENV              | Environment          | development |
-| PORT                  | Server port          | 5000        |
-| AUTO_SETUP            | Dev only: seed demo accounts + demo data on boot (never effective in production) | - |
-| INITIAL_ADMIN_EMAIL / INITIAL_ADMIN_PASSWORD | Production first-run admin (password 12+ chars). Unset → a one-time generated password is printed to the deploy logs once. Only used when the users table is empty. | admin@minimart.com / - |
-| DB_DIALECT            | Database engine      | sqlite      |
-| DB_STORAGE            | SQLite file path (point at a persistent volume in production) | ./database.sqlite |
-| DB_HOST / DB_PORT / DB_NAME / DB_USER / DB_PASSWORD | MySQL settings (when DB_DIALECT=mysql) | - |
-| UPLOAD_DIR            | Base uploads directory (products/resumes/documents); point at a persistent volume in production | ./uploads |
-| SETTINGS_FILE         | Runtime settings file (settings.defaults.json is the committed baseline) | ./data/settings.json |
-| EMAIL_DISABLED        | `true` explicitly disables outbound email in production (otherwise SMTP_HOST is required) | - |
-| SMTP_HOST / SMTP_PORT / SMTP_USER / SMTP_PASS / EMAIL_FROM | Outbound email (password resets, payslips, receipts) | - |
-| JWT_SECRET            | JWT signing secret   | required in production |
-| JWT_REFRESH_SECRET    | Refresh token secret | required in production |
-| JWT_EXPIRES_IN        | Token expiry         | 7d          |
-| BCRYPT_SALT_ROUNDS    | Hash rounds          | 10          |
-| CORS_ORIGIN           | Extra allowed origins (comma-separated) | same-origin allowed |
 
 ## License
 

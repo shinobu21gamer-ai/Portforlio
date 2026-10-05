@@ -136,6 +136,7 @@ export default function Login() {
             required
             autoComplete="email"
             floating
+            data-testid="login-email"
           />
           <Input
             label="Password"
@@ -145,6 +146,7 @@ export default function Login() {
             required
             autoComplete="current-password"
             floating
+            data-testid="login-password"
             trailingSlot={(
               <button
                 type="button"
@@ -187,7 +189,7 @@ export default function Login() {
               {error}
             </div>
           ) : null}
-          <Button className="auth-submit" type="submit" size="lg" fullWidth loading={loading} disabled={loading}>
+          <Button className="auth-submit" type="submit" size="lg" fullWidth loading={loading} disabled={loading} data-testid="login-submit">
             {loading ? 'Signing in...' : 'Sign In'}
           </Button>
           <a href="/" className="auth-link" style={{ display: 'block', textAlign: 'center', marginTop: 12 }}>← Back to Home</a>

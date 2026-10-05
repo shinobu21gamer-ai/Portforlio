@@ -29,10 +29,10 @@ export default defineConfig({
       // 100%, models at 96%; the other ~40 service files are still 0%).
       // A global 50% is not reachable until those services are covered.
       thresholds: {
-        lines: 10,
-        functions: 20,
-        branches: 3,
-        statements: 10,
+        lines: 65,
+        functions: 68,
+        branches: 50,
+        statements: 68,
       },
     },
     alias: {

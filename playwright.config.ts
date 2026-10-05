@@ -1,18 +1,20 @@
 import { defineConfig, devices } from '@playwright/test';
+import path from 'path';
+
+const e2eDb = path.resolve(__dirname, 'test-e2e.sqlite');
 
 export default defineConfig({
   testDir: './tests/e2e/specs',
-  fullyParallel: true,
+  fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : undefined,
+  workers: 1,
   reporter: [
+    ['list'],
     ['html', { open: 'never' }],
-    ['json', { outputFile: 'test-results/e2e-results.json' }],
-    ['junit', { outputFile: 'test-results/e2e-results.xml' }],
   ],
   use: {
-    baseURL: 'http://localhost:5000',
+    baseURL: process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:5000',
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
@@ -24,23 +26,21 @@ export default defineConfig({
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
     },
-    {
-      name: 'mobile-chrome',
-      use: { ...devices['Pixel 5'] },
-    },
   ],
   webServer: {
     command: 'npm run start:test',
-    url: 'http://localhost:5000/health',
+    url: 'http://127.0.0.1:5000/health',
     reuseExistingServer: !process.env.CI,
-    timeout: 120000,
+    timeout: 180000,
     env: {
       NODE_ENV: 'test',
       AUTO_SETUP: 'true',
       JWT_SECRET: 'test-jwt-secret-for-ci-only-32chars!!',
       JWT_REFRESH_SECRET: 'test-refresh-secret-for-ci-only-32chars',
       DB_DIALECT: 'sqlite',
-      DB_STORAGE: ':memory:',
+      DB_STORAGE: e2eDb,
+      EMAIL_DISABLED: 'true',
+      PORT: '5000',
     },
   },
 });

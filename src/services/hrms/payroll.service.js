@@ -726,4 +726,19 @@ class PayrollService {
   }
 }
 
-module.exports = new PayrollService();
+const payrollService = new PayrollService();
+// Pure math helpers exposed for unit tests (Phase 6). Behaviour is unchanged.
+payrollService._math = {
+  computeSSS,
+  computePhilHealth,
+  computePagIBIG,
+  computeTax,
+  computeTaxMonthly,
+  computeTaxSemiMonthly,
+  computeNightDiff,
+  computeOvertimePay,
+  compute13thMonth,
+  countWorkingDays,
+  getHolidayType,
+};
+module.exports = payrollService;

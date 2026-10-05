@@ -490,4 +490,13 @@ class AttendanceService {
   }
 }
 
-module.exports = new AttendanceService();
+const attendanceService = new AttendanceService();
+// Pure math helpers exposed for unit tests (Phase 6). Behaviour is unchanged.
+attendanceService._math = {
+  distanceMeters,
+  computeNightShiftHours,
+  computeHolidayPay,
+  computeRestDayPay,
+  getHolidayType,
+};
+module.exports = attendanceService;

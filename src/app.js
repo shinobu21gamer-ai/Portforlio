@@ -141,7 +141,9 @@ io.on('connection', (socket) => {
 });
 
 // â”€â”€â”€ Rate Limiting â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-const isDev = config.nodeEnv === 'development';
+// Relax rate limits outside production so the test/E2E suites (NODE_ENV=test)
+// and local dev aren't locked out of login after a handful of attempts.
+const isDev = config.nodeEnv !== 'production';
 // 200 req/15min used to trip on a single busy terminal: payment-status
 // polling (~1 req/3s) plus page loads could exhaust it mid-shift and lock a
 // real cashier out. 2,000/15min still caps abusive bursts (≈2.2 req/s).

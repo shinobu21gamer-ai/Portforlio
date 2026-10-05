@@ -1,6 +1,6 @@
 # MiniMart POS + HRMS — Improvement Plan
 
-**Owner:** shinobu21gamer · **Started:** 2026-10-05 · **Status:** PHASE 1 (audit)
+**Owner:** shinobu21gamer · **Started:** 2026-10-05 · **Status:** PHASE 6 DONE (awaiting CI)
 **Scope:** the whole system — Node/Express + Sequelize API, POS React app (`frontend/`),
 HRMS React app (`frontend-hrms/`), public job portal, SQLite (dev) / MySQL (prod) data.
 

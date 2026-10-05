@@ -274,6 +274,7 @@ export default function Pos() {
         fullWidth
         disabled={items.length === 0}
         onClick={() => navigate('/payment')}
+        data-testid="pay-now"
       >
         Pay Now {total > 0 && `(${peso(total)})`} (F4)
       </Button>
@@ -440,6 +441,7 @@ export default function Pos() {
               <button
                 key={p.id}
                 className="product"
+                data-testid="product-card"
                 onClick={() => handleAddProduct(p)}
                 disabled={disabled}
                 style={{
