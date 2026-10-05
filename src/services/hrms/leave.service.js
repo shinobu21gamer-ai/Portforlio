@@ -1,4 +1,4 @@
-const { LeaveRequest, Employee, Department, Attendance, Notification, sequelize } = require('../../models');
+const { LeaveRequest, Employee, Attendance, Notification, sequelize } = require('../../models');
 const ApiError = require('../../utils/ApiError');
 const { getPagination, getPaginationMeta, escapeLike, sanitizeObject } = require('../../utils/helpers');
 const { Op } = require('sequelize');
@@ -291,7 +291,7 @@ class LeaveService {
               html: leaveStatusEmail(emp.firstName || emp.email, leave.leaveType, 'approved', leave.startDate, leave.endDate),
             }).catch(() => {});
           }
-        } catch (err) { /* email errors should not block leave approval */ }
+        } catch { /* email errors should not block leave approval */ }
       }
 
       return this.getById(id);

@@ -1,6 +1,5 @@
-const crypto = require('crypto');
 const { Sequelize, Op } = require('sequelize');
-const { JobPosting, JobApplication, Department, Position, Interview, Employee, Contract, Attendance, Notification } = require('../../models');
+const { JobPosting, JobApplication, Interview, Employee, Contract, Notification } = require('../../models');
 const ApiError = require('../../utils/ApiError');
 const { getPagination, getPaginationMeta, sanitizeObject, generateEmployeeNo, escapeLike } = require('../../utils/helpers');
 const { logActivity } = require('../../utils/audit');
@@ -136,7 +135,7 @@ class JobPostingService {
         subject: 'Application Received — MiniMart POS',
         html: applicationStatusEmail(application.firstName || application.email, job.title, 'pending'),
       }).catch(() => {});
-    } catch (e) { /* email errors should not block application */ }
+    } catch { /* email errors should not block application */ }
 
     return application;
   }

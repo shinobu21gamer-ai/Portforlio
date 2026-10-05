@@ -1,6 +1,6 @@
 const Joi = require('joi');
 
-const stripHtml = (value, helpers) => {
+const stripHtml = (value, _helpers) => {
   if (typeof value === 'string') {
     return value.replace(/<[^>]*>/g, '');
   }

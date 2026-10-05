@@ -1,5 +1,4 @@
-const { Op } = require('sequelize');
-const { PettyCashFund, PettyCashTransaction, User, sequelize } = require('../models');
+const { PettyCashFund, PettyCashTransaction, sequelize } = require('../models');
 const ApiError = require('../utils/ApiError');
 const { getPagination, getPaginationMeta, sanitizeObject } = require('../utils/helpers');
 

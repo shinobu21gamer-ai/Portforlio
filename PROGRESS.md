@@ -8,7 +8,16 @@ Living log for the 6-phase plan in `PLAN.md`. Newest entry on top.
 - **Gate 1 result:** audit complete. **WAITING ON USER** before Phase 2 (per explicit instruction).
 - Top P0s: (S1) prod deploy auto-seeds `admin@minimart.com/admin123` etc. via `AUTO_SETUP=true` in `render.yaml`/`Dockerfile`; (S2) SQLite on Render's ephemeral disk → total data loss per deploy/restart.
 
-## Phase 2 — Fix all errors — not started
+## Phase 2 — Fix all errors — DONE
+- [x] **A9** `completePendingAsCash` now re-fetches the completed sale with `items` (+nested product) and `payments` → POS cash-override receipt no longer renders "No items". Extended the integration regression test to assert the items contract.
+- [x] **A5** `npm test` no longer double-runs the unit suite — `test:integration` is now `vitest run tests/integration` (unit runs once).
+- [x] **A8** Removed legacy `.eslintrc.js` (inert under ESLint 10); kept flat `eslint.config.mjs`.
+- [x] **B1** All 49 `no-unused-vars` warnings cleared across 21 files (unused imports, optional catch bindings, dead payroll helpers, unused params). Added `--max-warnings 0` to `lint`. Lint now **0 errors / 0 warnings**.
+  - Removed 3 dead duplicated payroll helpers (`isRestDay`, `computeHolidayPay`, `computeRestDayPay`) — the live logic is `attendance.service.js` (correct PH rates, verified) and the payslip sums attendance-recorded holiday/rest-day pay. No calc change.
+- [x] **C1** Fixed seed mojibake `Dela PeÃ±a` → `Dela Peña` (2 occurrences, byte-precise).
+- [x] **C2** `errorHandler` logs expected 4xx/operational errors as a one-line `console.warn` (no stack); stack trace only for genuine 5xx.
+- **Gate 2 result:** lint clean, **suite 470/470 unit + 38/38 integration** (no regressions). Committed + pushed. **WAITING ON USER** before Phase 3.
+
 ## Phase 3 — Security & deploy — not started
 ## Phase 4 — Logic & flow — not started
 ## Phase 5 — UI/UX redesign — not started

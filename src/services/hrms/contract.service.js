@@ -190,7 +190,7 @@ class ContractService {
     return this.getById(id);
   }
 
-  async renew(id, data, approvedBy) {
+  async renew(id, data, _approvedBy) {
     const oldContract = await Contract.findByPk(id);
     if (!oldContract) throw ApiError.notFound('Contract not found');
     if (oldContract.status !== 'active') throw ApiError.badRequest('Only active contracts can be renewed');

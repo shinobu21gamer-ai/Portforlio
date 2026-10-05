@@ -1,4 +1,4 @@
-const { Delivery, RiderLocation, sequelize, Purchase, PettyCashFund } = require('../models');
+const { Delivery, RiderLocation, Purchase, PettyCashFund } = require('../models');
 const ApiError = require('../utils/ApiError');
 const purchaseService = require('./purchase.service');
 

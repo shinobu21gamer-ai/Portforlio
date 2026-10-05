@@ -1,6 +1,6 @@
 const employeeService = require('../../services/hrms/employee.service');
 const { sendSuccess } = require('../../utils/response');
-const { Employee, Attendance, LeaveRequest, Payslip, Contract, Department, Position, User, Role } = require('../../models');
+const { Employee, Attendance, LeaveRequest, Payslip, Contract, Department, Position, Role } = require('../../models');
 const ApiError = require('../../utils/ApiError');
 
 class EmployeeController {

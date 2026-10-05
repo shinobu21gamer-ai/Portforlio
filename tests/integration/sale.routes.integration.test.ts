@@ -305,6 +305,13 @@ describe('POST /api/v1/sales/pending/:id/cash-complete (admin/manager override)'
     expect(sale.paymentMethod).toBe('cash');
     expect(sale.paymentReference).toMatch(/^CASH-OVERRIDE-/);
 
+    // receipt contract: the completed sale must include its items so the
+    // POS receipt does not render "No items" (regression: A9)
+    expect(Array.isArray(sale.items)).toBe(true);
+    expect(sale.items).toHaveLength(1);
+    expect(sale.items[0].product?.name).toBeTruthy();
+    expect(sale.items[0].quantity).toBe(1);
+
     // the override must NOT decrement stock a second time
     expect((await Product.findByPk(productId))!.stockQuantity).toBe(99);
   });

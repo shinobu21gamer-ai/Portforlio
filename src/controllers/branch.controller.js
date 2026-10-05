@@ -5,7 +5,7 @@ class BranchController {
     try {
       const result = await branchService.getAll(req.query);
       res.json({ data: result });
-    } catch (err) {
+    } catch {
       res.status(500).json({ message: 'Failed to fetch branches' });
     }
   }
@@ -15,7 +15,7 @@ class BranchController {
       const branch = await branchService.getById(req.params.id);
       if (!branch) return res.status(404).json({ message: 'Branch not found' });
       res.json({ data: branch });
-    } catch (err) {
+    } catch {
       res.status(500).json({ message: 'Failed to fetch branch' });
     }
   }
@@ -51,7 +51,7 @@ class BranchController {
     try {
       const stats = await branchService.getStats(req.params.id);
       res.json({ data: stats });
-    } catch (err) {
+    } catch {
       res.status(500).json({ message: 'Failed to fetch branch stats' });
     }
   }

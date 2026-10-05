@@ -8,10 +8,8 @@ const path = require('path');
 const fs = require('fs');
 const cookieParser = require('cookie-parser');
 const swaggerUi = require('swagger-ui-express');
-const cron = require('node-cron');
 
 const config = require('./config');
-const { connectDB } = require('./config/database');
 const routes = require('./routes');
 const { errorHandler, requestIdMiddleware } = require('./middleware/errorHandler');
 const specs = require('./docs/swagger');
@@ -77,7 +75,7 @@ app.use((req, res, next) => {
       // Single-app deployment: always allow same-origin requests.
       try {
         if (new URL(origin).host === (req.headers.host || '')) return callback(null, true);
-      } catch (e) { /* invalid origin header */ }
+      } catch { /* invalid origin header */ }
       callback(new Error('Not allowed by CORS'));
     },
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
@@ -116,7 +114,7 @@ io.use(async (socket, next) => {
     let decoded;
     try {
       decoded = jwt.verify(token, config.jwt.secret);
-    } catch (e) {
+    } catch {
       return next(new Error('unauthorized'));
     }
     const user = await User.findByPk(decoded.id, {
@@ -235,7 +233,6 @@ app.get('/health', (req, res) => {
 });
 
 // â”€â”€â”€ Prometheus Metrics â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-const startTime = Date.now();
 let requestCount = 0;
 
 // â”€â”€â”€ Metrics Endpoint â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

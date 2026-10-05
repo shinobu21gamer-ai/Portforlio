@@ -8,7 +8,6 @@ let warnedNotConfigured = false;
 // or rejecting mail server previously failed completely silently. Keep counters
 // and log a periodic summary so failures are visible in deploy logs.
 const failures = { notConfigured: 0, errored: 0, lastError: null };
-const SUMMARY_INTERVAL_MS = 60_000;
 
 function logFailureSummary(reason) {
   const total = failures.notConfigured + failures.errored;

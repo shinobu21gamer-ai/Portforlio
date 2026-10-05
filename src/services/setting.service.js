@@ -38,7 +38,7 @@ const loadFromFile = () => {
       const saved = JSON.parse(raw);
       settings = { ...DEFAULTS, ...filterAllowed(saved) };
     }
-  } catch (e) {
+  } catch {
     settings = { ...DEFAULTS };
   }
 };
@@ -50,7 +50,7 @@ const saveToFile = () => {
     const tmpFile = `${SETTINGS_FILE}.tmp`;
     fs.writeFileSync(tmpFile, JSON.stringify(settings, null, 2), 'utf8');
     fs.renameSync(tmpFile, SETTINGS_FILE);
-  } catch (e) {
+  } catch {
     // silent fail — in-memory still works
   }
 };

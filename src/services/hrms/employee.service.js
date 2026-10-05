@@ -1,5 +1,4 @@
 const { Op } = require('sequelize');
-const crypto = require('crypto');
 const { Employee, Department, Position, Contract, User, Role, sequelize } = require('../../models');
 const ApiError = require('../../utils/ApiError');
 const { getPagination, getPaginationMeta, sanitizeObject, generateEmployeeNo, escapeLike } = require('../../utils/helpers');
@@ -290,7 +289,7 @@ class EmployeeService {
     if (!emp) throw ApiError.notFound('Employee not found');
     if (emp.status === 'inactive') throw ApiError.badRequest('Employee is already terminated');
 
-    const { ShiftAssignment, LeaveRequest, Notification, sequelize } = require('../../models');
+    const { ShiftAssignment, Notification, sequelize } = require('../../models');
     const today = new Date().toISOString().split('T')[0];
 
     const t = await sequelize.transaction({ isolationLevel: 'REPEATABLE READ' });
@@ -423,7 +422,7 @@ class EmployeeService {
     }
   }
 
-  async getPosStaff(query) {
+  async getPosStaff(_query) {
     const POS_ROLES = ['cashier', 'manager', 'inventory_staff'];
     const roles = await Role.findAll({ where: { slug: POS_ROLES }, attributes: ['id', 'slug', 'name'] });
     const roleIds = roles.map(r => r.id);

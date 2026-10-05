@@ -1,6 +1,5 @@
 const productService = require('../services/product.service');
 const { sendSuccess, sendPaginated } = require('../utils/response');
-const ApiError = require('../utils/ApiError');
 const fs = require('fs');
 const path = require('path');
 const config = require('../config');
@@ -51,7 +50,7 @@ const update = async (req, res, next) => {
       if (existing?.product?.image) {
         const imgPath = path.join(config.upload.path, existing.product.image.replace(/^\/uploads\//, ''));
         if (fs.existsSync(imgPath)) {
-          try { fs.unlinkSync(imgPath); } catch (e) { /* ignore */ }
+          try { fs.unlinkSync(imgPath); } catch { /* ignore */ }
         }
       }
       req.body.image = `/uploads/products/${req.file.filename}`;
@@ -70,7 +69,7 @@ const del = async (req, res, next) => {
     if (existing?.product?.image) {
       const imgPath = path.join(config.upload.path, existing.product.image.replace(/^\/uploads\//, ''));
       if (fs.existsSync(imgPath)) {
-        try { fs.unlinkSync(imgPath); } catch (e) { /* ignore */ }
+        try { fs.unlinkSync(imgPath); } catch { /* ignore */ }
       }
     }
     await productService.delete(req.params.id);

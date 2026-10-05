@@ -22,7 +22,7 @@ class LoyaltyController {
 
   async redeem(req, res, next) {
     try {
-      const { customerId, points, notes } = req.body;
+      const { customerId, points } = req.body;
       if (!customerId || !points) throw ApiError.badRequest('customerId and points are required');
       if (points <= 0) throw ApiError.badRequest('Points must be positive');
 

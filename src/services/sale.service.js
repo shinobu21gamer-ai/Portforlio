@@ -358,7 +358,7 @@ class SaleService {
               html: receiptEmail(`${customer.firstName} ${customer.lastName}`, invoiceNo, items, total, data.paymentMethod),
             });
           }
-        } catch (e) { /* email failure non-blocking */ }
+        } catch { /* email failure non-blocking */ }
       }
 
       return this.getById(sale.id);
@@ -423,7 +423,14 @@ class SaleService {
       }
 
       await this.finalizeAfterPayment(sale.id, t);
-      return sale;
+      const completed = await Sale.findByPk(sale.id, {
+        transaction: t,
+        include: [
+          { association: 'items', include: [{ association: 'product', attributes: ['id', 'name', 'sku', 'barcode'] }] },
+          { association: 'payments' },
+        ],
+      });
+      return completed;
     });
   }
 
@@ -489,7 +496,7 @@ class SaleService {
         subject: `Receipt - ${sale.invoiceNo}`,
         html: receiptEmail(`${sale.customer.firstName} ${sale.customer.lastName}`, sale.invoiceNo, items, sale.total, sale.paymentMethod),
       });
-    } catch (e) { /* email failure non-blocking */ }
+    } catch { /* email failure non-blocking */ }
   }
 
 async cancel(id, userId) {

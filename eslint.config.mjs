@@ -41,7 +41,7 @@ export default [
       },
     },
     rules: {
-      'no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+      'no-unused-vars': ['warn', { argsIgnorePattern: '^_', ignoreRestSiblings: true }],
       'no-console': 'off',
       // Several catches intentionally swallow non-critical failures
       // (fire-and-forget emails, optional telemetry) and document why.

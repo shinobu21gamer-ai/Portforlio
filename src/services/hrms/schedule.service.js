@@ -124,7 +124,7 @@ class ScheduleService {
     return { message: 'Assignment deleted' };
   }
 
-  async getPermanentAssignments(query) {
+  async getPermanentAssignments(_query) {
     const employees = await Employee.findAll({
       where: { status: 'active', scheduleId: { [require('sequelize').Op.ne]: null } },
       attributes: ['id', 'employeeNo', 'firstName', 'lastName'],

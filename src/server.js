@@ -60,8 +60,6 @@ const scheduleContractExpiryCheck = () => {
 };
 
 // â”€â”€â”€ Start Server â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-let srv;
-
 const runAutoSetup = async () => {
   try {
     const { Role, User, Category, ExpenseCategory, Product, Customer, Supplier, Department, Position, Schedule, Discount, Permission, Employee, Branch, JobPosting } = require('./models');
@@ -249,7 +247,7 @@ const runAutoSetup = async () => {
       });
       await User.findOrCreate({
         where: { email: 'inventory@minimart.com' },
-        defaults: { firstName: 'Rico', lastName: 'Dela PeÃ±a', email: 'inventory@minimart.com', password: 'inventory123', roleId: inventoryStaffRole.id, isActive: true }
+        defaults: { firstName: 'Rico', lastName: 'Dela Peña', email: 'inventory@minimart.com', password: 'inventory123', roleId: inventoryStaffRole.id, isActive: true }
       });
 
       const seedAccounts = [
@@ -598,7 +596,7 @@ const runAutoSetup = async () => {
 
       const employees = [
         { firstName: 'Joy', lastName: 'Dela Cruz', email: 'cashier@minimart.com', departmentId: deptMap.Operations, positionId: posMap['Cashier'], salary: 15000, userId: (await User.findOne({ where: { email: 'cashier@minimart.com' } }))?.id, status: 'active', hireDate: '2026-01-15' },
-        { firstName: 'Rico', lastName: 'Dela PeÃ±a', email: 'inventory@minimart.com', departmentId: deptMap.Warehouse, positionId: posMap['Warehouse Staff'], salary: 15000, userId: (await User.findOne({ where: { email: 'inventory@minimart.com' } }))?.id, status: 'active', hireDate: '2026-01-15' },
+        { firstName: 'Rico', lastName: 'Dela Peña', email: 'inventory@minimart.com', departmentId: deptMap.Warehouse, positionId: posMap['Warehouse Staff'], salary: 15000, userId: (await User.findOne({ where: { email: 'inventory@minimart.com' } }))?.id, status: 'active', hireDate: '2026-01-15' },
         { firstName: 'Ligma', lastName: 'One', email: 'ligma1@gmail.com', departmentId: deptMap.Sales, positionId: posMap['Sales Associate'], salary: 15000, userId: (await User.findOne({ where: { email: 'ligma1@gmail.com' } }))?.id, status: 'active', hireDate: '2026-01-15' },
       ];
       let empNum = 1001;
@@ -747,7 +745,7 @@ const runAutoSetup = async () => {
       console.error('Server error:', err);
     });
 
-    srv = server.listen(config.port, '0.0.0.0', () => {
+    server.listen(config.port, '0.0.0.0', () => {
       const addr = server.address();
       console.log(`Server bound to: ${JSON.stringify(addr)}`);
       console.log(`Server running on port ${config.port} in ${config.nodeEnv} mode`);
