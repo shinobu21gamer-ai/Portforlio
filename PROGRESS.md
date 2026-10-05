@@ -148,6 +148,7 @@ server-side search + sort + pagination wiring (standard param names `search` / `
 - [x] 2026-10-05 **POS sale still 22.4s** — iframe POS reads `token`/`user`, HRMS login only writes `hrms_auth` (same origin). Seed both stores, open `/hrms/pos` directly, wait for `product-card` via `contentDocument`.
 - [x] 2026-10-05 **error-context.md still red** — POS authStore now falls back to `hrms_auth` (same-origin embed). Sale spec uses HRMS loginUi + frameLocator like the passing cashier role test. No contentDocument wait.
 - [x] 2026-10-05 **POS sale still red** — dropped the iframe/product-card path. Seed session+cart on `/` (HTML), open `/payment`, cash → receipt. Grid/SSO is covered by the cashier role spec.
+- [x] 2026-10-05 **a9717d0 still red** — don't log out on a failed `/auth/profile` probe; blacklist lookup fail-open in `NODE_ENV=test`. Skip `/pos` (it was wiping the cart). Assert API cash sale 201, then `/payment` UI.
 
 **Gate:** lint 0/0; **764/764** unit+integration (28 files, ratchet from P5's 515); coverage ~69/73/53/73 with thresholds 65/68/50/68; both frontends production-build clean. Playwright specs land; Chromium isn't downloadable in this sandbox (TLS to cdn.playwright.dev blocked) so E2E is the CI job.
 

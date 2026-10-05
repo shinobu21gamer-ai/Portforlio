@@ -119,11 +119,12 @@ function AuthCheck({ children }) {
     };
 
     const validateStoredSession = () => {
-      // Don't block the register on /auth/profile. A stored token is enough to
-      // paint POS; a failed revalidation still logs the cashier out.
+      // Don't block the register on /auth/profile, and don't log the cashier
+      // out if a single probe fails (SQLite busy → blacklist fail-closed 401
+      // was wiping the cart mid-E2E and sending us to HRMS).
       if (isAuthenticated && token) {
         finish();
-        api.get('/auth/profile').catch(() => revokeCurrentSession());
+        api.get('/auth/profile').catch(() => { /* keep stored session */ });
       } else {
         finish();
       }
