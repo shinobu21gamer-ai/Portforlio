@@ -27,7 +27,7 @@ One app, one deploy:
 
 ## Tech stack
 
-Node.js 18+ · Express · Sequelize (SQLite default, MySQL 8 optional) · React + Vite (POS + HRMS) · JWT · Joi · Vitest · Playwright
+Node.js 22.12+ · Express · Sequelize (SQLite default, MySQL 8 optional) · React + Vite (POS + HRMS) · JWT · Joi · Vitest · Playwright
 
 ## Quick start (development)
 

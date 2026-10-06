@@ -61,9 +61,12 @@ function hasStoredToken() {
 
 function AuthCheck({ children }) {
   const { isAuthenticated, token, logout, login } = useAuthStore();
-  // Don't gate first paint on /auth/profile — a token in localStorage is enough
-  // to render POS. Revalidation still runs in the effect and can log us out.
-  const [checking, setChecking] = useState(() => !hasStoredToken());
+  // In the standalone POS, a stored token is enough to render immediately.
+  // When embedded in HRMS, wait for the parent to hand off its current token;
+  // localStorage may still contain the previous account's revoked POS token.
+  const [checking, setChecking] = useState(() => (
+    window.top !== window || !hasStoredToken()
+  ));
   const [ssoError, setSsoError] = useState(null);
   const location = useLocation();
   const navigate = useNavigate();
@@ -143,10 +146,10 @@ function AuthCheck({ children }) {
       return;
     }
 
-    // Embedded in HRMS: request a token over postMessage. If the iframe already
-    // has a session (E2E seed, refresh), paint immediately instead of waiting.
-    if (hasStoredToken()) finish();
-
+    // Embedded in HRMS: HRMS is the source of truth for the active account.
+    // Do not probe/render with a token left in POS localStorage from the prior
+    // account: its 401 response can trigger the API interceptor's login redirect
+    // while the new SSO token is being handed off.
     const onMessage = (e) => {
       if (e.origin !== HRMS_ORIGIN) return;
       if (e.data?.type === 'pos-auth-token' && e.data.token) {
@@ -155,10 +158,9 @@ function AuthCheck({ children }) {
     };
     window.addEventListener('message', onMessage);
     try { window.parent.postMessage({ type: 'pos-ready' }, HRMS_ORIGIN); } catch { /* ignore */ }
-    const fallback = setTimeout(validateStoredSession, hasStoredToken() ? 0 : 4000);
-
+    // Stay on the loading state until HRMS hands off its current token. The
+    // parent POS embed has its own timeout and retry UI if this handshake fails.
     return () => {
-      clearTimeout(fallback);
       window.removeEventListener('message', onMessage);
     };
   }, []);

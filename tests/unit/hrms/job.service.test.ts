@@ -3,6 +3,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 process.env.DB_DIALECT = 'sqlite';
 process.env.DB_STORAGE = ':memory:';
 
+const bcrypt = require('bcryptjs');
 const models = require('../../../src/models');
 const { sequelize, JobPosting, JobApplication, Interview, Department, Position, Schedule, Employee, Contract, User, Role } = models;
 const jobService = require('../../../src/services/hrms/job.service');
@@ -415,7 +416,7 @@ describe('job.service - updateApplicationStatus', () => {
     ).rejects.toThrow(/cannot transition/i);
   });
 
-  it('creates employee on hire', async () => {
+  it('creates an employee and a forced-reset account on hire', async () => {
     await jobService.updateApplicationStatus(appId, 'reviewed');
     await jobService.updateApplicationStatus(appId, 'initial-interview');
     await jobService.updateApplicationStatus(appId, 'final-interview');
@@ -426,6 +427,11 @@ describe('job.service - updateApplicationStatus', () => {
     const employees = await Employee.findAll({ where: { email: 'jane@test.local' } });
     expect(employees).toHaveLength(1);
     expect(employees[0].status).toBe('active');
+
+    const account = await User.scope('withPassword').findOne({ where: { email: 'jane@test.local' } });
+    expect(account).toBeTruthy();
+    expect(account.mustChangePassword).toBe(true);
+    expect(await bcrypt.compare('employee123', account.password)).toBe(false);
   });
 
   it('rejects hire when position filled', async () => {

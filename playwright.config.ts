@@ -2,6 +2,16 @@ import { defineConfig, devices } from '@playwright/test';
 import path from 'path';
 
 const e2eDb = path.resolve(__dirname, 'test-e2e.sqlite');
+// Allows restricted environments to point Playwright at a compatible browser
+// installed from a package/cache when the Playwright CDN is unreachable.
+const chromiumLaunchOptions = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
+  ? {
+      executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
+      args: process.env.PLAYWRIGHT_CHROMIUM_ARGS
+        ? JSON.parse(process.env.PLAYWRIGHT_CHROMIUM_ARGS)
+        : ['--no-sandbox'],
+    }
+  : undefined;
 
 export default defineConfig({
   testDir: './tests/e2e/specs',
@@ -15,9 +25,10 @@ export default defineConfig({
   ],
   use: {
     baseURL: process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:5000',
+    launchOptions: chromiumLaunchOptions,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
-    video: 'retain-on-failure',
+    video: process.env.PLAYWRIGHT_DISABLE_VIDEO === '1' ? 'off' : 'retain-on-failure',
     actionTimeout: 15000,
     navigationTimeout: 30000,
   },

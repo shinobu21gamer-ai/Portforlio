@@ -10,7 +10,7 @@ const columns = [
   { key: 'sku', label: 'SKU', sortable: true },
   { key: 'name', label: 'Name', sortable: true },
   { key: 'category', label: 'Category', sortable: false },
-  { key: 'price', label: 'Cost', sortable: true },
+  { key: 'buyingPrice', label: 'Cost', sortable: true },
   { key: 'sellingPrice', label: 'Price', sortable: true },
   { key: 'stockQuantity', label: 'Stock', sortable: true },
   { key: 'status', label: 'Status', sortable: false },
@@ -56,7 +56,7 @@ export default function InvProducts() {
             category: <td>{p.category?.name || '—'}</td>,
             buyingPrice: <td>{peso(p.buyingPrice)}</td>,
             sellingPrice: <td>{peso(p.sellingPrice)}</td>,
-            stock: <td><span className={`font-semibold ${p.stockQuantity <= (p.minStockLevel || 0) ? 'text-error' : ''}`}>{p.stockQuantity}</span></td>,
+            stockQuantity: <td><span className={`font-semibold ${p.stockQuantity <= (p.minStockLevel || 0) ? 'text-error' : ''}`}>{p.stockQuantity}</span></td>,
             status: <td><span className={`badge ${p.isActive ? 'success' : 'error'}`}>{p.isActive ? 'Active' : 'Inactive'}</span></td>,
           };
           return <tr key={p.id}>{visHeaders.map(c => cellMap[c.key])}</tr>;
