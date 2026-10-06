@@ -319,6 +319,49 @@ so the e2e/integration gates run in CI).
 
 **Baseline at plan start:** 470/470 tests green, coverage ratchets 10/20/3/10 (lines/functions/branches/statements), both frontends build clean.
 
+## Phase 6 add-on — Email diagnostics (2026-10-06)
+
+Follow-up to "why are the automatic emails not sending?" — the answer was
+configuration (`render.yaml` ships `EMAIL_DISABLED=true` with every `SMTP_*`
+line commented out), but the failure was invisible because every caller ignores
+`sendEmail()`'s result. Three additions make it visible:
+
+- [x] **`GET /api/v1/health/email`** (admin) — `configured`, `ready`,
+  `passwordSet`, `disabledByFlag`, host/port/sender/`frontendUrl`,
+  `lastVerify` (with an actionable `hint`) and the delivery counters
+  (`sent`/`notConfigured`/`errored`/`lastError`). `?verify=1` dials the SMTP
+  server and authenticates first. **Never returns `SMTP_PASS`** — only
+  `passwordSet`.
+- [x] **`POST /api/v1/health/email/test`** (admin) — sends a real message,
+  defaulting to the caller's own address. Unconfigured → `503`, rejected → `502`,
+  each with `{ errors: { reason, hint } }`; successful and failed attempts are
+  written to the ActivityLog. Own rate limit (10/15 min in production).
+- [x] **Boot verify** — when SMTP is configured, `verifyConnection()` runs at
+  startup (not awaited: a mail outage must not delay the port bind) and logs
+  `[MAILER] SMTP verify FAILED (auth|connection) ...` + the fix, instead of the
+  first password reset discovering a bad `SMTP_PASS`.
+- [x] **HRMS Settings page** (admin-only, `/settings`) — status badge, config
+  rows, last-check result with hint, counters, "Re-check connection", and a
+  "Send test email" form. Nav item is role-filtered (top-level items now honour
+  `roles`, matching NavGroup's existing child filtering).
+- [x] **Hardening** — nodemailer connection/greeting timeouts bounded to 10s
+  (socket 30s, verify 15s) so an unresponsive mail server can no longer stall a
+  request for nodemailer's 2-minute default; `EMAIL_DISABLED` is reported
+  because it is routinely mistaken for an off switch (it only relaxes the boot
+  guard).
+- [x] **Tests** — `tests/unit/mailer.unconfigured.test.ts` (6),
+  `mailer.configured.test.ts` (11, nodemailer stubbed via a `Module._load`
+  patch: `vi.mock` does not intercept the CJS require here),
+  `emailTest.template.test.ts` (6, incl. escaping and "renders without
+  `FRONTEND_URL`"), `tests/integration/email.routes.integration.test.ts` (11)
+  and `email.smtp.routes.integration.test.ts` (7 — a real `net` SMTP server, so
+  the message is asserted over the wire: recipient, sender, subject, both body
+  parts, audit row, then 502 + re-verify once the server is stopped).
+
+**Env note:** nothing new is required. `EMAIL_DISABLED=true` may stay; it does
+not block sending. Set `SMTP_HOST/PORT/USER/PASS` + `EMAIL_FROM` and remove the
+commented block in `render.yaml`, then check the Settings page.
+
 ## Destructive-op log
 | When | Op | Why |
 |------|----|-----|

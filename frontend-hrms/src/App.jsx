@@ -30,6 +30,7 @@ const Interviews = lazy(() => import('./pages/Interviews'));
 const Contracts = lazy(() => import('./pages/Contracts'));
 const Leaves = lazy(() => import('./pages/Leaves'));
 const Payroll = lazy(() => import('./pages/Payroll'));
+const Settings = lazy(() => import('./pages/Settings'));
 const NotFound = lazy(() => import('./pages/NotFound'));
 const MyProfile = lazy(() => import('./pages/MyProfile'));
 const MyAttendance = lazy(() => import('./pages/MyAttendance'));
@@ -112,6 +113,8 @@ export default function App() {
             <Route path="/contracts" element={<Suspense fallback={null}><Contracts /></Suspense>} />
             <Route path="/leaves" element={<Suspense fallback={null}><Leaves /></Suspense>} />
             <Route path="/payroll" element={<Suspense fallback={null}><Payroll /></Suspense>} />
+            {/* Admin-only: reads SMTP configuration and sends test mail. */}
+            <Route path="/settings" element={<ProtectedRoute allowedRoles={['admin']}><Suspense fallback={null}><Settings /></Suspense></ProtectedRoute>} />
           </Route>
 
           {/* Employee self-service routes — layout chosen by role so staff keep their own sidebar */}

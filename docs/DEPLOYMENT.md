@@ -102,6 +102,9 @@ Mount a volume at `/data` if you want the SQLite file to persist:
 | `UPLOAD_DIR` | ./uploads | Uploads root (products, resumes, documents) |
 | `SETTINGS_FILE` | ./data/settings.json | Runtime settings file |
 | `JWT_SECRET` / `JWT_REFRESH_SECRET` | generated in dev | must be set in production |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` / `EMAIL_FROM` | - | outbound email (password reset, payslips, receipts, contract notices). `EMAIL_FROM`, **not** `MAIL_FROM`. Gmail needs an App Password, not the account password |
+| `EMAIL_DISABLED` | - | `true` only relaxes the production boot guard; it does **not** turn sending off (or on) |
+| `FRONTEND_URL` | derived per request | public origin used for links inside emails |
 | `CORS_ORIGIN` | same-origin allowed | extra allowed origins (comma-separated) |
 
 ## Troubleshooting
@@ -128,6 +131,40 @@ deploy/restart. Remove the `/data` env vars (or attach the disk) to silence it.
 An existing database is never silently replaced: if the file exists but is not
 writable, the app keeps using it and fails with a clear error rather than
 starting from an empty database.
+
+### Nobody receives email (password resets, payslips, receipts)
+
+Outbound email fails *silently by design*: every caller awaits `sendEmail()` and
+ignores the result, so the UI reports success while the message never left the
+server. Three ways to see what is happening, cheapest first:
+
+1. **Deploy log** — at boot the mailer says which mode it is in:
+   `[MAILER] SMTP configured: smtp.gmail.com:587` (followed within seconds by
+   `[MAILER] SMTP connection verified`, or by
+   `[MAILER] SMTP verify FAILED (auth): ...` if the credentials are wrong),
+   or `[MAILER] SMTP is NOT configured — no email will be sent`.
+   Each dropped message logs `[MAILER] Email not sent (SMTP unconfigured)`, and
+   every 15 minutes a summary line totals what failed.
+2. **API** (admin token): `GET /api/v1/health/email` returns `configured`,
+   `ready`, `passwordSet`, host/port/sender, `lastVerify` (with a `hint` naming
+   the fix) and the delivery counters (`sent`, `notConfigured`, `errored`,
+   `lastError`). Add `?verify=1` to dial the server and authenticate right now.
+3. **Settings page** in HRMS (admin only) — the same card plus a **Send test
+   email** button that posts to `POST /api/v1/health/email/test`. A failed test
+   returns 503 (no SMTP configured) or 502 (server rejected it) with the reason
+   and the hint, and is written to the activity log.
+
+Common causes, in order: `SMTP_HOST`/`SMTP_USER` unset (nothing is even
+attempted); `SMTP_PASS` empty or set to the Gmail *account* password instead of
+an App Password (log says `534`/`535`); `EMAIL_FROM` misspelled as `MAIL_FROM`
+(ignored, sender falls back to `SMTP_USER`); outbound port 587/465 blocked by
+the host; `FRONTEND_URL` unset, which breaks link-bearing templates
+(`[MAILER] FRONTEND_URL is not set` is logged at boot).
+
+Note that `EMAIL_DISABLED=true` does **not** disable sending — it only lets a
+production deploy start without SMTP. Delivery is enabled purely by
+`SMTP_HOST` + `SMTP_USER`, and nothing is retried: a message dropped while the
+mailer is down is gone.
 
 ### App "not publishing" / health check failing
 

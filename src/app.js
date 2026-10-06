@@ -187,6 +187,18 @@ app.use('/api/v1/auth/forgot-password', authLimiter);
 app.use('/api/v1/auth/reset-password', authLimiter);
 app.use('/api/v1/auth/refresh-token', rateLimit({ windowMs: 15 * 60 * 1000, max: isDev ? 9999 : 30, message: { success: false, message: 'Too many token refresh attempts.' } }));
 
+// The email test sends a real message to an address the caller chooses. It is
+// admin-only and audited, but the global 2,000/15min budget is far too generous
+// for something that can be used to mail arbitrary recipients, so it gets its
+// own small allowance. (Delivery misses are already reconnects, not floods.)
+app.use('/api/v1/health/email/test', rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: isDev ? 100 : 10,
+  message: { success: false, message: 'Too many test emails, please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+}));
+
 // â”€â”€â”€ Body Parsing â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.use(express.json({ limit: '1mb', verify: (req, _res, buf) => { req.rawBody = buf; } }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
