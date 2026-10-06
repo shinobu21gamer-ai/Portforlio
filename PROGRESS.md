@@ -163,6 +163,80 @@ Work items:
 
 ---
 
+## Phase 7 — Hotfix: storage can no longer kill the boot — DONE (2026-10-06)
+
+**Trigger:** the production deploy on Render died before it could listen with
+`Error: EACCES: permission denied, mkdir '/data/uploads/products'` at
+`src/middleware/upload.js:10` ("the render is not publishing"). Cause:
+`render.yaml` declared a 1 GB disk at `/data` **and** `plan: free`, but Render
+does not allow persistent disks on free instances — so `/data` never exists
+(or is not writable by the app user) while `UPLOAD_DIR=/data/uploads`,
+`DB_STORAGE=/data/database.sqlite` and `SETTINGS_FILE=/data/settings.json` all
+still pointed at it. `upload.js` called `fs.mkdirSync()` at require time, so
+the whole process died with EACCES before binding a port.
+
+- [x] **`src/utils/storage.js` (new)** — `ensureDir`, `isDirWritable` (real
+      write+delete probe, so read-only mounts and root-squashed NFS are caught),
+      `resolveWritableDir`, `resolveWritableFile`. An unwritable configured path
+      falls back (app directory, then `os.tmpdir()`) with a 3-line `[STORAGE]`
+      warning naming the path, the fallback and the fix. An **existing**
+      database/settings file is never silently relocated — that would look like
+      a recovery while the real data sits elsewhere; the app keeps the path and
+      fails with an explicit message.
+- [x] **`src/config/index.js`** — uploads `base`/`path` resolved through
+      storage.js; `UPLOAD_PATH` still honoured, now derived from the resolved
+      base.
+- [x] **`src/config/database.js`** — SQLite file resolved the same way, logs
+      `[STORAGE] SQLite database file: …`, and a `SQLITE_CANTOPEN`/EACCES connect
+      failure now prints the volume-permission hint.
+- [x] **`src/middleware/upload.js` / `src/middleware/resumeUpload.js`** —
+      require-time mkdir can no longer throw; `documents/` is created per request
+      best-effort.
+- [x] **`src/services/setting.service.js`** — `SETTINGS_FILE` resolved through
+      storage.js (falls back to `data/settings.json` with a warning).
+- [x] **`src/middleware/errorHandler.js`** — `EACCES`/`EPERM`/`EROFS`/`ENOSPC`
+      return a storage-specific message instead of "Internal server error".
+- [x] **`render.yaml`** — free-plan-safe default: the `disk:` block is commented
+      out (with the steps to enable persistence: `plan: starter` + uncomment
+      `disk` and the `DB_STORAGE`/`UPLOAD_DIR`/`SETTINGS_FILE` vars). The comment
+      block now states that free instances cannot attach disks. Previously this
+      file could not deploy on the free plan at all.
+- [x] **`Dockerfile`** — pre-creates `/data/uploads/{products,resumes,documents}`
+      owned by `appuser` (uid 1001) so an empty named volume inherits the right
+      ownership; bind mounts still need a manual `chown` (documented).
+- [x] **Docs** — `docs/DEPLOYMENT.md` storage section rewritten + new
+      **Troubleshooting** (EACCES, "not publishing"/health check); README deploy
+      note + env table; `.env.example` upload notes. Also corrected the stale
+      "`AUTO_SETUP` … use in production" row in DEPLOYMENT.md (production has
+      ignored it since Phase 3).
+- [x] **Tests** — `tests/unit/storage.test.ts` (10): writable path passthrough,
+      fallback + warning on an uncreatable path, no silent relocation of an
+      existing read-only database, `ensureDir` never throws.
+
+**Gate:** lint 0/0; **774/774** (496 unit + 278 integration, 29 files) — ratchet
+from Phase 6's 764.
+
+**Verification (sandbox, prod env, port 5099):** booted with
+`NODE_ENV=production UPLOAD_DIR=/data/uploads DB_STORAGE=/data/database.sqlite
+SETTINGS_FILE=/data/settings.json` on a host where `/data` does not exist and
+uid 1001 cannot create it — i.e. the exact reported failure. The server boots,
+prints the `[STORAGE]` fallback warnings, connects (`Database connected
+successfully (SQLite)`), creates the first-run admin, and `/health` → 200. Then
+end-to-end: login → forced password change → `POST /categories` 201 →
+`POST /products` multipart PNG 201 → `GET /uploads/products/<uuid>.png` → 200
+`image/png` (70 bytes). Smoke artifacts deleted afterwards (destructive-op log).
+
+**Deploy action required (operator):**
+- *Free plan (demo):* redeploy as-is. The app works; data resets on each
+  deploy — that is Render's free-tier contract, not a bug.
+- *Real data:* upgrade the service to `plan: starter`, uncomment the `disk:`
+  block + `DB_STORAGE`/`UPLOAD_DIR`/`SETTINGS_FILE` in `render.yaml`, redeploy.
+- *Existing service with the old env vars but no disk:* remove
+  `DB_STORAGE`/`UPLOAD_DIR`/`SETTINGS_FILE` in the Render dashboard so the app
+  uses its app-local defaults instead of logging fallback warnings every boot.
+
+---
+
 ## Shipped before this plan (history)
 | Commit | What |
 |---|---|
@@ -183,3 +257,4 @@ Work items:
 | 2026-10-05 (P3) | `git mv IMPROVEMENT_PLAN.md docs/IMPROVEMENT_PLAN.md` | C5: superseded by `PLAN.md`; archived, not deleted |
 | 2026-10-05 (P3) | `git mv data/settings.json data/settings.defaults.json` + gitignore `data/settings.json` | A6a: runtime file (rewritten by settings API) untracked; committed file becomes the demo baseline |
 | 2026-10-05 (P2) | (n/a — recorded here from Phase 2: none; seed mojibake fixed in source only) | — |
+| 2026-10-06 (P7) | Deleted the hotfix smoke-test artifacts: repo-root `database.sqlite` (+`-wal`/`-shm`) and `uploads/products/ea809f54-….png` created while verifying the EACCES fallback; no `data/settings.json` was written | Both are gitignored runtime files produced by the single smoke boot on an ephemeral path; removed so the tree contains only the intended fix. Verified clean via `git status --porcelain` |

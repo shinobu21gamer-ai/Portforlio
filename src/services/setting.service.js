@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const config = require('../config');
+const storage = require('../utils/storage');
 const ApiError = require('../utils/ApiError');
 
 // Runtime settings live in data/settings.json by default, which is
@@ -8,9 +9,16 @@ const ApiError = require('../utils/ApiError');
 // SETTINGS_FILE at the persistent volume (e.g. /data/settings.json).
 // data/settings.defaults.json is the committed dev/demo baseline and is
 // only used to seed the runtime file's first read.
+const DEFAULT_SETTINGS_FILE = path.resolve(__dirname, '../../data/settings.json');
+// An unwritable SETTINGS_FILE (missing/read-only volume) must not lose the
+// settings silently: resolveWritableFile falls back to the app's data/ dir and
+// logs a [STORAGE] warning instead. Writes were already best-effort below.
 const SETTINGS_FILE = process.env.SETTINGS_FILE
-  ? path.resolve(process.env.SETTINGS_FILE)
-  : path.resolve(__dirname, '../../data/settings.json');
+  ? storage.resolveWritableFile(process.env.SETTINGS_FILE, {
+      label: 'settings file',
+      fallbacks: [DEFAULT_SETTINGS_FILE, path.join(storage.TMP_ROOT, 'settings.json')],
+    })
+  : DEFAULT_SETTINGS_FILE;
 const SETTINGS_DEFAULTS_FILE = path.resolve(__dirname, '../../data/settings.defaults.json');
 
 const DEFAULT_KEYS = ['storeName', 'storeAddress', 'storePhone', 'storeEmail', 'taxRate', 'currency', 'lowStockThreshold', 'receiptHeader', 'receiptFooter'];

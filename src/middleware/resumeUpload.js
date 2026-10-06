@@ -3,11 +3,19 @@ const path = require('path');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const config = require('../config');
+const { ensureDir } = require('../utils/storage');
 const { validateFileSignature } = require('../utils/fileType');
 
+// Derived from the boot-verified uploads base (src/utils/storage.js) and created
+// best-effort: this module is loaded during server boot, so a throwing mkdir on
+// an unwritable volume would take the whole deploy down (it did: EACCES on
+// /data/uploads/products for Render instances without a persistent disk).
 const resumeDir = path.join(path.resolve(config.upload.base), 'resumes');
-if (!fs.existsSync(resumeDir)) {
-  fs.mkdirSync(resumeDir, { recursive: true });
+if (!fs.existsSync(resumeDir) && !ensureDir(resumeDir)) {
+  console.warn(
+    `[STORAGE] Resume directory ${resumeDir} could not be created. ` +
+    'Job-application uploads will fail until that volume is writable.'
+  );
 }
 
 const storage = multer.diskStorage({
