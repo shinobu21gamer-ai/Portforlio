@@ -724,6 +724,13 @@ const seedDemoData = async (roles) => {
         );
       } else {
         console.log('[MAILER] SMTP configured:', config.smtp.host + ':' + config.smtp.port);
+        // Verify the credentials/connection now rather than discovering a bad
+        // SMTP_PASS when the first password reset fails. Deliberately NOT
+        // awaited: verify() can take seconds against a slow or unreachable
+        // server, and a mail outage must never delay the port bind or stop the
+        // POS from starting. The result is logged and cached for
+        // GET /api/v1/health/email.
+        mailer.verifyConnection().catch(() => { /* verifyConnection never throws */ });
       }
 
       // Templates refuse to emit a localhost link, so without an explicit

@@ -519,6 +519,15 @@ const schemas = {
     receiptFooter: htmlField().max(255).optional().allow(''),
   }),
 
+  // ─── Admin diagnostics ────────────────────────────────────
+  // Target defaults to the calling admin's own address, so a mis-click cannot
+  // mail a customer. `to` is validated by the same Joi schema as any payload.
+  sendTestEmail: Joi.object({
+    to: Joi.string().email().max(150).optional().allow(''),
+    subject: Joi.string().max(150).optional().allow(''),
+    message: Joi.string().max(1000).optional().allow(''),
+  }),
+
   // ─── Loyalty ──────────────────────────────────────────────
   redeemLoyaltyPoints: Joi.object({
     customerId: Joi.number().integer().positive().required(),

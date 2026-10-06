@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import api from '../api/client';
+import api, { API_ROOT } from '../api/client';
 
 // ─── Dashboard ───────────────────────────────────────────
 export function useDashboard(params = {}) {
@@ -277,4 +277,35 @@ export function useMarkNotificationsRead() {
 export function useMarkAllNotificationsRead() {
   const qc = useQueryClient();
   return useMutation({ mutationFn: () => api.put('/notifications/mark-all-read').then(r => r.data.data), onSuccess: () => { qc.invalidateQueries({ queryKey: ['notifications'] }); qc.invalidateQueries({ queryKey: ['notifications-unread'] }); } });
+}
+
+// ─── Admin diagnostics (email delivery) ───────────────────
+// Reads the cached mailer state (configuration, last verify, delivery
+// counters). Cheap: no SMTP dial happens unless `verify` is requested.
+export function useEmailStatus() {
+  return useQuery({
+    queryKey: ['email-status'],
+    queryFn: () => api.get('/health/email', { baseURL: API_ROOT }).then(r => r.data.data),
+    retry: false,
+  });
+}
+
+// Live "is it actually working?" check: dials the SMTP server, authenticates,
+// and feeds the result into the cached status so the card updates in place.
+export function useVerifyEmail() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.get('/health/email', { baseURL: API_ROOT, params: { verify: 1 } }).then(r => r.data.data),
+    onSuccess: (data) => qc.setQueryData(['email-status'], data),
+  });
+}
+
+// Sends a real message. A failure is an HTTP error (502/503) carrying
+// { errors: { reason, hint } }, so the caller can show what to fix.
+export function useSendTestEmail() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data) => api.post('/health/email/test', data, { baseURL: API_ROOT }).then(r => r.data.data),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['email-status'] }),
+  });
 }

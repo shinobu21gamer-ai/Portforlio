@@ -147,6 +147,11 @@ module.exports = {
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS,
     from: process.env.EMAIL_FROM,
+    // EMAIL_DISABLED=true only relaxes the production boot guard above. It is
+    // NOT a switch that turns sending off (sending is enabled purely by
+    // SMTP_HOST/SMTP_USER) — that confusion is expensive to debug, so the
+    // admin email-status endpoint reports the flag explicitly.
+    disabled: process.env.EMAIL_DISABLED === 'true',
   },
   app: {
     name: process.env.APP_NAME || 'MiniMart POS',

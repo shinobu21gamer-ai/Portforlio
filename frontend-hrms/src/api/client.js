@@ -3,6 +3,10 @@ import useAuthStore from '../store/authStore';
 import { safeParse } from '../utils/helpers';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api/v1/hrms';
+// Some admin endpoints live outside the /hrms namespace (e.g. the email
+// diagnostics at /health/email). They share this client's auth/refresh
+// interceptors and just override baseURL per request.
+export const API_ROOT = API_BASE.replace(/\/hrms\/?$/, '');
 const api = axios.create({ baseURL: API_BASE });
 
 api.interceptors.request.use((config) => {

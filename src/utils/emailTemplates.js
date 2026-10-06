@@ -409,6 +409,64 @@ function receiptEmailText(userName, invoiceNo, items, total, paymentMethod, paym
   ].join('\n');
 }
 
+/**
+ * Diagnostic email sent from the admin "Send test email" button (Settings).
+ *
+ * Deliberately does NOT call publicUrl(): verifying SMTP is exactly what an
+ * operator does *while* setting a deployment up, and publicUrl() throws when
+ * FRONTEND_URL is unset — a test email that cannot be sent until the (unrelated)
+ * public URL is configured would defeat the purpose. The FRONTEND_URL value is
+ * reported as a line of text instead.
+ */
+function testEmail({ recipientName, host, port, user, from, frontendUrl, requestedBy, sentAt, message } = {}) {
+  const rows = [
+    ['SMTP server', host ? `${host}:${port}` : 'not configured'],
+    ['Sent as', from || user || '—'],
+    ['Requested by', requestedBy || 'an administrator'],
+    ['Sent at', sentAt || new Date().toISOString()],
+    ['Public site URL', frontendUrl || 'FRONTEND_URL is not set — links in other emails will be omitted'],
+  ];
+  const note = message
+    ? `<p style="margin:16px 0 0;padding:12px;background:#eef2ff;border-radius:8px;">
+        <strong>Note from the administrator:</strong><br/>${escapeHtml(message).replace(/\n/g, '<br/>')}
+      </p>`
+    : '';
+  const content = `
+    <h2 style="margin:0 0 16px;font-size:18px;color:#16a34a;">Email delivery is working</h2>
+    <p>Hi <strong>${escapeHtml(recipientName || 'there')}</strong>,</p>
+    <p>This is a test message from <strong>${escapeHtml(appName)}</strong>. If you are reading it,
+    the application can reach its SMTP server and the credentials are accepted, so password resets,
+    payslips, contract notices and receipts will be delivered too.</p>
+    ${note}
+    <table style="width:100%;border-collapse:collapse;margin:16px 0;font-size:13px;">
+      ${rows.map(([label, value]) => `
+      <tr>
+        <td style="padding:6px 8px;background:#f9fafb;border:1px solid #e5e7eb;color:#6b7280;white-space:nowrap;">${escapeHtml(label)}</td>
+        <td style="padding:6px 8px;border:1px solid #e5e7eb;">${escapeHtml(value)}</td>
+      </tr>`).join('')}
+    </table>
+    <p style="color:#666;font-size:13px;">You can send another test, or check the delivery counters,
+    from the Settings page of the HRMS portal.</p>`;
+  return baseLayout(content);
+}
+
+function testEmailText({ recipientName, host, port, user, from, frontendUrl, requestedBy, sentAt, message } = {}) {
+  return [
+    `${appName} - test email`,
+    '',
+    `Hi ${recipientName || 'there'},`,
+    'This is a test message. If you are reading it, SMTP delivery works: the application',
+    'reached its mail server and the credentials were accepted.',
+    ...(message ? ['', `Note from the administrator: ${message}`] : []),
+    '',
+    `SMTP server:  ${host ? `${host}:${port}` : 'not configured'}`,
+    `Sent as:      ${from || user || '-'}`,
+    `Requested by: ${requestedBy || 'an administrator'}`,
+    `Sent at:      ${sentAt || new Date().toISOString()}`,
+    `Public site:  ${frontendUrl || 'FRONTEND_URL is not set - links in other emails will be omitted'}`,
+  ].join('\n');
+}
+
 module.exports = {
   formatDate,
   formatDateShort,
@@ -429,4 +487,6 @@ module.exports = {
   contractTerminatedEmail,
   applicationStatusEmail,
   scheduleAssignmentEmail,
+  testEmail,
+  testEmailText,
 };

@@ -26,6 +26,7 @@ const branchRoutes = require('./branch.routes');
 const pettyCashRoutes = require('./pettyCash.routes');
 const loyaltyRoutes = require('./loyalty.routes');
 const shiftRoutes = require('./shift.routes');
+const healthRoutes = require('./health.routes');
 const { captureActivity } = require('../middleware/activityCapture');
 
 const apiPrefix = config.apiPrefix;
@@ -59,6 +60,9 @@ router.use(`${apiPrefix}/branches`, branchRoutes);
 router.use(`${apiPrefix}/petty-cash`, pettyCashRoutes);
 router.use(`${apiPrefix}/loyalty`, loyaltyRoutes);
 router.use(`${apiPrefix}/shifts`, shiftRoutes);
+// Operational diagnostics. /health (unauthenticated, liveness) lives in app.js;
+// these are admin-only and report subsystem state rather than uptime.
+router.use(`${apiPrefix}/health`, healthRoutes);
 
 router.use(`${apiPrefix}/tracking`, require('./tracking.routes'));
 
