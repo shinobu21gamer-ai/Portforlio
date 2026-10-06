@@ -237,6 +237,77 @@ end-to-end: login → forced password change → `POST /categories` 201 →
 
 ---
 
+## Phase 8 — Hotfix: the receipt after payment printed blank — DONE (2026-10-06)
+
+**Trigger:** user report — "the receipt after payment have no text its blank …
+the receipt have nothing inside". Two independent faults, both on the payment
+success screen:
+
+1. **The paper was blank.** `printReceipt80mm()` hid the app with
+   `visibility:hidden` and made `#receipt-print-area` `position:absolute;
+   left:0; top:0` — but `.receipt-wrap` keeps a transform after its
+   `fadeInUp … both` animation, which makes it the containing block for that
+   absolute node, and `.pos-shell`/`.pos-body`/`.main` are all `overflow:hidden`
+   with a `100vh` shell. The slip therefore rendered mid-card (often clipped),
+   never at the left edge of the sheet, and there was no `@page` size at all —
+   an 80 mm thermal printer received the leftmost strip of an A4 page that
+   contained nothing but hidden app chrome. Blank sheet.
+2. **The screen could be blank too.** The success block read
+   `saleResult.tax` / `saleResult.discount` (the API returns `taxAmount` /
+   `discountAmount`), fell back to the **already cleared** cart for anything it
+   missed, and wrapped the whole slip in `{saleResult && …}` — so a thin verify
+   payload after the PayMongo redirect rendered no receipt at all.
+
+- [x] **`frontend/src/utils/receipt.js` (new)** — one pure module feeds the
+      screen, the printer and the download: `normalizeItems()` accepts server /
+      cart / checkout line shapes, `buildReceiptModel()` resolves every field
+      alias (`taxAmount|tax`, `discountAmount|discount`, `changeAmount`,
+      `items[].product.name|productName|name`, split legs) across the sale
+      payload → the `pendingOnlineSale` snapshot → the cart, derives totals from
+      the lines when the payload is thin, and reports `hasData` so the UI can
+      re-fetch instead of printing an empty slip. `renderReceiptHtml()` emits a
+      self-contained 80 mm document (`@page { size: 80mm auto; margin: 0 }`,
+      monospace, black-on-white, escaped). `printHtmlDocument()` prints it in a
+      hidden frame created in the top-most **same-origin** document (works when
+      the POS runs inside the HRMS iframe) and refuses to print an empty body;
+      `printNodeInPage()` is the in-page fallback.
+- [x] **`frontend/src/pages/Payment.jsx`** — receipt now always renders (no
+      `{saleResult && …}` gate), from the shared model; keeps the gateway
+      snapshot in a ref before `sessionStorage` is cleared (and stamps customer
+      + timestamp into it); re-fetches `GET /sales/:id` when the payload has no
+      lines, with a "Reload details" button; auto-print now covers online
+      payments too; `Print Receipt` / `Download HTML` share one renderer.
+- [x] **`frontend/src/index.css`** — print rules rewritten around a
+      `#receipt-print-portal` (a direct child of `<body>`, everything else
+      `display:none`, named page `receipt-80mm`) so no ancestor can clip or
+      offset the sheet; forced black-on-white for dark mode. Slip typography
+      lifted out of `.text-muted`, and `.pay-summary-total` got the flex it was
+      missing (it rendered as "Total₱490.39").
+- [x] **Settings** — `receiptHeader` (already an allowed/validated key) is now
+      rendered on the slip; it was silently dropped before.
+- [x] **Emailed receipt** — `receiptEmailText()` added and wired into both
+      send sites (`_createSale`, `sendReceiptEmail`). `mailer.sendEmail` falls
+      back to `text: text || subject`, so the text/plain part of a receipt was
+      just the subject line: any client that prefers text/plain showed an empty
+      receipt. The text part now mirrors the HTML (lines, total, tender, split
+      legs).
+- [x] **Tests** — `tests/unit/receipt.frontend.test.ts` (14): cash/split/online
+      payloads, thin-verify + snapshot fallback, cart-only fallback, empty
+      model flagged not printed, junk lines dropped, escaping, `@page` present,
+      no `undefined`/`NaN` in output. E2E `pos-sale` + `pending-override` now
+      assert the receipt actually contains the invoice no, the product name, a
+      peso total and the payment line, and that the downloaded print document
+      is a complete 80 mm slip. `tests/unit/receipt.email.test.ts` (4): the
+      text part carries the invoice, every line, the total and the split legs,
+      and is never empty.
+
+**Gate:** `npm run lint` 0 errors / 0 warnings; receipt unit suites **18/18**
+under the repo's own `vitest.config.ts`; `frontend` production build clean; e2e
+specs updated for CI (this sandbox cannot build `sqlite3` or download Chromium,
+so the e2e/integration gates run in CI).
+
+---
+
 ## Shipped before this plan (history)
 | Commit | What |
 |---|---|

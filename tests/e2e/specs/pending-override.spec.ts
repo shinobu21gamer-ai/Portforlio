@@ -37,5 +37,9 @@ test.describe('online-pay pending → cash override', () => {
     await page.getByTestId('cash-override').click();
     await expect(page.getByTestId('receipt')).toBeVisible({ timeout: 20000 });
     await expect(page.getByText(/Payment Success/i)).toBeVisible();
+    // The overridden sale still has to produce a receipt with something on it.
+    await expect(page.getByTestId('receipt-invoice')).toContainText(/INV-/i);
+    await expect(page.getByTestId('receipt-items')).not.toContainText(/No items/i);
+    await expect(page.getByTestId('receipt-total')).toContainText('₱');
   });
 });

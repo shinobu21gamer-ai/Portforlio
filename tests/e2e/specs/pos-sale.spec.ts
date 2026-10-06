@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import fs from 'fs';
 import { DEMO, loginApi } from '../helpers';
 
 test.describe('POS sale + receipt', () => {
@@ -74,8 +75,41 @@ test.describe('POS sale + receipt', () => {
     await page.getByTestId('cash-exact').click();
     await page.getByTestId('complete-payment').click();
 
-    await expect(page.getByTestId('receipt')).toBeVisible({ timeout: 20000 });
+    const receipt = page.getByTestId('receipt');
+    await expect(receipt).toBeVisible({ timeout: 20000 });
     await expect(page.getByText(/Payment Success/i)).toBeVisible();
+
+    // A receipt with nothing on it is worse than no receipt: the cashier hands
+    // the customer a blank slip. Assert the actual content survives the round
+    // trip from POST /sales to the success screen.
+    await expect(page.getByTestId('receipt-invoice')).toContainText(/INV-/i);
+    await expect(page.getByTestId('receipt-items')).toContainText(product.name);
+    await expect(page.getByTestId('receipt-items')).not.toContainText(/No items/i);
+    await expect(page.getByTestId('receipt-total')).toContainText('₱');
+    await expect(page.getByTestId('receipt-payment')).toContainText(/Cash/i);
+    await expect(receipt).toContainText('This receipt serves as your official proof of purchase.');
     await page.screenshot({ path: 'docs/screenshots/pos-receipt.png', fullPage: true });
+
+    // The print/download document is what actually reaches the thermal printer.
+    // It must be a complete 80mm slip, not an empty shell.
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      page.getByRole('button', { name: /Download HTML/i }).click(),
+    ]);
+    const savedPath = await download.path();
+    expect(savedPath, 'download produced no file').toBeTruthy();
+    const savedHtml = fs.readFileSync(savedPath as string, 'utf8');
+    expect(savedHtml).toContain('@page { size: 80mm auto; margin: 0; }');
+    expect(savedHtml).toContain(product.name);
+    expect(savedHtml).toMatch(/INV-/i);
+    expect(savedHtml).toContain('₱');
+    expect(savedHtml).not.toContain('No items recorded');
+
+    // Printing must not break the success screen (window.print is stubbed above,
+    // including in the hidden print frame created for the slip).
+    await page.getByTestId('print-receipt').click();
+    await page.waitForTimeout(800);
+    await expect(page.getByTestId('receipt')).toBeVisible();
+    await expect(page.getByTestId('receipt-total')).toContainText('₱');
   });
 });
