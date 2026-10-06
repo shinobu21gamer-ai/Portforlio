@@ -10,6 +10,7 @@ const isProd = process.env.NODE_ENV === 'production';
 const errors = [];
 
 const fs = require('fs');
+const storage = require('../utils/storage');
 
 const getOrCreateDevSecret = (secretName, envVar) => {
   if (process.env[envVar]) return process.env[envVar];
@@ -90,6 +91,32 @@ if (errors.length > 0) {
   }
 }
 
+// ─── Uploads ───────────────────────────────────────────────────────────
+// Resolved through src/utils/storage so an unwritable or not-yet-mounted
+// volume degrades to a working (ephemeral) location with a loud [STORAGE]
+// warning instead of killing the process at require time. The old
+// mkdirSync() in src/middleware/upload.js did exactly that on Render free
+// instances — where UPLOAD_DIR=/data/uploads is set but persistent disks
+// cannot be attached — so the server died with EACCES before binding a port.
+const uploadBase = storage.resolveWritableDir(process.env.UPLOAD_DIR || 'uploads', {
+  label: 'uploads directory',
+  level: process.env.UPLOAD_DIR ? 'warn' : 'log',
+  fallbacks: [
+    path.resolve('uploads'),
+    path.join(storage.APP_ROOT, 'uploads'),
+    path.join(storage.TMP_ROOT, 'uploads'),
+  ],
+});
+const uploadPath = storage.resolveWritableDir(process.env.UPLOAD_PATH || path.join(uploadBase, 'products'), {
+  label: 'product image directory',
+  level: process.env.UPLOAD_PATH ? 'warn' : 'log',
+  fallbacks: [
+    path.join(uploadBase, 'products'),
+    path.join(storage.APP_ROOT, 'uploads', 'products'),
+    path.join(storage.TMP_ROOT, 'uploads', 'products'),
+  ],
+});
+
 module.exports = {
   nodeEnv: process.env.NODE_ENV || 'development',
   port: parseInt(process.env.PORT, 10) || 5000,
@@ -108,8 +135,11 @@ module.exports = {
     maxFileSize: parseInt(process.env.MAX_FILE_SIZE, 10) || 5242880,
     // Base uploads directory. In production point this at the persistent
     // mount (e.g. /data/uploads on Render) so uploads survive redeploys.
-    base: process.env.UPLOAD_DIR || 'uploads',
-    path: process.env.UPLOAD_PATH || path.join(process.env.UPLOAD_DIR || 'uploads', 'products'),
+    // Both values are absolute and were verified writable at boot; if the
+    // configured location was not usable they point at a fallback that was
+    // (see src/utils/storage.js and the [STORAGE] warning in the logs).
+    base: uploadBase,
+    path: uploadPath,
   },
   smtp: {
     host: process.env.SMTP_HOST,

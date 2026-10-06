@@ -3,11 +3,22 @@ const path = require('path');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const config = require('../config');
+const { ensureDir } = require('../utils/storage');
 const { validateFileSignature } = require('../utils/fileType');
 
+// config.upload.path is already an absolute, boot-verified writable directory
+// (src/config/index.js -> src/utils/storage.js). This is a best-effort re-check
+// and it must NEVER throw: this module is required while the server boots, and
+// an unwritable volume (Render free instances cannot attach the /data disk that
+// UPLOAD_DIR points at) used to crash the whole process with
+// "EACCES: permission denied, mkdir '/data/uploads/products'" before it could
+// even listen.
 const uploadDir = path.resolve(config.upload.path);
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
+if (!fs.existsSync(uploadDir) && !ensureDir(uploadDir)) {
+  console.warn(
+    `[STORAGE] Product image directory ${uploadDir} could not be created. ` +
+    'Image uploads will fail until that volume is writable; reads of already-stored images still work.'
+  );
 }
 
 const DOCUMENT_MIMES = [
@@ -28,7 +39,9 @@ const imageStorage = multer.diskStorage({
 const docStorage = multer.diskStorage({
   destination: (req, file, cb) => {
     const dir = path.join(path.resolve(config.upload.base), 'documents');
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    // Best-effort: multer reports a write failure per request; nothing here may
+    // throw during boot.
+    if (!fs.existsSync(dir)) ensureDir(dir);
     cb(null, dir);
   },
   filename: (req, file, cb) => cb(null, `${uuidv4()}${path.extname(file.originalname)}`),

@@ -41,8 +41,15 @@ COPY uploads ./uploads
 COPY public ./public
 COPY data ./data
 
-RUN mkdir -p uploads/products uploads/resumes uploads/documents logs data && \
-    chown -R appuser:appgroup /app
+# data/ at the image root is the mount point for the persistent volume.
+# Creating it here (owned by appuser) means an EMPTY named volume mounted at
+# /data inherits appuser ownership when Docker first populates it, so SQLite and
+# uploads are writable. A bind mount or a volume created outside the image can
+# still be root-owned — the app then logs a [STORAGE] warning and falls back to
+# a writable directory instead of dying with EACCES.
+RUN mkdir -p uploads/products uploads/resumes uploads/documents logs data \
+             /data/uploads/products /data/uploads/resumes /data/uploads/documents && \
+    chown -R appuser:appgroup /app /data
 
 # CORS: unset = same-origin only (API + frontends share one host). Override
 # at deploy time if a separate frontend origin exists:

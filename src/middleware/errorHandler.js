@@ -60,6 +60,17 @@ const errorHandler = (err, req, res, _next) => {
     return res.status(400).json({ success: false, message: err.message, requestId });
   }
 
+  // Filesystem failures from an unwritable volume (uploads, SQLite, settings)
+  // are configuration problems, not internal bugs. Keep the 500 (the client
+  // should not treat it as success) but say what is actually wrong instead of
+  // the opaque "Internal server error".
+  if (['EACCES', 'EPERM', 'EROFS', 'ENOSPC'].includes(err.code)) {
+    const message = err.code === 'ENOSPC'
+      ? 'Storage is full: the volume holding uploads/data has no space left.'
+      : 'Storage is not writable by the application. Check the volume permissions (see the [STORAGE] lines in the server log).';
+    return res.status(500).json({ success: false, message, requestId });
+  }
+
   const statusCode = err.statusCode || 500;
   const message = statusCode === 500 ? 'Internal server error' : err.message;
 

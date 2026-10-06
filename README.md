@@ -111,7 +111,16 @@ See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md). Short version:
 
 1. Push this repo to GitHub.
 2. Render → **New → Blueprint** → `render.yaml`.
-3. One web service. Persistent disk at `/data` for SQLite + uploads. Set `JWT_SECRET` and `JWT_REFRESH_SECRET`. Outbound email: configure `SMTP_*` or keep `EMAIL_DISABLED=true`.
+3. One web service. Set `JWT_SECRET` and `JWT_REFRESH_SECRET`. Outbound email: configure `SMTP_*` or keep `EMAIL_DISABLED=true`.
+
+> **Storage:** the shipped blueprint is free-plan-safe (no disk), so SQLite and
+> uploads live in the app directory and are reset on every deploy — Render only
+> allows persistent disks on paid instances. To make data survive deploys,
+> switch to `plan: starter` and uncomment the `disk:` block plus the
+> `DB_STORAGE` / `UPLOAD_DIR` / `SETTINGS_FILE` env vars (all under `/data`).
+> If a configured path is missing or unwritable the server logs a `[STORAGE]`
+> warning and keeps running instead of crashing — see
+> [Troubleshooting](docs/DEPLOYMENT.md#troubleshooting).
 
 ```
 POS   https://<service>.onrender.com/pos
@@ -139,9 +148,9 @@ docker run -p 8080:8080 \
 | `AUTO_SETUP` | Dev/test only: seed demo accounts + catalog. **Ignored in production.** | — |
 | `INITIAL_ADMIN_EMAIL` / `INITIAL_ADMIN_PASSWORD` | Production first-run admin (password 12+). Unset password → generated once, printed to logs. | admin@minimart.com / — |
 | `DB_DIALECT` | `sqlite` or `mysql` | sqlite |
-| `DB_STORAGE` | SQLite file (use a persistent volume in production) | `./database.sqlite` |
+| `DB_STORAGE` | SQLite file (use a persistent volume in production; if it is not writable the app falls back and warns) | `./database.sqlite` |
 | `DB_HOST` / `DB_PORT` / `DB_NAME` / `DB_USER` / `DB_PASSWORD` | MySQL | — |
-| `UPLOAD_DIR` | Uploads root | `./uploads` |
+| `UPLOAD_DIR` | Uploads root (must be writable; falls back with a `[STORAGE]` warning) | `./uploads` |
 | `SETTINGS_FILE` | Runtime settings (baseline is `data/settings.defaults.json`) | `./data/settings.json` |
 | `APP_TIMEZONE` | Business timezone for report day bounds | `Asia/Manila` |
 | `JWT_SECRET` / `JWT_REFRESH_SECRET` | Required in production (boot fails without them) | generated in dev |
