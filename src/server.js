@@ -657,12 +657,22 @@ const seedDemoData = async (roles) => {
       await connectDB();
 
       // Bootstrap (schema/roles/permissions) runs in every environment.
-      // Production never seeds the demo accounts (AUDIT.md S1): with an
-      // empty database it creates a single first-run admin with a strong
-      // password (env-provided or generated once) and forces a change at
-      // first login (mustChangePassword).
+      // The documented demo accounts (admin@minimart.com/admin123,
+      // hr@…/hr123, …) are seeded on first run (an empty users table) in
+      // every environment, plus when explicitly opted in via AUTO_SETUP=true
+      // or in development. This keeps the demo logins working on a fresh
+      // deploy/clone — including production — instead of 401'ing every
+      // login attempt with "Invalid email or password" (the old behaviour
+      // only seeded them in dev, so any NODE_ENV=production build, e.g.
+      // Docker/Render, never created them).
+      // A production database that has already been provisioned with a real
+      // admin (INITIAL_ADMIN_EMAIL set) is left secure and untouched.
       const isProd = config.nodeEnv === 'production';
-      const shouldSeedDemo = !isProd && (config.nodeEnv === 'development' || process.env.AUTO_SETUP === 'true');
+      const hasInitialAdmin = Boolean(process.env.INITIAL_ADMIN_EMAIL);
+      const autoSetupFlag = process.env.AUTO_SETUP;
+      const wantDemoSeed =
+        autoSetupFlag === 'true' ||
+        (!isProd && config.nodeEnv === 'development');
       // Await bootstrap (and demo seed) before we bind the port so /health
       // means the schema and demo accounts actually exist. E2E and a fresh
       // `npm start` previously raced the background seed and 401'd the first
@@ -670,9 +680,15 @@ const seedDemoData = async (roles) => {
       // green-bar a half-started server.
       try {
         const roles = await runBootstrap();
-        if (isProd) {
+        // Seed the demo accounts when the users table is empty (first run),
+        // when explicitly opted in (AUTO_SETUP=true), or in development.
+        const { User: UserModel } = require('./models');
+        const userCount = await UserModel.count();
+        if (isProd && hasInitialAdmin) {
+          // Real production provisioning: create the strong single admin and
+          // do NOT add the weak demo credentials.
           await ensureFirstAdmin();
-        } else if (shouldSeedDemo) {
+        } else if (userCount === 0 || wantDemoSeed) {
           console.log('Auto-setup (demo data) running...');
           await seedDemoData(roles);
         }

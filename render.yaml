@@ -45,19 +45,21 @@ services:
         value: production
       - key: PORT
         value: 10000
-      # ── First-run admin (S1) ────────────────────────────────────────
-      # AUTO_SETUP is intentionally NOT set in production: the weak demo
-      # accounts (admin@minimart.com/admin123, hr@…/hr123, …) are dev-only.
-      # On first boot with an EMPTY database the server creates exactly one
-      # admin account:
-      #   • from INITIAL_ADMIN_EMAIL + INITIAL_ADMIN_PASSWORD (12+ chars) if
-      #     you set them as encrypted secrets in the Render dashboard, or
-      #   • with a generated one-time password printed to the deploy logs
-      #     exactly once.
-      # Either way, first login is forced to change the password.
-      # Set SEED_DEMO_ACCOUNTS=true only if you explicitly want the demo
-      # store (and its demo logins) in production — not recommended.
+      # ── Demo accounts / first-run setup (S1) ────────────────────────
+      # AUTO_SETUP=true seeds the documented demo accounts
+      # (admin@minimart.com/admin123, hr@…/hr123, manager@…/admin123,
+      # cashier@…/cashier123, inventory@…/inventory123, ligma1@gmail.com/
+      # employee123) so the demo logins work out of the box — including on a
+      # fresh production deploy. It is idempotent (findOrCreate), so it only
+      # ever adds them once and is safe to keep set.
       #
+      # To run a REAL production without the weak demo credentials, leave
+      # AUTO_SETUP unset (or "false") AND set INITIAL_ADMIN_EMAIL (with a
+      # 12+ char INITIAL_ADMIN_PASSWORD, or let one be generated once into
+      # the logs). When INITIAL_ADMIN_EMAIL is present the server creates a
+      # single strong admin and skips the demo accounts entirely.
+      - key: AUTO_SETUP
+        value: "true"
       # - key: INITIAL_ADMIN_EMAIL
       #   value: you@example.com
       # - key: INITIAL_ADMIN_PASSWORD
