@@ -386,7 +386,7 @@ class SaleService {
       if (!pending && data.customerId) {
         try {
           const { sendEmail: doSend } = require('../utils/mailer');
-          const { receiptEmail } = require('../utils/emailTemplates');
+          const { receiptEmail, receiptEmailText } = require('../utils/emailTemplates');
           const customer = await Customer.findByPk(data.customerId);
           if (customer && customer.email) {
             const saleData = await this.getById(sale.id);
@@ -395,10 +395,12 @@ class SaleService {
               quantity: i.quantity,
               subtotal: i.total,
             }));
+            const recipientName = `${customer.firstName} ${customer.lastName}`;
             await doSend({
               to: customer.email,
               subject: `Receipt - ${invoiceNo}`,
-              html: receiptEmail(`${customer.firstName} ${customer.lastName}`, invoiceNo, items, total, data.paymentMethod, saleData.payments),
+              html: receiptEmail(recipientName, invoiceNo, items, total, data.paymentMethod, saleData.payments),
+              text: receiptEmailText(recipientName, invoiceNo, items, total, data.paymentMethod, saleData.payments),
             });
           }
         } catch { /* email failure non-blocking */ }
@@ -562,7 +564,7 @@ class SaleService {
   // gets a real error when there's no customer email or SMTP fails.
   async sendReceiptEmail(saleId) {
     const { sendEmail: doSend } = require('../utils/mailer');
-    const { receiptEmail } = require('../utils/emailTemplates');
+    const { receiptEmail, receiptEmailText } = require('../utils/emailTemplates');
     const sale = await this.getById(saleId);
     if (!sale || !sale.customerId || !sale.customer?.email) {
       throw ApiError.badRequest('This sale has no customer email address to send the receipt to');
@@ -572,10 +574,12 @@ class SaleService {
       quantity: i.quantity,
       subtotal: i.total,
     }));
+    const recipientName = `${sale.customer.firstName} ${sale.customer.lastName}`;
     await doSend({
       to: sale.customer.email,
       subject: `Receipt - ${sale.invoiceNo}`,
-      html: receiptEmail(`${sale.customer.firstName} ${sale.customer.lastName}`, sale.invoiceNo, items, sale.total, sale.paymentMethod, sale.payments),
+      html: receiptEmail(recipientName, sale.invoiceNo, items, sale.total, sale.paymentMethod, sale.payments),
+      text: receiptEmailText(recipientName, sale.invoiceNo, items, sale.total, sale.paymentMethod, sale.payments),
     });
     return { sent: true, to: sale.customer.email };
   }

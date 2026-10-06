@@ -377,6 +377,38 @@ function receiptEmail(userName, invoiceNo, items, total, paymentMethod, payments
   return baseLayout(content);
 }
 
+/**
+ * Plain-text twin of receiptEmail.
+ *
+ * sendEmail() falls back to `text: text || subject`, so a receipt sent without
+ * a text part arrives as an email whose plain-text body is literally just the
+ * subject line — clients that prefer text/plain (and most previews) show an
+ * empty receipt. Every line the HTML carries is mirrored here.
+ */
+function receiptEmailText(userName, invoiceNo, items, total, paymentMethod, payments = []) {
+  const php = (v) => `PHP ${Number(v || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const lines = (items || []).map((i) => `  ${i.name} x ${i.quantity}  ${php(i.subtotal)}`);
+  const paidLegs = (payments || []).filter((p) => p.status === 'completed' && Number(p.amount) > 0);
+  const legLines = paidLegs.length > 1
+    ? paidLegs.map((p) => `  ${p.paymentMethod}${p.reference ? ` (${p.reference})` : ''}  ${php(p.amount)}`)
+    : [];
+
+  return [
+    `${appName} - Receipt ${invoiceNo}`,
+    '',
+    `Hi ${userName},`,
+    'Thank you for your purchase!',
+    '',
+    lines.length ? lines.join('\n') : '  (no items recorded)',
+    '',
+    `TOTAL: ${php(total)}`,
+    `Payment: ${paymentMethod}`,
+    ...(legLines.length ? ['', 'Paid with:', legLines.join('\n')] : []),
+    '',
+    'This receipt serves as your official proof of purchase.',
+  ].join('\n');
+}
+
 module.exports = {
   formatDate,
   formatDateShort,
@@ -388,6 +420,7 @@ module.exports = {
   contractExpiryEmail,
   contractRenewalEmail,
   receiptEmail,
+  receiptEmailText,
   employeeApprovedEmail,
   employeeRejectedEmail,
   employeeTerminatedEmail,

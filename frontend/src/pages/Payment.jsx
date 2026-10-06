@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import PosLayout from '../layouts/PosLayout';
 import useCartStore from '../store/cartStore';
@@ -8,24 +8,23 @@ import { useToast } from '../components/Toast';
 import { peso, useDebounce } from '../utils/helpers';
 import { computeCartTotal } from '../utils/pricing';
 import api from '../api/client';
+import {
+  buildReceiptModel,
+  renderReceiptHtml,
+  printHtmlDocument,
+  printNodeInPage,
+  formatReceiptDate,
+  methodLabel,
+} from '../utils/receipt';
 
-const escapeHtml = (str) => {
-  if (typeof str !== 'string') return String(str || '');
-  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+// The online checkout redirects away from the SPA, so everything needed to
+// rebuild the slip (invoice, lines, totals) is parked in sessionStorage before
+// the jump. It is the receipt's last line of defence when the verify response
+// comes back thin.
+const PENDING_KEY = 'pendingOnlineSale';
+const readPendingSnapshot = () => {
+  try { return JSON.parse(sessionStorage.getItem(PENDING_KEY) || '{}') || {}; } catch { return {}; }
 };
-
-// Print the success screen's #receipt-print-area as an 80mm thermal slip.
-// The .print-receipt body class scopes the @media print rules (everything
-// else visibility:hidden); window.print() blocks until the dialog closes,
-// so the class is removed on afterprint with a timed fallback.
-function printReceipt80mm() {
-  const body = document.body;
-  body.classList.add('print-receipt');
-  const cleanup = () => body.classList.remove('print-receipt');
-  window.addEventListener('afterprint', cleanup, { once: true });
-  window.print();
-  setTimeout(cleanup, 1500);
-}
 
 export default function Payment({ success: successProp, cancel: cancelProp }) {
   const [searchParams] = useSearchParams();
@@ -106,7 +105,6 @@ export default function Payment({ success: successProp, cancel: cancelProp }) {
   });
 
   const taxRate = parseFloat(settings?.taxRate) || 12;
-  const storeName = settings?.storeName || 'MiniMart POS';
 
   const cartTotals = computeCartTotal(items, {
     discountType: discountType !== 'none' ? discountType : 'none',
@@ -128,14 +126,104 @@ export default function Payment({ success: successProp, cancel: cancelProp }) {
     if (successProp && saleIdParam && verifyData?.verified) {
       setSaleResult(verifyData);
       clearCart();
-      sessionStorage.removeItem('pendingOnlineSale');
+      sessionStorage.removeItem(PENDING_KEY);
       setShowSuccess(true);
       toast.success('Online payment confirmed!');
+      // An online order gets the same slip as a counter sale.
+      if (autoPrint) setTimeout(() => { printReceipt(); }, 400);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [successProp, saleIdParam, verifyData, clearCart, toast]);
 
   const verifyDataRef = useRef(verifyData);
   verifyDataRef.current = verifyData;
+
+  // ── Receipt data ────────────────────────────────────────────────────────
+  // Captured once, before anything clears sessionStorage: the gateway redirect
+  // wipes the cart, so this snapshot is what keeps an online receipt from
+  // rendering empty if the verify payload comes back thin.
+  const snapshotRef = useRef(null);
+  if (snapshotRef.current === null) snapshotRef.current = readPendingSnapshot();
+
+  // Re-fetched sale used when the payload we were handed has no lines on it.
+  const [saleFetch, setSaleFetch] = useState(null);
+  const [saleFetchState, setSaleFetchState] = useState('idle'); // idle | loading | done | failed
+
+  const snapshot = useMemo(() => {
+    const snap = snapshotRef.current;
+    if (!snap || (!snap.saleId && !snap.invoiceNo)) return null;
+    const snapId = String(snap.saleId || '');
+    // Only trust a snapshot that belongs to the sale on screen — a stale one
+    // from an abandoned checkout must never leak into another receipt.
+    if (snapId && saleIdParam && snapId === String(saleIdParam)) return snap;
+    if (snapId && saleResult?.id && snapId === String(saleResult.id)) return snap;
+    if (successProp && !saleResult) return snap;
+    return null;
+  }, [saleIdParam, saleResult, successProp]);
+
+  const receiptModel = useMemo(() => buildReceiptModel({
+    sale: saleFetch || saleResult,
+    snapshot,
+    // The cart is cleared the moment a sale completes, so its numbers are only
+    // usable while it still has lines in it.
+    cartItems: items.length ? items : null,
+    cart: items.length ? cartTotals : null,
+    method: method || undefined,
+    cashAmount,
+    settings,
+    customer: customerList.find(c => c.id === customerId) || null,
+    cashier: user,
+  }), [saleFetch, saleResult, snapshot, items, cartTotals, method, cashAmount, settings, customerList, customerId, user]);
+
+  const receiptModelRef = useRef(receiptModel);
+  receiptModelRef.current = receiptModel;
+
+  const saleIdForReceipt = saleResult?.id || saleFetch?.id || saleIdParam || receiptModel.saleId;
+
+  // Last resort: we know which sale this is but were handed no lines (a thin
+  // verify response, a restored session). Pull the full sale so the slip — and
+  // the printout — actually has something on it.
+  useEffect(() => {
+    if (!showSuccess || receiptModel.hasData || !saleIdForReceipt) return;
+    if (saleFetchState !== 'idle') return;
+    let cancelled = false;
+    setSaleFetchState('loading');
+    api.get(`/sales/${saleIdForReceipt}`)
+      .then((res) => {
+        const sale = res.data?.data;
+        if (!cancelled && sale) setSaleFetch(sale);
+      })
+      .catch(() => { /* keep whatever fallback data we have */ })
+      .finally(() => { if (!cancelled) setSaleFetchState('done'); });
+    return () => { cancelled = true; };
+  }, [showSuccess, receiptModel.hasData, saleIdForReceipt, saleFetchState]);
+
+  // Print a self-contained 80mm document in a hidden frame. This is what makes
+  // the paper match the screen: the old in-page window.print() depended on the
+  // app's layout (overflow:hidden shell, an animation transform on the receipt
+  // card) and on print CSS that could hide the slip entirely — the printer then
+  // produced a blank sheet. Falls back to the in-page portal print.
+  const printReceipt = useCallback(async () => {
+    const html = renderReceiptHtml(receiptModelRef.current);
+    const printed = await printHtmlDocument(html);
+    if (!printed) printNodeInPage('receipt-print-area');
+    return printed;
+  }, []);
+
+  const downloadReceiptHtml = useCallback(() => {
+    const model = receiptModelRef.current;
+    if (!model.hasData) { toast.error('No receipt data to save'); return; }
+    const html = renderReceiptHtml(model, { autoPrint: true });
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `receipt-${String(model.invoiceNo || 'sale').replace(/[^A-Za-z0-9-]/g, '')}-${Date.now()}.html`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  }, [toast]);
 
   // Manager/admin escape hatch: the online payment never confirmed but the
   // customer is at the counter with cash. Completes the pending sale as a
@@ -149,10 +237,10 @@ export default function Payment({ success: successProp, cancel: cancelProp }) {
       const sale = res.data?.data || {};
       setSaleResult({ ...sale, paymentMethod: 'cash', cashAmount: sale.total });
       clearCart();
-      sessionStorage.removeItem('pendingOnlineSale');
+      sessionStorage.removeItem(PENDING_KEY);
       setShowSuccess(true);
       toast.success('Sale completed as cash at the counter.');
-      if (autoPrint) setTimeout(printReceipt80mm, 400);
+      if (autoPrint) setTimeout(() => { printReceipt(); }, 400);
     } catch (err) {
       toast.error(err.response?.data?.message || 'Cash override failed');
     } finally {
@@ -182,14 +270,13 @@ export default function Payment({ success: successProp, cancel: cancelProp }) {
 
   useEffect(() => {
     if (cancelProp && saleIdParam) {
-      let stored = {};
-      try { stored = JSON.parse(sessionStorage.getItem('pendingOnlineSale') || '{}') || {}; } catch {}
+      const stored = snapshotRef.current || readPendingSnapshot();
       cancelPendingSale.mutate(saleIdParam, { onSettled: () => {} });
       if (Array.isArray(stored.cartItems) && stored.cartItems.length > 0) {
         stored.cartItems.forEach(ci => addItem(ci, ci.quantity || 1));
         toast.info('Cart restored.');
       }
-      sessionStorage.removeItem('pendingOnlineSale');
+      sessionStorage.removeItem(PENDING_KEY);
       toast.info('Payment was cancelled. Returning...');
       setTimeout(() => {
         if (window.top !== window) {
@@ -340,7 +427,10 @@ export default function Payment({ success: successProp, cancel: cancelProp }) {
       const saleId = pendingSale.id;
       pendingSaleRef.current = saleId;
 
-      sessionStorage.setItem('pendingOnlineSale', JSON.stringify({
+      // Everything the receipt needs to rebuild itself after the gateway
+      // redirect (which wipes the cart and this component's state).
+      const snapCustomer = customerList.find(c => c.id === customerId);
+      const pendingSnapshot = {
         saleId,
         invoiceNo: pendingSale.invoiceNo,
         total: pendingSale.total,
@@ -349,7 +439,13 @@ export default function Payment({ success: successProp, cancel: cancelProp }) {
         discount: pendingSale.discountAmount,
         paymentMethod,
         items: pendingSale.items || [],
-      }));
+        customerName: pendingSale.customer
+          ? `${pendingSale.customer.firstName || ''} ${pendingSale.customer.lastName || ''}`.trim()
+          : `${snapCustomer?.firstName || ''} ${snapCustomer?.lastName || ''}`.trim(),
+        createdAt: pendingSale.createdAt || new Date().toISOString(),
+      };
+      sessionStorage.setItem(PENDING_KEY, JSON.stringify(pendingSnapshot));
+      snapshotRef.current = pendingSnapshot;
 
       const checkoutData = {
         amount: pendingSale.total,
@@ -373,9 +469,9 @@ export default function Payment({ success: successProp, cancel: cancelProp }) {
 
       const checkout = await createCheckout.mutateAsync(checkoutData);
       if (checkout.checkoutUrl) {
-        const pendingSaleData = JSON.parse(sessionStorage.getItem('pendingOnlineSale') || '{}');
-        pendingSaleData.cartItems = items;
-        sessionStorage.setItem('pendingOnlineSale', JSON.stringify(pendingSaleData));
+        const pendingSaleData = { ...(snapshotRef.current || {}), cartItems: items };
+        sessionStorage.setItem(PENDING_KEY, JSON.stringify(pendingSaleData));
+        snapshotRef.current = pendingSaleData;
         pendingSaleRef.current = null;
         clearCart();
         const target = window.top || window;
@@ -387,7 +483,7 @@ export default function Payment({ success: successProp, cancel: cancelProp }) {
       if (pendingSaleRef.current) {
         cancelPendingSale.mutate(pendingSaleRef.current, { onSettled: () => {} });
         pendingSaleRef.current = null;
-        sessionStorage.removeItem('pendingOnlineSale');
+        sessionStorage.removeItem(PENDING_KEY);
         toast.info('Pending order cancelled.');
       }
       toast.error(err.response?.data?.message || err.message || 'Online payment failed');
@@ -421,11 +517,12 @@ export default function Payment({ success: successProp, cancel: cancelProp }) {
       clearCart();
       setShowSuccess(true);
       toast.success('Sale completed successfully!');
-      // Print in-page: the browser print dialog picks up the 80mm receipt
-      // from the success screen (see @media print CSS). A window.open popup
-      // here was routinely eaten by popup blockers, losing the slip.
+      // Print a self-contained 80mm document (see utils/receipt.js). A
+      // window.open popup here was routinely eaten by popup blockers, and the
+      // old in-page window.print() produced blank sheets whenever the app's
+      // layout or print CSS got in the way.
       if (autoPrint) {
-        setTimeout(printReceipt80mm, 400);
+        setTimeout(() => { printReceipt(); }, 400);
       }
     } catch (err) {
       // A dropped connection is not the same as a rejected sale: the request may
@@ -443,161 +540,13 @@ export default function Payment({ success: successProp, cancel: cancelProp }) {
     }
   };
 
-  const buildReceiptHtml = (resultOverride) => {
-    const r = resultOverride || saleResult;
-    if (!r) return '';
-    const now = new Date();
-    const dateStr = now.toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' });
-    const timeStr = now.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    const invoiceNo = r.invoiceNo || r.invoice || 'N/A';
-    const saleItems = r.items || r.lineItems || items;
-    const saleSubtotal = r.subtotal ?? storeSubtotal;
-    const saleDiscount = r.discount ?? discountAmount;
-    const saleTax = r.tax ?? r.taxAmount ?? tax;
-    const saleTotal = r.total ?? total;
-    const paymentMethod = r.paymentMethod || method || 'cash';
-    const cashGiven = r.cashAmount ?? (method === 'cash' ? parseFloat(cashAmount) : saleTotal);
-    const change = cashGiven - saleTotal;
-    const isSplit = paymentMethod === 'split';
-    const splitPayments = (r.payments || []).filter(p => p.status === 'completed' && Number(p.amount) > 0);
-
-    const itemRows = ((saleItems || []).length ? saleItems : items).map(item => {
-      const qty = item.quantity;
-      const name = escapeHtml(item.product?.name || item.productName || item.name || 'Item');
-      const price = item.unitPrice || item.sellingPrice || item.price || 0;
-      const lineTotal = price * qty;
-      return `<tr><td>${name}</td><td style="text-align:center">${qty}</td><td style="text-align:right">${peso(price)}</td><td style="text-align:right">${peso(lineTotal)}</td></tr>`;
-    }).join('');
-
-    const discountRow = saleDiscount > 0
-      ? `<div style="display:flex;justify-content:space-between;padding:4px 0"><span>Discount:</span><span>-${peso(saleDiscount)}</span></div>`
-      : '';
-
-    const LEG_LABELS = {
-      cash: 'Cash',
-      gcash: 'GCash',
-      maya: 'Maya',
-      credit_card: 'Credit Card',
-      debit_card: 'Debit Card',
-      bank_transfer: 'Bank Transfer',
-      other: 'Other',
-    };
-
-    const methodLabel =
-      isSplit && splitPayments.length > 1
-        ? `Split (${splitPayments
-            .map((p) => LEG_LABELS[p.paymentMethod] || p.paymentMethod)
-            .join(' + ')})`
-        : ({
-        cash: 'Cash',
-        gcash: 'GCash',
-        maya: 'Maya',
-        credit_card: 'Credit Card',
-        debit_card: 'Debit Card',
-        online: 'Online Payment (PayMongo)',
-      }[paymentMethod] || 'Cash');
-
-    const splitRows = isSplit
-      ? splitPayments.map(p => `<div><span>${escapeHtml(({ cash: 'Cash', gcash: 'GCash', maya: 'Maya', credit_card: 'Credit Card', debit_card: 'Debit Card', bank_transfer: 'Bank Transfer', other: 'Other' }[p.paymentMethod] || p.paymentMethod))}</span><span>${peso(p.amount)}</span></div>`).join('')
-      : '';
-
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<title>Receipt - ${invoiceNo}</title>
-<style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: 'Courier New', Courier, monospace; font-size: 13px; color: #000; background: #fff; padding: 20px; }
-  .receipt { max-width: 320px; margin: 0 auto; }
-  .header { text-align: center; border-bottom: 2px dashed #000; padding-bottom: 12px; margin-bottom: 12px; }
-  .store-name { font-size: 20px; font-weight: bold; letter-spacing: 2px; }
-  .store-tagline { font-size: 11px; color: #555; margin-top: 2px; }
-  .meta { text-align: center; font-size: 11px; margin-bottom: 12px; color: #555; }
-  .items-table { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
-  .items-table th { border-bottom: 1px dashed #000; padding: 4px 0; font-size: 11px; text-transform: uppercase; }
-  .items-table td { padding: 3px 0; }
-  .totals { border-top: 2px dashed #000; padding-top: 8px; margin-top: 8px; }
-  .total-row { display: flex; justify-content: space-between; padding: 3px 0; }
-  .total-row.grand { font-size: 16px; font-weight: bold; border-top: 1px dashed #000; padding-top: 6px; margin-top: 6px; }
-  .footer { text-align: center; border-top: 2px dashed #000; margin-top: 12px; padding-top: 12px; font-size: 11px; color: #555; }
-  .payment-info { margin-top: 8px; padding: 6px; border: 1px dashed #999; font-size: 11px; }
-  .payment-info div { display: flex; justify-content: space-between; padding: 2px 0; }
-</style>
-</head>
-<body>
-<div class="receipt">
-  <div class="header">
-    <div class="store-name">${escapeHtml(storeName)}</div>
-    ${settings?.address ? `<div class="store-tagline">${escapeHtml(settings.address)}</div>` : ''}
-    ${settings?.phone ? `<div class="store-tagline">Tel: ${escapeHtml(settings.phone)}</div>` : ''}
-    ${(settings?.gcashNumber || settings?.mayaNumber) ? `<div class="store-tagline">${settings.gcashNumber ? `GCash: ${escapeHtml(settings.gcashNumber)}` : ''}${settings.gcashNumber && settings.mayaNumber ? ' · ' : ''}${settings.mayaNumber ? `Maya: ${escapeHtml(settings.mayaNumber)}` : ''}</div>` : ''}
-  </div>
-  <div class="meta">
-    <div>Date: ${dateStr} ${timeStr}</div>
-    <div>Invoice: <strong>${escapeHtml(invoiceNo)}</strong></div>
-    ${selectedCustomer ? `<div>Customer: ${escapeHtml(selectedCustomer.firstName || '')} ${escapeHtml(selectedCustomer.lastName || '')}</div>` : '<div>Customer: Walk-in</div>'}
-  </div>
-  <table class="items-table">
-    <thead><tr><th style="text-align:left">Item</th><th>Qty</th><th style="text-align:right">Price</th><th style="text-align:right">Total</th></tr></thead>
-    <tbody>${itemRows || '<tr><td colspan="4" style="text-align:center;color:#999">No items</td></tr>'}</tbody>
-  </table>
-  <div class="totals">
-    <div class="total-row"><span>Subtotal:</span><span>${peso(saleSubtotal)}</span></div>
-    ${discountRow}
-    <div class="total-row"><span>Tax:</span><span>${peso(saleTax)}</span></div>
-    <div class="total-row grand"><span>TOTAL:</span><span>${peso(saleTotal)}</span></div>
-  </div>
-  <div class="payment-info">
-    <div><span>Payment Method:</span><span>${methodLabel}</span></div>
-    ${isSplit ? splitRows : `<div><span>Amount Tendered:</span><span>${peso(cashGiven)}</span></div>`}
-    ${change > 0 ? `<div><span>Change:</span><span>${peso(change)}</span></div>` : ''}
-  </div>
-  <div class="footer">
-    <div>${escapeHtml(settings?.receiptFooter || 'Thank you for shopping!')}</div>
-    <div style="margin-top:4px">This receipt serves as your official proof of purchase.</div>
-  </div>
-</div>
-<script>window.onload = function(){ window.print(); }<\/script>
-</body>
-</html>`;
-  };
-
-  // Fallback for cashiers whose thermal printer is down: save the receipt as
-  // a standalone HTML file. In-page printing (window.print + 80mm CSS) is the
-  // primary path — this never opens a popup, which blockers eat.
-  const downloadReceiptHtml = () => {
-    const html = buildReceiptHtml();
-    if (!html) { toast.error('No receipt data'); return; }
-    const blob = new Blob([html], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `receipt-${(saleResult?.invoiceNo || 'sale').replace(/[^A-Za-z0-9-]/g, '')}-${Date.now()}.html`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(url), 5000);
-  };
-
   if (showSuccess) {
-    // The receipt block is the print target: @media print hides everything
-    // else and renders just this as an 80mm thermal slip (monospace, store
-    // header with e-wallet numbers, dashed separators).
-    const receiptItems = saleResult?.items || saleResult?.lineItems || items || [];
-    const rSubtotal = saleResult?.subtotal ?? storeSubtotal;
-    const rDiscount = saleResult?.discount ?? discountAmount;
-    const rTax = saleResult?.tax ?? tax;
-    const rTotal = saleResult?.total ?? total;
-    const tendered = parseFloat(saleResult?.cashAmount ?? (method === 'cash' ? cashAmount : rTotal)) || 0;
-    const change = Math.max(0, tendered - rTotal);
-    const isCash = (saleResult?.paymentMethod || method) === 'cash';
-    const isSplit = (saleResult?.paymentMethod || method) === 'split';
-    const splitPayments = (saleResult?.payments || []).filter(p => p.status === 'completed' && Number(p.amount) > 0);
-    const METHOD_LABELS = { cash: 'Cash', gcash: 'GCash', maya: 'Maya', credit_card: 'Credit Card', debit_card: 'Debit Card', bank_transfer: 'Bank Transfer', other: 'Other', online: 'Online Payment' };
-    const methodLabel = isSplit && splitPayments.length > 1
-      ? `Split (${splitPayments.map(p => METHOD_LABELS[p.paymentMethod] || p.paymentMethod).join(' + ')})`
-      : (METHOD_LABELS[saleResult?.paymentMethod || method] || 'Cash');
+    // One model feeds the screen, the printer and the download, so the slip
+    // that comes out of the printer can never disagree with (or be emptier
+    // than) what the cashier sees.
+    const m = receiptModel;
+    const store = m.store;
+    const loadingReceipt = saleFetchState === 'loading';
 
     return (
       <PosLayout active="home">
@@ -605,76 +554,106 @@ export default function Payment({ success: successProp, cancel: cancelProp }) {
           <div className="receipt-wrap">
             <div className="success-circle no-print"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
             <p className="success-text no-print">Payment Success</p>
-            {saleResult && (
-              <div id="receipt-print-area" data-testid="receipt" className="mt-md text-sm text-muted pay-order-summary receipt-80mm">
-                <div className="text-center font-bold" style={{ fontSize: 16, marginBottom: 4, letterSpacing: 1 }}>{storeName}</div>
-                {settings?.address && <div className="text-center" style={{ fontSize: 11 }}>{settings.address}</div>}
-                {settings?.phone && <div className="text-center" style={{ fontSize: 11 }}>Tel: {settings.phone}</div>}
-                {(settings?.gcashNumber || settings?.mayaNumber) && (
-                  <div className="text-center" style={{ fontSize: 11 }}>
-                    {settings.gcashNumber && <span>GCash: {settings.gcashNumber}</span>}
-                    {settings.gcashNumber && settings.mayaNumber && <span> · </span>}
-                    {settings.mayaNumber && <span>Maya: {settings.mayaNumber}</span>}
-                  </div>
-                )}
-                <div style={{ borderTop: '1px dashed var(--border)', margin: '8px 0' }} />
-                <div className="receipt-header">
-                  <div className="receipt-date">
-                    {new Date().toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                  </div>
-                  <div className="receipt-invoice">
-                    Invoice: <strong>{saleResult.invoiceNo || saleResult.invoice}</strong>
-                  </div>
+
+            <div id="receipt-print-area" data-testid="receipt" className="mt-md text-sm pay-order-summary receipt-80mm">
+              <div className="receipt-store text-center font-bold">{store.name}</div>
+              {store.header && <div className="receipt-meta-line text-center">{store.header}</div>}
+              {store.address && <div className="receipt-meta-line text-center">{store.address}</div>}
+              {store.phone && <div className="receipt-meta-line text-center">Tel: {store.phone}</div>}
+              {(store.gcashNumber || store.mayaNumber) && (
+                <div className="receipt-meta-line text-center">
+                  {store.gcashNumber && <span>GCash: {store.gcashNumber}</span>}
+                  {store.gcashNumber && store.mayaNumber && <span> · </span>}
+                  {store.mayaNumber && <span>Maya: {store.mayaNumber}</span>}
                 </div>
-                <div className="receipt-items-wrap">
-                  {receiptItems.length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: '8px 0', color: 'var(--fg-tertiary)' }}>No items</div>
-                  ) : receiptItems.map((item, idx) => {
-                    const name = item.product?.name || item.productName || item.name || 'Item';
-                    const price = item.unitPrice || item.sellingPrice || item.price || 0;
-                    return (
-                      <div key={idx} className="receipt-row">
-                        <span>{name} × {item.quantity}</span>
-                        <span>{peso(price * item.quantity)}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-                <div className="receipt-totals">
-                  <div className="pay-summary-row"><span>Subtotal</span><span>{peso(rSubtotal)}</span></div>
-                  {rDiscount > 0 && (
-                    <div className="pay-summary-row text-error"><span>Discount</span><span>-{peso(rDiscount)}</span></div>
-                  )}
-                   <div className="pay-summary-row"><span>Tax</span><span>{peso(rTax)}</span></div>
-                  <div className="pay-summary-total"><span>Total</span><span>{peso(rTotal)}</span></div>
-                </div>
-                <div className="receipt-footer">
-                  <div className="flex-between"><span>Payment</span><span>{methodLabel}</span></div>
-                  {isCash && (
-                    <>
-                      <div className="flex-between"><span>Tendered</span><span>{peso(tendered)}</span></div>
-                      <div className="flex-between font-bold"><span>Change</span><span>{peso(change)}</span></div>
-                    </>
-                  )}
-                  {isSplit && splitPayments.map((p, i) => (
-                    <div className="flex-between" key={i}><span>{METHOD_LABELS[p.paymentMethod] || p.paymentMethod}</span><span>{peso(p.amount)}</span></div>
-                  ))}
-                </div>
-                <div style={{ borderTop: '1px dashed var(--border)', margin: '8px 0' }} />
-                <div className="text-center" style={{ fontSize: 11 }}>
-                  {settings?.receiptFooter || 'Thank you for your purchase!'}
-                  <div style={{ marginTop: 2, color: 'var(--fg-tertiary)' }}>This receipt serves as your official proof of purchase.</div>
+              )}
+
+              <div className="receipt-rule" />
+
+              <div className="receipt-header">
+                <div className="receipt-date">{formatReceiptDate(m.date)}</div>
+                <div className="receipt-invoice" data-testid="receipt-invoice">
+                  Invoice: <strong>{m.invoiceNo}</strong>
                 </div>
               </div>
+              <div className="receipt-meta-line">Customer: {m.customerName || 'Walk-in'}</div>
+              {m.cashierName && <div className="receipt-meta-line">Cashier: {m.cashierName}</div>}
+
+              <div className="receipt-items-wrap" data-testid="receipt-items">
+                {m.items.length === 0 ? (
+                  <div className="receipt-empty">
+                    {loadingReceipt ? 'Loading receipt…' : 'No items recorded'}
+                  </div>
+                ) : m.items.map((item, idx) => (
+                  <div key={idx} className="receipt-row">
+                    <span className="receipt-item-name">{item.name} × {item.qty}</span>
+                    <span className="receipt-item-amount">{peso(item.subtotal)}</span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="receipt-totals">
+                <div className="pay-summary-row"><span>Subtotal</span><span>{peso(m.subtotal)}</span></div>
+                {m.discount > 0 && (
+                  <div className="pay-summary-row text-error"><span>Discount</span><span>-{peso(m.discount)}</span></div>
+                )}
+                <div className="pay-summary-row"><span>{store.taxLabel}</span><span>{peso(m.tax)}</span></div>
+                {m.shipping > 0 && (
+                  <div className="pay-summary-row"><span>Shipping</span><span>{peso(m.shipping)}</span></div>
+                )}
+                <div className="pay-summary-total" data-testid="receipt-total"><span>Total</span><span>{peso(m.total)}</span></div>
+              </div>
+
+              <div className="receipt-footer">
+                {m.isSplit && m.payments.length > 0 ? (
+                  <>
+                    <div className="flex-between"><span>Payment</span><span>Split ({m.payments.length})</span></div>
+                    {m.payments.map((p, i) => (
+                      <div className="flex-between" key={i}><span>{methodLabel(p.method)}</span><span>{peso(p.amount)}</span></div>
+                    ))}
+                  </>
+                ) : (
+                  <div className="flex-between" data-testid="receipt-payment"><span>Payment</span><span>{methodLabel(m.paymentMethod)}</span></div>
+                )}
+                {m.isCash && (
+                  <>
+                    <div className="flex-between"><span>Tendered</span><span>{peso(m.tendered)}</span></div>
+                    <div className="flex-between font-bold" data-testid="receipt-change"><span>Change</span><span>{peso(m.change)}</span></div>
+                  </>
+                )}
+                {m.reference && <div className="flex-between"><span>Ref</span><span>{String(m.reference).slice(0, 18)}</span></div>}
+              </div>
+
+              <div className="receipt-rule" />
+              <div className="receipt-thanks text-center">
+                {store.footer}
+                <div className="receipt-proof">This receipt serves as your official proof of purchase.</div>
+              </div>
+            </div>
+
+            {!m.hasData && !loadingReceipt && (
+              <p className="text-sm no-print" style={{ marginTop: 10, color: 'var(--danger)' }}>
+                This sale was recorded but its details could not be loaded. Use “Reload details” before printing.
+              </p>
             )}
+
             <div className="receipt-actions no-print">
               {window.top !== window ? (
                 <button className="btn btn-success" onClick={() => { window.top.location.href = import.meta.env.VITE_HRMS_URL || `${window.location.origin}/hrms`; }}>Back to HRMS</button>
               ) : (
                 <button className="btn btn-success" onClick={() => navigate('/')}>Next Sale</button>
               )}
-              <button className="btn btn-outline" onClick={printReceipt80mm}>Print Receipt</button>
+              <button className="btn btn-outline" data-testid="print-receipt" onClick={() => { printReceipt(); }}>Print Receipt</button>
               <button className="btn btn-outline" onClick={downloadReceiptHtml}>Download HTML</button>
+              {!m.hasData && saleIdForReceipt && (
+                <button
+                  className="btn btn-outline"
+                  disabled={loadingReceipt}
+                  onClick={() => { setSaleFetchState('idle'); setSaleFetch(null); }}
+                >
+                  {loadingReceipt ? 'Loading…' : 'Reload details'}
+                </button>
+              )}
               <label className="flex-between" style={{ width: '100%', gap: 8, cursor: 'pointer', fontSize: 'var(--text-sm)', color: 'var(--fg-secondary)' }}>
                 <span>Auto-print receipt after each sale</span>
                 <input type="checkbox" checked={autoPrint} onChange={e => setAutoPrintPref(e.target.checked)} aria-label="Auto-print receipt after each sale" />

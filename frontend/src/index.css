@@ -1061,42 +1061,60 @@
 }
 
 /* ─── 80mm thermal receipt print ─────────────────────────────────────
-   The payment success screen marks its receipt with #receipt-print-area
-   and the app toggles .print-receipt on <body> while window.print() runs.
-   Everything else is hidden via visibility (layout preserved, nothing
-   reflows), leaving a plain monospace slip sized for 80mm paper. */
+   Primary path (utils/receipt.js → printHtmlDocument): the receipt is printed
+   as a self-contained document inside a hidden frame, carrying its own
+   `@page { size: 80mm auto; margin: 0 }`. No app CSS can reach it, so the
+   sheet can no longer come out blank.
+
+   The rules below are the in-page fallback (printNodeInPage): the slip is
+   cloned into #receipt-print-portal, a direct child of <body>, and the rest of
+   the app is display:none. The old version kept the app laid out with
+   `visibility:hidden` and absolutely positioned #receipt-print-area — but that
+   node sat inside .pos-shell/.main (both overflow:hidden) below a receipt card
+   whose animation left a transform on it, so the slip became the child of that
+   transformed box and was offset or clipped off the sheet entirely. */
+@page receipt-80mm {
+  size: 80mm auto;
+  margin: 0;
+}
+
 @media print {
-  body.print-receipt * {
-    visibility: hidden;
+  body.print-receipt > *:not(#receipt-print-portal) {
+    display: none !important;
   }
-  body.print-receipt #receipt-print-area,
-  body.print-receipt #receipt-print-area * {
-    visibility: visible;
-  }
-  body.print-receipt #receipt-print-area {
-    position: absolute;
-    left: 0;
-    top: 0;
+
+  body.print-receipt #receipt-print-portal {
+    display: block !important;
+    page: receipt-80mm;
+    position: static !important;
     width: 72mm;
-    margin: 0;
-    padding: 0;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
     background: #fff !important;
     color: #000 !important;
     font-family: 'Courier New', Courier, monospace;
     font-size: 12px;
     line-height: 1.45;
-    border: none !important;
-    box-shadow: none !important;
-    border-radius: 0 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
+
   body.print-receipt .no-print {
     display: none !important;
   }
-  body.print-receipt #receipt-print-area .text-muted,
-  body.print-receipt #receipt-print-area .receipt-row span,
-  body.print-receipt #receipt-print-area .pay-summary-row,
-  body.print-receipt #receipt-print-area .flex-between span {
+
+  /* Whatever is printed, it prints as black ink on white paper — the POS can
+     be in dark mode, where the slip would otherwise be grey-on-white. */
+  body.print-receipt #receipt-print-portal *,
+  body.print-receipt #receipt-print-area * {
     color: #000 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+    border-color: #000 !important;
   }
 }
 
@@ -1889,27 +1907,74 @@ th.dt-sortable:focus-visible { outline: 2px solid var(--color-primary-400); outl
   border: none;
   text-align: left;
 }
+/* The slip is a document, not a hint: everything on it reads at full contrast.
+   It used to inherit .text-muted, which on a light card looked like an empty
+   box from arm's length. */
+.receipt-wrap #receipt-print-area,
+#receipt-print-portal .receipt-print-copy { color: var(--fg-primary); }
+.receipt-store {
+  font-size: 17px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--fg-primary);
+}
+.receipt-meta-line { font-size: 11.5px; color: var(--fg-secondary); }
+.receipt-rule { border-top: 1px dashed var(--border-primary); margin: 8px 0; }
 .receipt-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 12px;
   font-size: 12px;
-  color: var(--text-muted);
+  color: var(--fg-secondary);
   padding-bottom: 8px;
   border-bottom: 1px dashed var(--border-primary);
-  margin-bottom: 10px;
+  margin-bottom: 6px;
 }
 .receipt-items-wrap { display: flex; flex-direction: column; }
 .receipt-row {
   display: flex;
   justify-content: space-between;
+  align-items: baseline;
   gap: 12px;
   padding: 4px 0;
   font-size: 13px;
 }
+.receipt-item-name {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-weight: 600;
+  color: var(--fg-primary);
+}
+.receipt-item-amount {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-primary);
+}
+.receipt-empty {
+  text-align: center;
+  padding: 10px 0;
+  font-style: italic;
+  color: var(--fg-secondary);
+}
 .receipt-totals { border-top: 1px dashed var(--border-primary); margin-top: 8px; padding-top: 8px; }
-.receipt-footer { border-top: 1px dashed var(--border-primary); margin-top: 8px; padding-top: 8px; font-size: 13px; }
+.receipt-wrap .pay-summary-row,
+#receipt-print-portal .pay-summary-row { color: var(--fg-primary); }
+/* The total line holds two spans; without flex they ran together as
+   "Total₱252.00" and read like a smudge at the counter. Scoped to the receipt
+   (and its print clone) so the payment screen's own summary is untouched. */
+.receipt-wrap .pay-summary-total,
+#receipt-print-portal .pay-summary-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  color: var(--fg-primary);
+}
+.receipt-footer { border-top: 1px dashed var(--border-primary); margin-top: 8px; padding-top: 8px; font-size: 13px; color: var(--fg-primary); }
+.receipt-thanks { font-size: 11.5px; color: var(--fg-secondary); }
+.receipt-proof { margin-top: 2px; font-size: 10.5px; color: var(--fg-tertiary); }
 .receipt-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
 .receipt-actions .btn { width: 100%; }
 
