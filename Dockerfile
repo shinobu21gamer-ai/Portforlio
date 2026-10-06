@@ -55,14 +55,18 @@ RUN mkdir -p uploads/products uploads/resumes uploads/documents logs data \
 # at deploy time if a separate frontend origin exists:
 #   docker run -e CORS_ORIGIN=https://pos.example.com ...
 #
-# Security (Phase 3 / AUDIT.md S1+S2):
-#  • AUTO_SETUP is NOT set — demo accounts with weak passwords are dev-only.
-#    On first boot with an empty DB the server creates a single first-run
-#    admin (INITIAL_ADMIN_EMAIL/INITIAL_ADMIN_PASSWORD, or a one-time
-#    generated password in the logs) that must change its password.
+# First-run setup (Phase 3 / AUDIT.md S1+S2):
+#  • AUTO_SETUP=true seeds the documented demo accounts (admin@minimart.com/
+#    admin123, etc.) on first boot so the demo logins work out of the box,
+#    including in this production image. It is idempotent and safe to keep.
+#  • For a REAL production without the weak demo credentials, set
+#    INITIAL_ADMIN_EMAIL (+ a 12+ char INITIAL_ADMIN_PASSWORD, or let one be
+#    generated once into the logs). When INITIAL_ADMIN_EMAIL is present the
+#    server creates a single strong admin and skips the demo accounts.
 #  • All persistent state (DB, uploads, settings) lives under /data — mount
 #    a volume there (docker-compose.yml already does).
 ENV NODE_ENV=production \
+    AUTO_SETUP=true \
     PORT=8080 \
     DB_DIALECT=sqlite \
     DB_STORAGE=/data/database.sqlite \

@@ -8,6 +8,10 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=5000
+      # AUTO_SETUP seeds the documented demo accounts (admin@minimart.com/admin123,
+      # etc.) so the demo logins work out of the box. Remove/set to "false" and
+      # set INITIAL_ADMIN_EMAIL for a real production without weak credentials.
+      - AUTO_SETUP=true
       - DB_DIALECT=mysql
       - DB_HOST=mysql
       - DB_PORT=3306
