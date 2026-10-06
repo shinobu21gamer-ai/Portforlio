@@ -227,7 +227,10 @@ router.get('/verify/:saleId', protect, async (req, res, next) => {
             }, { transaction: t });
           }
 
-          await saleService.finalizeAfterPayment(lockedSale.id, t);
+          await saleService.finalizeAfterPayment(lockedSale.id, t, {
+            actorId: req.user?.id || null,
+            source: 'PayMongo payment verification',
+          });
 
           updatedSale = lockedSale;
         });
@@ -299,7 +302,7 @@ router.post('/webhook', async (req, res) => {
               }, { transaction: t });
             }
 
-            await saleService.finalizeAfterPayment(sale.id, t);
+            await saleService.finalizeAfterPayment(sale.id, t, { source: 'PayMongo webhook' });
             finalized = true;
           }
         });

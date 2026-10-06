@@ -76,6 +76,7 @@ export default function ShiftWidget() {
           <line x1="7" y1="15" x2="11" y2="15" />
           <line x1="15" y1="15" x2="17" y2="15" />
         </svg>
+        <span className="sidebar-label">Register shift</span>
         <span
           style={{
             position: 'absolute',

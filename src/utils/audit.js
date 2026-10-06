@@ -1,4 +1,5 @@
 const { ActivityLog } = require('../models');
+const { markActivityLogged } = require('./activityContext');
 
 // The optional transaction is honoured: an audit row written outside the
 // caller's transaction would survive a rollback and claim an action that never
@@ -19,8 +20,11 @@ async function logActivity(userId, action, module, options = {}, transaction = n
       oldData: options.oldData || null,
       newData: options.newData || null,
     }, { transaction });
+    markActivityLogged();
+    return true;
   } catch (e) {
     console.error('Audit log failed:', e.message);
+    return false;
   }
 }
 

@@ -139,9 +139,13 @@ export default function HrmsLayout({ children }) {
       <aside className={`hrms-sidebar ${sidebarOpen ? 'open' : ''}`}>
         <div className="sidebar-brand">
           <span className="brand-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg></span>
-          <span className="brand-text">HRMS</span>
+          <span className="brand-copy">
+            <span className="brand-text">MiniMart</span>
+            <span className="brand-caption">People &amp; operations</span>
+          </span>
         </div>
         <nav className="sidebar-nav" onClick={closeSidebar}>
+          <div className="sidebar-section-label">Workspace</div>
           {navItems.map(n => n.children ? (
             <NavGroup key={n.label} item={n} openGroups={openGroups} toggleGroup={toggleGroup} counts={counts} role={role} />
           ) : n.external ? (
@@ -160,8 +164,10 @@ export default function HrmsLayout({ children }) {
         <div className="sidebar-bottom">
           <div className="user-info">
             <div className="user-avatar">{(user?.firstName || 'U')[0]}</div>
-            <div className="user-name">{user?.firstName} {user?.middleName ? user.middleName + ' ' : ''}{user?.lastName}</div>
-            <div className="user-role">{user?.role?.slug === 'hr' ? 'HR Officer' : user?.role?.slug === 'manager' ? 'Manager' : user?.role?.slug === 'cashier' ? 'Cashier' : user?.role?.slug === 'employee' ? 'Employee' : 'Admin'}</div>
+            <div className="user-copy">
+              <div className="user-name">{user?.firstName} {user?.middleName ? user.middleName + ' ' : ''}{user?.lastName}</div>
+              <div className="user-role">{user?.role?.slug === 'hr' ? 'HR Officer' : user?.role?.slug === 'manager' ? 'Manager' : user?.role?.slug === 'cashier' ? 'Cashier' : user?.role?.slug === 'employee' ? 'Employee' : 'Admin'}</div>
+            </div>
           </div>
         </div>
       </aside>

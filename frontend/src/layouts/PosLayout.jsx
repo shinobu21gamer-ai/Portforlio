@@ -6,6 +6,7 @@ import { useUnreadCount } from '../hooks/useApi';
 import { peso, productEmoji } from '../utils/helpers';
 import Button from '../components/Button';
 import Avatar from '../components/Avatar';
+import AssetImage from '../components/AssetImage';
 import ShiftWidget from '../components/ShiftWidget';
 
 const HRMS_ORIGIN = import.meta.env.VITE_HRMS_URL
@@ -27,7 +28,7 @@ export default function PosLayout({ children, active, showCart = false, cartFoot
   const isAdminOrManager = isAdmin || isManager;
 
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('minimart_theme') === 'dark');
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', darkMode ? 'dark' : 'light');
@@ -51,6 +52,7 @@ export default function PosLayout({ children, active, showCart = false, cartFoot
     { to: '/discounts', label: 'Discounts', icon: 'discounts', roles: ['admin', 'manager'] },
     { to: '/branches', label: 'Branches', icon: 'branches', roles: ['admin'] },
     { to: '/users', label: 'Users', icon: 'users', roles: ['admin'] },
+    { to: '/activity', label: 'Activity History', icon: 'history', roles: ['admin'] },
     { to: '/settings', label: 'Settings', icon: 'settings', roles: ['admin'] },
   ], []);
 
@@ -80,6 +82,7 @@ export default function PosLayout({ children, active, showCart = false, cartFoot
     finance: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 1v22"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>,
     branches: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>,
     users: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>,
+    history: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 2.64-6.36L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/></svg>,
     settings: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg>,
     notifications: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>,
     hrms: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/><polyline points="7 8 10 11 7 14"/><line x1="13" y1="14" x2="17" y2="14"/></svg>,
@@ -103,68 +106,93 @@ export default function PosLayout({ children, active, showCart = false, cartFoot
         </Button>
         {sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
         <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
-          <div className="sidebar-top" onClick={() => setSidebarOpen(false)}>
-            <div className="sidebar-logo">M</div>
-
-            {visibleNavItems.map(item => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end
-                className={({ isActive }) => `sidebar-btn ${isActive || active === item.label.toLowerCase().replace(/\s+/g, '-') ? 'active' : ''}`}
-                title={item.label}
-              >
-                {ICONS[item.icon]}
-              </NavLink>
-            ))}
+          <div className="sidebar-top">
+            <div className="sidebar-brand">
+              <div className="sidebar-logo">M</div>
+              <div className="sidebar-brand-copy">
+                <strong>MiniMart</strong>
+                <span>Retail operations</span>
+              </div>
+            </div>
+            <div className="sidebar-section-label">Workspace</div>
+            <nav className="sidebar-menu" aria-label="Retail workspace">
+              {visibleNavItems.map(item => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  end
+                  onClick={() => setSidebarOpen(false)}
+                  className={({ isActive }) => `sidebar-btn ${isActive || active === item.label.toLowerCase().replace(/\s+/g, '-') ? 'active' : ''}`}
+                  title={item.label}
+                >
+                  <span className="sidebar-icon">{ICONS[item.icon]}</span>
+                  <span className="sidebar-label">{item.label}</span>
+                </NavLink>
+              ))}
+            </nav>
 
             <div className="sidebar-divider" />
-
-            {isAdminOrManager && (
+            <div className="sidebar-section-label">Shortcuts</div>
+            <div className="sidebar-tools">
+              {isAdminOrManager && (
+                <Button
+                  className="sidebar-btn"
+                  title="HRMS"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setSidebarOpen(false);
+                    if (window.top !== window) {
+                      window.top.postMessage({ type: 'pos-back-to-hrms' }, HRMS_ORIGIN);
+                    } else {
+                      window.location.href = HRMS_HOME;
+                    }
+                  }}
+                >
+                  <span className="sidebar-icon">{ICONS.hrms}</span>
+                  <span className="sidebar-label">HRMS</span>
+                </Button>
+              )}
               <Button
                 className="sidebar-btn"
-                title="HRMS"
+                title="Notifications"
                 variant="ghost"
                 size="sm"
-                onClick={() => {
-                  if (window.top !== window) {
-                    window.top.postMessage({ type: 'pos-back-to-hrms' }, HRMS_ORIGIN);
-                  } else {
-                    window.location.href = HRMS_HOME;
-                  }
-                }}
+                onClick={() => { setSidebarOpen(false); navigate('/notifications'); }}
               >
-                {ICONS.hrms}
+                <span className="sidebar-icon">{ICONS.notifications}</span>
+                <span className="sidebar-label">Notifications</span>
+                {unreadCount > 0 && <span className="badge">{unreadCount > 99 ? '99+' : unreadCount}</span>}
               </Button>
-            )}
-
-            <Button
-              className="sidebar-btn"
-              title="Notifications"
-              variant="ghost"
-              size="sm"
-              onClick={() => navigate('/notifications')}
-            >
-              {ICONS.notifications}
-              {unreadCount > 0 && <span className="badge">{unreadCount > 99 ? '99+' : unreadCount}</span>}
-            </Button>
-
-            <div className="sidebar-divider" />
-
-            <NavLink to="/profile" className={({ isActive }) => `sidebar-btn ${isActive || active === 'profile' ? 'active' : ''}`} title="Profile">
-              {ICONS.profile}
-            </NavLink>
+              <NavLink
+                to="/profile"
+                onClick={() => setSidebarOpen(false)}
+                className={({ isActive }) => `sidebar-btn ${isActive || active === 'profile' ? 'active' : ''}`}
+                title="Profile"
+              >
+                <span className="sidebar-icon">{ICONS.profile}</span>
+                <span className="sidebar-label">My Profile</span>
+              </NavLink>
+            </div>
           </div>
           <div className="sidebar-bottom">
             <ShiftWidget />
+            <div className="sidebar-user">
+              <Avatar name={`${user?.firstName || ''} ${user?.lastName || ''}`.trim() || 'Team member'} size="sm" />
+              <div className="sidebar-user-copy">
+                <strong>{`${user?.firstName || ''} ${user?.lastName || ''}`.trim() || 'Team member'}</strong>
+                <span>{user?.role?.slug || user?.role || 'Staff'}</span>
+              </div>
+            </div>
             <Button
-              className="sidebar-btn"
+              className="sidebar-btn sidebar-theme-toggle"
               variant="ghost"
               size="sm"
               onClick={() => setDarkMode(d => !d)}
               title={darkMode ? 'Light mode' : 'Dark mode'}
             >
-              {darkMode ? ICONS.light : ICONS.dark}
+              <span className="sidebar-icon">{darkMode ? ICONS.light : ICONS.dark}</span>
+              <span className="sidebar-label">{darkMode ? 'Light mode' : 'Dark mode'}</span>
             </Button>
           </div>
         </aside>
@@ -184,7 +212,12 @@ export default function PosLayout({ children, active, showCart = false, cartFoot
                 items.map(item => (
                   <div key={item.id} className="cart-row">
                     <div className="cart-thumb">
-                      {item.image ? <img src={item.image} alt={item.name} loading="lazy" /> : productEmoji(item.category?.slug)}
+                      <AssetImage
+                        src={item.image}
+                        alt={item.name}
+                        loading="lazy"
+                        fallback={productEmoji(item.category?.slug)}
+                      />
                     </div>
                     <span className="cart-name">{item.name}</span>
                     <Button variant="ghost" size="sm" onClick={() => removeItem(item.id)} aria-label="Decrease quantity">−</Button>

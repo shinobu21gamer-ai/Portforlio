@@ -26,9 +26,13 @@ const branchRoutes = require('./branch.routes');
 const pettyCashRoutes = require('./pettyCash.routes');
 const loyaltyRoutes = require('./loyalty.routes');
 const shiftRoutes = require('./shift.routes');
+const { captureActivity } = require('../middleware/activityCapture');
 
 const apiPrefix = config.apiPrefix;
 
+// Capture every successful authenticated mutation as an audit event. Explicit
+// service audit records mark the request context so this fallback won't double-log.
+router.use(apiPrefix, captureActivity);
 router.use(`${apiPrefix}/auth`, authRoutes);
 router.use(`${apiPrefix}/users`, userRoutes);
 router.use(`${apiPrefix}/categories`, categoryRoutes);

@@ -33,6 +33,7 @@ const Profile        = lazy(() => import('./pages/Profile'));
 const Discounts      = lazy(() => import('./pages/Discounts'));
 const Finance        = lazy(() => import('./pages/Finance'));
 const Branches       = lazy(() => import('./pages/Branches'));
+const ActivityHistory = lazy(() => import('./pages/ActivityHistory'));
 
 function PageLoader() {
   return (
@@ -282,6 +283,7 @@ export default function App() {
                   <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
                   <Route path="/settings" element={<ProtectedRoute roles={['admin']}><Settings /></ProtectedRoute>} />
                   <Route path="/users" element={<ProtectedRoute roles={['admin']}><UserManagement /></ProtectedRoute>} />
+                  <Route path="/activity" element={<ProtectedRoute roles={['admin']}><ActivityHistory /></ProtectedRoute>} />
                   <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
 
                   <Route path="*" element={<NotFound />} />
