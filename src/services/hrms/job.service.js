@@ -1,8 +1,13 @@
 const { Sequelize, Op } = require('sequelize');
+const crypto = require('crypto');
 const { JobPosting, JobApplication, Interview, Employee, Contract, Notification } = require('../../models');
 const ApiError = require('../../utils/ApiError');
 const { getPagination, getPaginationMeta, sanitizeObject, generateEmployeeNo, escapeLike } = require('../../utils/helpers');
 const { logActivity } = require('../../utils/audit');
+
+// A per-hire one-time password, delivered to the applicant and replaced at
+// first sign-in by the enforced mustChangePassword flow.
+const generateTempPassword = () => crypto.randomBytes(9).toString('base64url');
 
 const VALID_TRANSITIONS = {
   'pending': ['reviewed', 'rejected'],
@@ -198,7 +203,7 @@ class JobPostingService {
       probationEndDate.setMonth(probationEndDate.getMonth() + 6);
 
       const { User, Role } = require('../../models');
-      const tempPassword = 'employee123';
+      const tempPassword = generateTempPassword();
       let role = validPos?.roleSlug ? await Role.findOne({ where: { slug: validPos.roleSlug } }) : null;
       if (!role) role = await Role.findOne({ where: { slug: 'employee' } });
 
@@ -226,7 +231,12 @@ class JobPostingService {
         }, { transaction: t });
 
         if (user) {
-          await user.update({ password: tempPassword, roleId: role.id }, { transaction: t });
+          await user.update({
+            password: tempPassword,
+            roleId: role.id,
+            isActive: true,
+            mustChangePassword: true,
+          }, { transaction: t });
         } else {
           user = await User.create({
             firstName: app.firstName,
@@ -234,6 +244,8 @@ class JobPostingService {
             email: app.email,
             password: tempPassword,
             roleId: role.id,
+            isActive: true,
+            mustChangePassword: true,
           }, { transaction: t });
         }
         await employee.update({ userId: user.id }, { transaction: t });

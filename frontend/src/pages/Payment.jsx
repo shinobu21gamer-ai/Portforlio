@@ -94,6 +94,10 @@ export default function Payment({ success: successProp, cancel: cancelProp }) {
   const availableDiscounts = discountsData?.data?.discounts || [];
 
   const pendingSaleRef = useRef(null);
+  // The cart store updates synchronously when cleared, while React may render
+  // before the receipt state updates. Prevent the empty-cart redirect from
+  // racing a completed cash sale and sending the cashier back to the POS.
+  const completedSaleRef = useRef(false);
 
   const { data: verifyData, isLoading: verifyLoading, error: verifyError } = useVerifyPayment(saleIdParam, sessionIdParam, {
     enabled: !!successProp && !!saleIdParam && !!sessionIdParam && !showSuccess,
@@ -117,7 +121,7 @@ export default function Payment({ success: successProp, cancel: cancelProp }) {
   const total = cartTotals.total;
 
   useEffect(() => {
-    if (items.length === 0 && !showSuccess && !successProp && !cancelProp) {
+    if (items.length === 0 && !showSuccess && !successProp && !cancelProp && !completedSaleRef.current) {
       navigate('/');
     }
   }, [items.length, showSuccess, successProp, cancelProp, navigate]);
@@ -513,6 +517,7 @@ export default function Payment({ success: successProp, cancel: cancelProp }) {
       };
 
       const result = await createSale.mutateAsync(saleData);
+      completedSaleRef.current = true;
       setSaleResult(result);
       clearCart();
       setShowSuccess(true);
