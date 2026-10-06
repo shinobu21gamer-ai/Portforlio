@@ -46,9 +46,13 @@ export default function EmployeeLayout({ children }) {
           <span className="brand-icon">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
           </span>
-          <span className="brand-text">HRMS</span>
+          <span className="brand-copy">
+            <span className="brand-text">MiniMart</span>
+            <span className="brand-caption">My workspace</span>
+          </span>
         </div>
         <nav className="sidebar-nav" onClick={closeSidebar}>
+          <div className="sidebar-section-label">Workspace</div>
           <NavLink to="/pos" end className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
             <span className="nav-icon">{NAV_ICONS.pos}</span>
             <span className="nav-label">POS System</span>
@@ -80,8 +84,10 @@ export default function EmployeeLayout({ children }) {
         <div className="sidebar-bottom">
           <div className="user-info">
             <div className="user-avatar">{(user?.firstName || 'U')[0]}</div>
-            <div className="user-name">{user?.firstName} {user?.middleName ? user.middleName + ' ' : ''}{user?.lastName}</div>
-            <div className="user-role">{roleLabel}</div>
+            <div className="user-copy">
+              <div className="user-name">{user?.firstName} {user?.middleName ? user.middleName + ' ' : ''}{user?.lastName}</div>
+              <div className="user-role">{roleLabel}</div>
+            </div>
           </div>
         </div>
       </aside>

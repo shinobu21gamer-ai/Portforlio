@@ -12,6 +12,8 @@ export default defineConfig({
     host: '0.0.0.0',
     allowedHosts: true,
     proxy: {
+      // Keep the two local frontends navigable on one preview origin.
+      '/hrms': { target: 'http://localhost:3001', changeOrigin: true },
       '/api': {
         target: 'http://localhost:5000',
         changeOrigin: true,

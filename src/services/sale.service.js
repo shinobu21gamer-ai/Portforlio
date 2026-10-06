@@ -8,6 +8,7 @@ const {
   generateInvoiceNo, calculateDiscount, calculateTax, getPagination, getPaginationMeta, escapeLike,
 } = require('../utils/helpers');
 const config = require('../config');
+const { logActivity } = require('../utils/audit');
 const { sqlLocalDateExpr, localDateBoundsForDate } = require('../utils/timezone');
 
 class SaleService {
@@ -472,7 +473,10 @@ class SaleService {
         if (e?.code !== 'MODULE_NOT_FOUND') throw e;
       }
 
-      await this.finalizeAfterPayment(sale.id, t);
+      await this.finalizeAfterPayment(sale.id, t, {
+        actorId: user?.id || null,
+        source: 'manager cash override',
+      });
       const completed = await Sale.findByPk(sale.id, {
         transaction: t,
         include: [
@@ -484,7 +488,7 @@ class SaleService {
     });
   }
 
-  async finalizeAfterPayment(saleId, transaction) {
+  async finalizeAfterPayment(saleId, transaction, audit = {}) {
     const sale = await Sale.findByPk(saleId, { transaction, lock: true });
     if (!sale) throw ApiError.notFound('Sale not found');
 
@@ -526,6 +530,21 @@ class SaleService {
       message: `Sale of ${sale.total} ${config.app.currency} completed`,
       data: { saleId: sale.id, invoiceNo: sale.invoiceNo, total: sale.total },
     }, { transaction });
+
+    const source = audit.source || 'payment gateway';
+    await logActivity(audit.actorId || null, 'sale-payment-confirmed', 'Sales', {
+      referenceType: 'Sale',
+      referenceId: sale.id,
+      description: `Payment confirmed for ${sale.invoiceNo} via ${source}`,
+      oldData: { status: 'pending', paymentStatus: 'pending' },
+      newData: {
+        invoiceNo: sale.invoiceNo,
+        status: sale.status,
+        paymentStatus: sale.paymentStatus,
+        paymentMethod: sale.paymentMethod,
+        total: parseFloat(sale.total) || 0,
+      },
+    }, transaction);
 
     return sale;
   }

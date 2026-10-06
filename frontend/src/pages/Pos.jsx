@@ -9,6 +9,7 @@ import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
 import Button from '../components/Button';
 import { peso, formatDate, useDebounce } from '../utils/helpers';
+import AssetImage from '../components/AssetImage';
 
 const EMOJI_DEFAULTS = ['🍪', '🧴', '🎁', '🍷', '📦', '🛒', '🏷️', '💊', '📱', '🎮'];
 const COLOR_DEFAULTS = ['#fde68a', '#bae6fd', '#fbcfe8', '#d8b4fe', '#bbf7d0', '#fecaca', '#e9d5ff', '#fed7aa', '#a5f3fc', '#fde047'];
@@ -454,7 +455,12 @@ export default function Pos() {
                 aria-label={`${p.name}, ${peso(p.sellingPrice)}, ${stockText}`}
               >
                 <div className="thumb" style={{ backgroundColor: getCatColor(p.category, catIdx >= 0 ? catIdx : 0) }}>
-                  {p.image ? <img src={p.image} alt={p.name} loading="lazy" /> : getCategoryEmoji(p.category)}
+                  <AssetImage
+                    src={p.image}
+                    alt={p.name}
+                    loading="lazy"
+                    fallback={getCategoryEmoji(p.category)}
+                  />
                 </div>
                 <div className="info">
                   <div className="name">{p.name}</div>

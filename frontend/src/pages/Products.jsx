@@ -6,6 +6,7 @@ import { useToast } from '../components/Toast';
 import Modal from '../components/Modal';
 import DataTable from '../components/DataTable';
 import { peso, formatDate, statusBadge, useDebounce } from '../utils/helpers';
+import AssetImage from '../components/AssetImage';
 
 const EMPTY = { name: '', description: '', categoryId: '', buyingPrice: '', sellingPrice: '', stockQuantity: '', minStockLevel: '10', barcode: '', sku: '', unit: 'pcs', taxRate: '0', expiryDate: '' };
 
@@ -178,11 +179,12 @@ export default function Products() {
         renderRow={(p, _idx, visHeaders) => {
           const cellMap = {
             image: <td>
-              {p.image ? (
-                <img src={p.image} alt={p.name} style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 8 }} />
-              ) : (
-                <div style={{ width: 40, height: 40, borderRadius: 8, background: 'var(--muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>📦</div>
-              )}
+              <AssetImage
+                src={p.image}
+                alt={p.name}
+                style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 8 }}
+                fallback={<div style={{ width: 40, height: 40, borderRadius: 8, background: 'var(--muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>📦</div>}
+              />
             </td>,
             name: <td><strong>{p.name}</strong></td>,
             sku: <td>{p.sku}</td>,
@@ -220,7 +222,14 @@ export default function Products() {
           <div className="field">
             <label>Product Image {!editItem && <span style={{ color: 'var(--danger)' }}>*</span>}</label>
             <div className="flex-row" style={{ gap: 12 }}>
-              {imagePreview && <img src={imagePreview} alt="Preview" style={{ width: 72, height: 72, objectFit: 'cover', borderRadius: 8, border: '2px solid var(--border)' }} />}
+              {imagePreview && (
+                <AssetImage
+                  src={imagePreview}
+                  alt="Preview"
+                  style={{ width: 72, height: 72, objectFit: 'cover', borderRadius: 8, border: '2px solid var(--border)' }}
+                  fallback={<div style={{ width: 72, height: 72, borderRadius: 8, border: '2px solid var(--border)', background: 'var(--muted)', display: 'grid', placeItems: 'center', fontSize: 22 }}>📦</div>}
+                />
+              )}
               <div>
                 <input type="file" accept="image/jpeg,image/png,image/gif,image/webp" onChange={handleImageChange} id="product-image" style={{ display: 'none' }} />
                 <label htmlFor="product-image" className="btn btn-outline btn-sm" style={{ cursor: 'pointer' }}>{imagePreview ? 'Change Image' : 'Upload Image'}</label>

@@ -1,3 +1,5 @@
+import { useState } from 'react';
+import { resolveAssetUrl } from '../utils/assets';
 import './Avatar.css';
 
 export default function Avatar({
@@ -11,6 +13,10 @@ export default function Avatar({
   className = '',
   ...props
 }) {
+  const imageSrc = resolveAssetUrl(src);
+  const [failedSrc, setFailedSrc] = useState('');
+  const showImage = imageSrc && failedSrc !== imageSrc;
+
   const classNames = [
     'avatar',
     `avatar--${size}`,
@@ -30,12 +36,13 @@ export default function Avatar({
 
   return (
     <div className={classNames} {...props}>
-      {src ? (
+      {showImage ? (
         <img
-          src={src}
+          src={imageSrc}
           alt={alt || name || 'Avatar'}
           className="avatar__image"
           loading="lazy"
+          onError={() => setFailedSrc(imageSrc)}
         />
       ) : name ? (
         <span className="avatar__initials" aria-hidden="true">
