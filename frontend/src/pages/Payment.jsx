@@ -439,7 +439,7 @@ export default function Payment({ success: successProp, cancel: cancelProp }) {
                 <span className="pay-status-icon" aria-hidden="true"><span className="spinner" /></span>
                 <span className="pay-status-eyebrow">Online payment · PayMongo</span>
                 <h1 className="pay-status-title">
-                  {waitSlow ? 'Still confirming your payment…' : 'Confirming your payment'}
+                  {waitSlow ? 'Still waiting for payment confirmation…' : 'Waiting for payment confirmation'}
                 </h1>
                 <p className="pay-status-text">
                   You're back from PayMongo's secure checkout. We're asking PayMongo whether the payment went
