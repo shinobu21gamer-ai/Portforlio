@@ -1,6 +1,6 @@
 # MiniMart POS + HRMS — System Review & Improvement Plan
 
-**Date:** 2026-10-05 · **Status:** EXECUTING — P0 + P1 + P2 complete (landing, jobs, login polish). P3 in progress: POS scan/checkout + 80mm receipts + cash override done; HRMS onboarding checklist done; user-hierarchy create bug + PayMongo unconfigured-500 fixed; DataTable keyboard a11y added; sorting/finance/branches/suppliers/discounts/SMTP verified. Remaining P3: dark-mode inline-style audit, modal focus traps/aria-live, per-role quick-actions bar, ⌘K palette.
+**Date:** 2026-10-07 · **Status:** EXECUTING — P0 + P1 + P2 complete (landing, jobs, login polish). P3 in progress: POS scan/checkout + 80mm receipts + cash override done; HRMS onboarding checklist done; user-hierarchy create bug + PayMongo unconfigured-500 fixed; DataTable keyboard a11y added; sorting/finance/branches/suppliers/discounts/SMTP verified. **UI unification done** — POS and HRMS now share one application shell (`frontend[,-hrms]/src/app-shell.css`), one brand lockup, one modal/confirm vocabulary; root causes were a missing `box-sizing` reset and a missing `body { margin: 0 }` in the POS CSS. See `docs/UI-UNIFICATION.md`. Remaining P3: dark-mode inline-style audit, modal focus traps/aria-live, per-role quick-actions bar, ⌘K palette.
 **Scope:** backend API, POS frontend, HRMS frontend, public site, database, security, tests, deployment
 
 ### Progress log

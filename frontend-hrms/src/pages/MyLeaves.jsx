@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import Modal from '../components/Modal';
 import ErrorState from '../components/ErrorState';
 import { useMyLeaves, useMyLeaveBalance, useCreateMyLeave } from '../hooks/useApi';
 import { useToast } from '../components/Toast';
@@ -97,30 +98,31 @@ export default function MyLeaves() {
         </div>
       )}
 
-      {showForm && (
-        <div className="modal-overlay" onClick={() => setShowForm(false)}>
-          <div className="modal" style={{ maxWidth: 560 }} onClick={e => e.stopPropagation()}>
-            <h2>Request Leave</h2>
-            <form onSubmit={handleSubmit}>
-              <div className="field">
-                <label>Leave Type *</label>
-                <select className="input-block" value={form.leaveType} onChange={e => setForm({...form, leaveType: e.target.value})} required>
-                  {LEAVE_TYPES.map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
-                </select>
-              </div>
-              <div className="form-row">
-                <div className="field"><label>Start Date *</label><input type="date" className="input-block" value={form.startDate} onChange={e => setForm({...form, startDate: e.target.value})} min={today} required /></div>
-                <div className="field"><label>End Date *</label><input type="date" className="input-block" value={form.endDate} onChange={e => setForm({...form, endDate: e.target.value})} min={form.startDate || today} required /></div>
-              </div>
-              <div className="field"><label>Reason *</label><textarea className="input-block" rows={4} value={form.reason} onChange={e => setForm({...form, reason: e.target.value})} minLength={5} required /></div>
-              <div className="modal-actions">
-                <button type="button" className="btn btn-outline" onClick={() => setShowForm(false)}>✕</button>
-                <button type="submit" className="btn btn-primary" disabled={createMut.isPending}>{createMut.isPending && <span className="btn-spinner" />}{createMut.isPending ? 'Submitting...' : 'Save'}</button>
-              </div>
-            </form>
-          </div>
+      <Modal
+        open={showForm}
+        onClose={() => setShowForm(false)}
+        title="Request Leave"
+      >
+        <div className="modal-form" style={{ maxWidth: 560 }}>
+          <form onSubmit={handleSubmit}>
+            <div className="field">
+              <label>Leave Type *</label>
+              <select className="input-block" value={form.leaveType} onChange={e => setForm({...form, leaveType: e.target.value})} required>
+                {LEAVE_TYPES.map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
+              </select>
+            </div>
+            <div className="form-row">
+              <div className="field"><label>Start Date *</label><input type="date" className="input-block" value={form.startDate} onChange={e => setForm({...form, startDate: e.target.value})} min={today} required /></div>
+              <div className="field"><label>End Date *</label><input type="date" className="input-block" value={form.endDate} onChange={e => setForm({...form, endDate: e.target.value})} min={form.startDate || today} required /></div>
+            </div>
+            <div className="field"><label>Reason *</label><textarea className="input-block" rows={4} value={form.reason} onChange={e => setForm({...form, reason: e.target.value})} minLength={5} required /></div>
+            <div className="modal-actions">
+            <button type="button" className="btn btn-outline" onClick={() => setShowForm(false)}>Cancel</button>
+            <button type="submit" className="btn btn-primary" disabled={createMut.isPending}>{createMut.isPending && <span className="btn-spinner" />}{createMut.isPending ? 'Submitting...' : 'Save'}</button>
+            </div>
+          </form>
         </div>
-      )}
+      </Modal>
     </div>
   );
 }

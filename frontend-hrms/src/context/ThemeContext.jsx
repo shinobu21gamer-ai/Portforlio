@@ -2,11 +2,15 @@ import { createContext, useContext, useEffect, useState, useCallback } from 'rea
 
 const ThemeContext = createContext(null);
 
-const THEME_KEY = 'hrms_theme';
+// Shared with the POS app (frontend/src/main.jsx + layouts/PosLayout.jsx) so
+// the register and the back office always agree about light/dark. The legacy
+// `hrms_theme` key is still read once, so an existing preference is not lost.
+const THEME_KEY = 'minimart_theme';
+const LEGACY_THEME_KEY = 'hrms_theme';
 
 function getInitialTheme() {
   try {
-    const stored = localStorage.getItem(THEME_KEY);
+    const stored = localStorage.getItem(THEME_KEY) || localStorage.getItem(LEGACY_THEME_KEY);
     if (stored === 'dark' || stored === 'light') return stored;
   } catch {}
   return 'light';

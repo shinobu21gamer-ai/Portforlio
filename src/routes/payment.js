@@ -18,18 +18,59 @@ const assertSaleAccess = (sale, user) => {
   throw ApiError.forbidden('You do not have access to this sale');
 };
 
-// Public base URL for PayMongo's success/cancel redirects. Prefers an explicit
-// POS_FRONTEND_URL and otherwise uses the origin the request arrived on.
-// `trust proxy` is enabled in src/server.js, so req.protocol/req.get('host')
-// reflect the real https host behind Render's proxy.
+// Public base URL for PayMongo's success/cancel redirects.
+//
+// Priority:
+//   1. POS_FRONTEND_URL — the explicit, always-correct answer.
+//   2. The browser Origin/Referer the checkout request came from. Behind any
+//      reverse proxy (nginx, Render, the dev server, a preview sandbox) the
+//      request Host is the *API* host, so building the redirect from it sent
+//      the customer to the API origin — a page that is not the POS at all.
+//   3. X-Forwarded-Host / X-Forwarded-Proto, then req.protocol/host.
 //
 // This must never fall back to a localhost default: PayMongo rejects non-HTTPS
 // success_url in live mode, and on test mode it would redirect the customer to
 // their own machine.
 function resolvePublicOrigin(req, configuredUrl) {
-  const origin = configuredUrl || `${req.protocol}://${req.get('host')}`;
-  return String(origin).replace(/\/+$/, '');
+  if (configuredUrl) return String(configuredUrl).replace(/\/+$/, '');
+
+  const fromHeader = (value) => {
+    if (!value) return null;
+    let candidate = String(value).split(',')[0].trim();
+    if (!candidate) return null;
+    // Origin is scheme://host already; Referer is a full URL.
+    try {
+      const url = new URL(candidate);
+      return `${url.protocol}//${url.host}`;
+    } catch { /* not a URL — treat it as a bare host below */ }
+    if (/^[a-z][a-z0-9+.-]*:\/\//i.test(candidate)) return null;
+    const proto = (req.headers['x-forwarded-proto'] || '').split(',')[0].trim()
+      || req.protocol
+      || 'https';
+    return `${proto}://${candidate.replace(/\/+$/, '')}`;
+  };
+
+  const fromBrowser = fromHeader(req.headers.origin) || fromHeader(req.headers.referer);
+  if (fromBrowser && !/^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i.test(fromBrowser)) {
+    return fromBrowser;
+  }
+
+  // Render/nginx set X-Forwarded-Host to the host the browser actually used.
+  const forwarded = fromHeader(req.headers['x-forwarded-host']);
+  if (forwarded) return forwarded;
+
+  return String(`${req.protocol}://${req.get('host')}`).replace(/\/+$/, '');
 }
+
+// Lets the register explain itself instead of failing at the last click: the
+// POS hides/warns about the e-wallet path when PayMongo keys are missing.
+router.get('/config', protect, async (req, res) => {
+  sendSuccess(res, {
+    provider: 'paymongo',
+    onlinePaymentsEnabled: paymongoService.isConfigured(),
+    enabledWallets: ['gcash', 'maya', 'card'],
+  });
+});
 
 router.get('/test', protect, authorize('admin'), async (req, res) => {
   try {
@@ -107,8 +148,21 @@ router.post('/create-checkout', protect, validate(schemas.createCheckout), async
       throw ApiError.internal('PayMongo did not return a checkout URL');
     }
 
+    // Remember which gateway session belongs to this sale. PayMongo's success
+    // URL placeholder is not guaranteed to survive the round trip, so the
+    // return page must be able to verify without relying on the query string —
+    // otherwise a paid order sits at "waiting for confirmation" until (and
+    // unless) the webhook arrives.
+    if (result.id) {
+      await sale.update({ paymentReference: result.id });
+    }
+
     console.log('PayMongo checkout created:', { sessionId: result.id, checkoutUrl });
-    sendSuccess(res, { checkoutUrl, sessionId: result.id }, 'Checkout session created');
+    sendSuccess(res, {
+      checkoutUrl,
+      sessionId: result.id,
+      returnUrl: `${posUrl}/payment/success?saleId=${saleId}`,
+    }, 'Checkout session created');
   } catch (err) {
     const detail = err.response?.data?.errors?.[0]?.detail || err.response?.data || err.message;
     console.error('Create checkout error:', detail);
@@ -137,7 +191,12 @@ router.get('/status/:saleId', protect, async (req, res, next) => {
 
 router.get('/verify/:saleId', protect, async (req, res, next) => {
   try {
-    const { sessionId } = req.query;
+    // A gateway placeholder that never got substituted ({checkout_session.id})
+    // is not an id: ignore anything that is not a real PayMongo session id and
+    // fall back to the session stamped on the sale at checkout creation.
+    const rawSessionId = typeof req.query.sessionId === 'string' ? req.query.sessionId.trim() : '';
+    const querySessionId = /^(cs_|pi_|link_)[A-Za-z0-9]+$/.test(rawSessionId) ? rawSessionId : '';
+
     let sale = await Sale.findByPk(req.params.saleId, {
       include: [{ association: 'items' }, { association: 'payments' }],
     });
@@ -150,6 +209,11 @@ router.get('/verify/:saleId', protect, async (req, res, next) => {
     if (sale.status === 'cancelled') {
       throw ApiError.conflict('Sale has been cancelled and cannot be verified');
     }
+
+    const storedReference = /^(cs_|pi_|link_)[A-Za-z0-9]+$/.test(String(sale.paymentReference || ''))
+      ? String(sale.paymentReference)
+      : '';
+    const sessionId = querySessionId || storedReference;
 
     if (!sessionId || !paymongoService.isConfigured()) {
       return sendSuccess(res, { verified: false, paymentStatus: sale.paymentStatus }, 'Payment not yet confirmed');

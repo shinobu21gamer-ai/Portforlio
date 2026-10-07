@@ -184,9 +184,22 @@ export function useVerifyPayment(saleId, sessionId, options = {}) {
   return useQuery({
     queryKey: ['verify-payment', saleId, sessionId],
     queryFn: () => api.get(`/payments/verify/${saleId}`, { params: { sessionId } }).then(r => r.data.data),
-    enabled: !!saleId && !!sessionId,
+    // The server can verify from the session it stamped on the sale, so a
+    // missing/placeholder sessionId in the redirect must not disable polling.
+    enabled: !!saleId,
     refetchInterval: userInterval ?? false,
     ...queryOptions,
+  });
+}
+
+// Is the PayMongo account actually wired up? The register asks before offering
+// the online (e-wallet) path, instead of failing on the last click.
+export function usePaymentConfig() {
+  return useQuery({
+    queryKey: ['payment-config'],
+    queryFn: () => api.get('/payments/config').then(r => r.data.data),
+    staleTime: 5 * 60 * 1000,
+    retry: 0,
   });
 }
 

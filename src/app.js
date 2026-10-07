@@ -65,19 +65,64 @@ if (config.nodeEnv === 'production' && !corsAllowAny) {
   console.log(`[CORS] Allowed cross-origin hosts: ${origins.join(', ')}`);
 }
 
+// Every host this request could legitimately have been addressed to. Behind a
+// proxy (Vite dev server, nginx, Render, the sandbox preview) `req.headers.host`
+// is the *upstream* host (e.g. localhost:5000) while the browser still sends
+// Origin: https://<public-host>, so a same-origin check that only looks at
+// `host` rejects perfectly valid same-origin traffic — every POST came back as
+// a 500 "Not allowed by CORS" during local/preview development.
+const requestHostCandidates = (req) => {
+  const candidates = new Set();
+  const add = (raw) => {
+    if (!raw) return;
+    String(raw).split(',').forEach((part) => {
+      const value = part.trim();
+      if (!value) return;
+      candidates.add(value);
+      try { candidates.add(new URL(`http://${value}`).hostname); } catch { /* not a host */ }
+    });
+  };
+  add(req.headers.host);
+  add(req.headers['x-forwarded-host']);
+  return candidates;
+};
+
+const isSameOrigin = (origin, req) => {
+  if (!origin) return true; // no Origin = same-origin or non-browser client
+  try {
+    const url = new URL(origin);
+    const hosts = requestHostCandidates(req);
+    return hosts.has(url.host) || hosts.has(url.hostname);
+  } catch {
+    return false;
+  }
+};
+
+// Outside production the API is only reachable from a developer machine or a
+// disposable preview sandbox, and the browser origin there is unpredictable
+// (localhost on any port, <port>-<id>.e2b.app, LAN IP, …). Mirroring the
+// socket.io policy, accept any browser origin in development.
+const allowAnyBrowserOrigin = corsAllowAny || config.nodeEnv !== 'production';
+
+const isOriginAllowed = (origin, req) => (
+  allowAnyBrowserOrigin
+  || allowedOrigins.includes(origin)
+  || isSameOrigin(origin, req)
+);
+
 app.use((req, res, next) => {
-  cors({
-    origin: (origin, callback) => {
-      // No Origin header = same-origin or non-browser client.
-      if (!origin) return callback(null, true);
-      if (corsAllowAny) return callback(null, true);
-      if (allowedOrigins.includes(origin)) return callback(null, true);
-      // Single-app deployment: always allow same-origin requests.
-      try {
-        if (new URL(origin).host === (req.headers.host || '')) return callback(null, true);
-      } catch { /* invalid origin header */ }
-      callback(new Error('Not allowed by CORS'));
-    },
+  const origin = req.headers.origin;
+  if (origin && !isOriginAllowed(origin, req)) {
+    // Answer with a real 403 and a message that names the fix, instead of
+    // throwing a bare Error that the error handler turned into a 500.
+    return res.status(403).json({
+      success: false,
+      message: `Origin ${origin} is not allowed by this API's CORS policy. Add it to CORS_ORIGIN.`,
+    });
+  }
+  return cors({
+    // Already validated above — reflect the (allowed) request origin back.
+    origin: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
     allowedHeaders: ['Content-Type', 'Authorization'],
     // Wildcard + credentials is invalid per spec; never send credentials there.

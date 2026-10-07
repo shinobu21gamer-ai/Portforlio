@@ -5,6 +5,17 @@ import 'leaflet/dist/leaflet.css';
 import App from './App';
 import './index.css';
 import './ui-polish.css';
+// Shared shell (identical file in frontend-hrms) — must stay last so it wins.
+import './app-shell.css';
+
+// Same theme key as the HRMS app (see frontend-hrms/src/context/ThemeContext.jsx)
+// and applied before first paint, so the two workspaces never disagree about
+// light/dark and the register never flashes white on load.
+try {
+  const storedTheme = localStorage.getItem('minimart_theme')
+    || localStorage.getItem('hrms_theme');
+  document.documentElement.setAttribute('data-theme', storedTheme === 'dark' ? 'dark' : 'light');
+} catch { /* private-mode storage can throw */ }
 
 const queryClient = new QueryClient({
   defaultOptions: {

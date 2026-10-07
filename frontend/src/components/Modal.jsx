@@ -12,6 +12,12 @@ export default function Modal({
   closeOnEscape = true,
   showCloseButton = true,
   preventScroll = true,
+  // Same prop surface as the HRMS Modal (frontend-hrms/src/components/Modal.jsx):
+  // `wide` for the 900px size, `preventClose` to block overlay/Escape/× while a
+  // request is in flight. Keeping both apps on one API is what lets the shared
+  // ConfirmDialog be copied between them unchanged.
+  wide = false,
+  preventClose = false,
   className = '',
   'aria-describedby': ariaDescribedBy,
   ...props
@@ -22,13 +28,14 @@ export default function Modal({
   onCloseRef.current = onClose;
 
   const handleOverlayClick = useCallback((e) => {
+    if (preventClose) return;
     if (e.target === e.currentTarget && closeOnOverlayClick) {
       onCloseRef.current();
     }
-  }, [closeOnOverlayClick]);
+  }, [closeOnOverlayClick, preventClose]);
 
   const handleKeyDown = useCallback((e) => {
-    if (e.key === 'Escape' && closeOnEscape) {
+    if (e.key === 'Escape' && closeOnEscape && !preventClose) {
       onCloseRef.current();
       return;
     }
@@ -55,7 +62,7 @@ export default function Modal({
         firstElement.focus();
       }
     }
-  }, [closeOnEscape]);
+  }, [closeOnEscape, preventClose]);
 
   useEffect(() => {
     if (!open) return;
@@ -105,7 +112,7 @@ export default function Modal({
     >
       <div
         ref={modalRef}
-        className={`modal ${sizeClasses[size]} ${className} modal--enter`}
+        className={`modal ${sizeClasses[size]} ${wide ? 'modal-wide' : ''} ${className} modal--enter`}
         role="dialog"
         aria-modal="true"
         aria-labelledby={title ? 'modal-title' : undefined}
@@ -122,7 +129,7 @@ export default function Modal({
             {showCloseButton && (
               <button
                 className="modal__close"
-                onClick={onClose}
+                onClick={() => { if (!preventClose) onClose(); }}
                 aria-label="Close modal"
                 type="button"
               >

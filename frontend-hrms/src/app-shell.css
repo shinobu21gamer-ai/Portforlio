@@ -1,0 +1,954 @@
+/* ════════════════════════════════════════════════════════════════════════
+   MiniMart — shared application shell
+   ────────────────────────────────────────────────────────────────────────
+   The single definition of the product's chrome: canvas, navigation rail,
+   content panel, page headers, login screens and status surfaces.
+
+   This file is IDENTICAL in `frontend/` (POS) and `frontend-hrms/`, and is
+   imported LAST in both apps so it wins over the per-app legacy stylesheets.
+
+   Keep the two copies byte-identical. If the register and the back office
+   disagree about the shell, they stop reading as one product — which is
+   exactly what happened before: the POS drew floating panels on an indigo
+   canvas while HRMS drew a flush full-height rail on a flat grey page.
+
+   Legacy class names (`.pos-shell`, `.sidebar`, `.main` / `.hrms-shell`,
+   `.hrms-sidebar`, `.hrms-main`) are all still supported on purpose — pages
+   and component stylesheets reference them.
+   ════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* Shell geometry — one set of numbers for both apps. */
+  --shell-rail-w: 248px;
+  --shell-gap: 14px;
+  --shell-pad: clamp(18px, 2.1vw, 30px);
+  --shell-radius: 18px;
+  --rail-radius: 17px;
+  --shell-band-h: 5px;
+  --shell-max-w: 1560px;
+
+  /* Brand chrome */
+  --app-band: linear-gradient(90deg, #3730a3 0%, #4f46e5 40%, #818cf8 100%);
+  --app-canvas:
+    radial-gradient(ellipse at 50% -20%, rgba(99, 102, 241, 0.14), transparent 52%),
+    linear-gradient(180deg, #eef2ff 0%, #f5f7fb 38%, #f3f6fb 100%);
+  --rail-bg: linear-gradient(180deg, #111827 0%, #0d1524 100%);
+  --rail-border: rgba(255, 255, 255, 0.065);
+  --rail-line: rgba(255, 255, 255, 0.09);
+  --rail-fg: #cbd5e1;
+  --rail-fg-muted: #aab6c7;
+  --rail-fg-dim: #91a0b6;
+  --rail-fg-label: #74839a;
+  --rail-hover: rgba(255, 255, 255, 0.065);
+  --rail-active-bg: linear-gradient(110deg, rgba(99, 102, 241, 0.25), rgba(99, 102, 241, 0.13));
+  --rail-active-border: rgba(129, 140, 248, 0.2);
+  --rail-active-accent: #818cf8;
+  --rail-shadow: 0 12px 34px rgba(15, 23, 42, 0.13);
+}
+
+[data-theme='dark'] {
+  --app-canvas:
+    radial-gradient(ellipse at 50% -20%, rgba(99, 102, 241, 0.13), transparent 50%),
+    #0b1220;
+  --rail-shadow: 0 12px 34px rgba(0, 0, 0, 0.4);
+}
+
+/* ─── Brand lockup (sidebar + login + topbar) ───────────────────────── */
+.brand-lockup { display: flex; align-items: center; gap: 11px; min-width: 0; }
+.brand-mark {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  border-radius: 13px;
+  color: #fff;
+  background: linear-gradient(135deg, #4f46e5, #818cf8);
+  box-shadow: 0 7px 18px rgba(79, 70, 229, 0.3);
+}
+.brand-mark svg { width: 24px; height: 24px; }
+.brand-mark--sm { width: 34px; height: 34px; flex-basis: 34px; border-radius: 11px; }
+.brand-mark--sm svg { width: 20px; height: 20px; }
+.brand-mark--lg { width: 52px; height: 52px; flex-basis: 52px; border-radius: 16px; box-shadow: 0 10px 26px rgba(79, 70, 229, 0.34); }
+.brand-mark--lg svg { width: 30px; height: 30px; }
+.brand-lockup-copy { display: flex; min-width: 0; flex-direction: column; gap: 1px; }
+.brand-lockup-copy strong {
+  color: #fff;
+  font-size: 14px;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+}
+.brand-lockup-copy > span { color: var(--rail-fg-dim); font-size: 10px; line-height: 1.3; }
+
+/* ════════════════════════════════════════════════════════════════════
+   1 · Canvas
+   ════════════════════════════════════════════════════════════════════ */
+.pos-shell,
+.hrms-shell {
+  color: var(--fg-primary);
+  background: var(--app-canvas);
+}
+
+/* The two gradient bands that frame the workspace. The POS renders them as
+   elements (`.pos-band`), HRMS gets them from the shell's pseudo-elements. */
+.pos-band {
+  height: var(--shell-band-h);
+  flex-shrink: 0;
+  background: var(--app-band);
+}
+/* ════════════════════════════════════════════════════════════════════
+   1b · Base reset parity
+   ════════════════════════════════════════════════════════════════════
+   HRMS ships `*, *::before, *::after { box-sizing: border-box }` in its
+   design-system.css; the POS build had **no** box-sizing rule at all. That one
+   missing line made every padded/bordered element in the register bigger than
+   it declared — the rail rendered 272px instead of 248px, each nav row 60px
+   instead of 40px, and cards/inputs/buttons all sat a size larger than the
+   identical classes in HRMS. Declaring it here (last-loaded stylesheet) puts
+   both apps on the same box model without touching either app's own CSS. */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+/* Same story for the page frame: HRMS's design-system.css carries
+   `html, body { margin: 0 }`, the POS's does not — so the register rendered
+   inset 8px inside a ring of body colour (browser default `body { margin: 8px }`)
+   while every HRMS screen sat flush to the edge. No-ops where already set. */
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+.pos-shell { height: 100vh; }
+.pos-body { gap: var(--shell-gap); padding: var(--shell-gap); }
+
+.hrms-shell {
+  display: flex;
+  gap: var(--shell-gap);
+  height: 100vh;
+  min-height: 100vh;
+  padding: calc(var(--shell-band-h) + var(--shell-gap)) var(--shell-gap) calc(var(--shell-band-h) + var(--shell-gap));
+  overflow: hidden;
+  position: relative;
+}
+.hrms-shell::before,
+.hrms-shell::after {
+  content: '';
+  position: fixed;
+  left: 0;
+  right: 0;
+  height: var(--shell-band-h);
+  z-index: 40;
+  background: var(--app-band);
+  pointer-events: none;
+}
+.hrms-shell::before { top: 0; }
+.hrms-shell::after { bottom: 0; }
+
+/* ════════════════════════════════════════════════════════════════════
+   2 · Navigation rail — same panel, same items, same states
+   ════════════════════════════════════════════════════════════════════ */
+.pos-shell .sidebar,
+.hrms-sidebar {
+  position: relative;
+  inset: auto;
+  width: var(--shell-rail-w);
+  flex: 0 0 var(--shell-rail-w);
+  align-items: stretch;
+  padding: 15px 11px 12px;
+  border: 1px solid var(--rail-border);
+  border-radius: var(--rail-radius);
+  color: var(--rail-fg);
+  background: var(--rail-bg);
+  box-shadow: var(--rail-shadow);
+  overflow: hidden;
+  z-index: 20;
+}
+.pos-shell .sidebar::before,
+.hrms-sidebar::before { display: none; }
+
+/* Brand block */
+.pos-shell .sidebar-brand,
+.hrms-sidebar .sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 5px 8px 16px;
+  margin: 0 0 3px;
+  border-bottom: 1px solid var(--rail-line);
+}
+.pos-shell .sidebar-logo {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  border-radius: 13px;
+  color: #fff;
+  background: linear-gradient(135deg, #4f46e5, #818cf8);
+  font-style: normal;
+  font-weight: 800;
+  box-shadow: 0 7px 18px rgba(79, 70, 229, 0.3);
+}
+.sidebar-brand-copy,
+.brand-copy { display: flex; min-width: 0; flex-direction: column; gap: 1px; }
+.sidebar-brand-copy strong,
+.brand-text { color: #fff; font-size: 14px; font-weight: 750; letter-spacing: -0.02em; line-height: 1.25; }
+.sidebar-brand-copy span,
+.brand-caption { color: var(--rail-fg-dim); font-size: 10px; font-weight: 500; line-height: 1.3; }
+
+/* Section labels */
+.sidebar-section-label {
+  padding: 9px 10px 4px;
+  color: var(--rail-fg-label);
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 0.13em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+/* Item list */
+.pos-shell .sidebar-top {
+  align-items: stretch;
+  gap: 8px;
+  overflow-x: hidden;
+  /* No horizontal padding: HRMS's <nav> is the direct rail child, so any inset
+     here made POS nav rows 4px narrower than the identical HRMS ones. */
+  padding: 0;
+}
+.sidebar-menu,
+.sidebar-tools,
+.sidebar-nav { display: flex; flex-direction: column; gap: 3px; padding: 4px 2px; }
+.hrms-sidebar .sidebar-nav { flex: 1; overflow-y: auto; min-height: 0; scrollbar-width: none; }
+.hrms-sidebar .sidebar-nav::-webkit-scrollbar { display: none; }
+
+.pos-shell .sidebar-btn,
+.hrms-sidebar .nav-item,
+.hrms-sidebar .sidebar-signout {
+  position: relative;
+  display: flex;
+  width: 100%;
+  min-height: 40px;
+  height: auto;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 11px;
+  padding: 9px 11px;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  color: var(--rail-fg-muted);
+  background: transparent;
+  font-size: 12.5px;
+  font-weight: 550;
+  line-height: 1.25;
+  text-align: left;
+  text-decoration: none;
+  box-shadow: none;
+  cursor: pointer;
+  user-select: none;
+  transition: color 150ms ease, background 150ms ease, border-color 150ms ease;
+}
+.pos-shell .sidebar-btn:hover:not(:disabled),
+.hrms-sidebar .nav-item:hover,
+.hrms-sidebar .sidebar-signout:hover {
+  color: #f8fafc;
+  background: var(--rail-hover);
+  border-color: rgba(255, 255, 255, 0.045);
+  transform: none;
+  box-shadow: none;
+}
+.pos-shell .sidebar-btn.active,
+.hrms-sidebar .nav-item.active {
+  color: #fff;
+  background: var(--rail-active-bg);
+  border-color: var(--rail-active-border);
+  box-shadow: inset 3px 0 0 var(--rail-active-accent);
+  font-weight: 650;
+}
+.pos-shell .sidebar-btn.active::before { display: none; }
+
+.sidebar-icon,
+.nav-icon {
+  display: inline-flex;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  align-items: center;
+  justify-content: center;
+  color: currentColor;
+}
+.sidebar-icon svg,
+.nav-icon svg { width: 18px; height: 18px; }
+.sidebar-label,
+.nav-label { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.3; }
+.nav-arrow { display: inline-flex; align-items: center; color: #79879d; font-size: 11px; }
+
+/* Collapsible groups */
+.nav-group { margin-bottom: 2px; }
+.nav-group-children {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 3px 0 5px 16px;
+  padding-left: 9px;
+  border-left: 1px solid rgba(255, 255, 255, 0.11);
+}
+.hrms-sidebar .nav-child { min-height: 34px; padding: 7px 11px; color: #98a6ba; font-size: 12px; }
+.hrms-sidebar .nav-child.active {
+  color: #f8fafc;
+  background: rgba(99, 102, 241, 0.16);
+  border-color: transparent;
+  box-shadow: inset 2px 0 0 var(--rail-active-accent);
+  font-weight: 600;
+}
+
+/* Badges and counters — one pill, everywhere in the rail. (Scoped: the HRMS
+   topbar reuses `.nav-badge` for its absolutely-positioned bell counter.) */
+.pos-shell .sidebar-btn .badge,
+.hrms-sidebar .nav-badge {
+  position: static;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  height: auto;
+  min-width: 18px;
+  padding: 2px 6px;
+  border: 0;
+  border-radius: 999px;
+  color: #fff;
+  background: #dc4c64;
+  font-size: 9px;
+  font-weight: 750;
+  line-height: 1.4;
+  box-shadow: none;
+}
+.pos-shell .sidebar-btn.active .badge,
+.hrms-sidebar .nav-item.active .nav-badge { box-shadow: 0 0 0 2px rgba(17, 24, 39, 0.9); }
+
+/* Rail footer: user + utilities */
+.pos-shell .sidebar-divider,
+.hrms-sidebar .sidebar-divider { width: auto; height: 1px; margin: 4px 5px; background: rgba(255, 255, 255, 0.1); }
+.pos-shell .sidebar-bottom,
+.hrms-sidebar .sidebar-bottom {
+  align-items: stretch;
+  gap: 5px;
+  padding: 10px 2px 1px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+.pos-shell .sidebar-user,
+.hrms-sidebar .user-info {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  margin: 3px 2px;
+  padding: 8px 8px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.045);
+}
+.sidebar-user-copy,
+.user-copy { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
+.sidebar-user-copy strong,
+.user-name {
+  overflow: hidden;
+  color: #f8fafc;
+  font-size: 11.5px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sidebar-user-copy span,
+.user-role { color: var(--rail-fg-dim); font-size: 10px; line-height: 1.35; text-transform: capitalize; }
+.pos-shell .sidebar .avatar,
+.hrms-sidebar .user-avatar { border-radius: 11px; box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.1); }
+.hrms-sidebar .user-avatar { width: 36px; height: 36px; flex: 0 0 36px; }
+.hrms-sidebar .sidebar-signout {
+  justify-content: flex-start;
+  width: 100%;
+  min-height: 38px;
+  margin-top: 2px;
+  border-radius: 11px;
+  background: transparent;
+  color: var(--rail-fg-muted);
+  font-size: 12.5px;
+  font-weight: 550;
+}
+.hrms-sidebar .sidebar-signout:hover { color: #fca5a5; background: rgba(239, 68, 68, 0.14); border-color: rgba(239, 68, 68, 0.28); }
+.pos-shell .sidebar .sidebar-theme-toggle { min-height: 35px; }
+.sidebar-overlay,
+.mobile-backdrop { z-index: 410; background: rgba(10, 17, 31, 0.48); backdrop-filter: blur(3px); }
+
+/* ════════════════════════════════════════════════════════════════════
+   3 · Content panel
+   ════════════════════════════════════════════════════════════════════ */
+.pos-shell .main,
+.hrms-main {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  margin-left: 0;
+  padding: var(--shell-pad);
+  overflow: auto;
+  border: 1px solid var(--border-primary);
+  border-radius: var(--shell-radius);
+  background: var(--bg-secondary);
+  box-shadow: var(--shadow-sm);
+}
+.pos-shell .main > .page-enter,
+.hrms-main > .page-enter {
+  width: 100%;
+  min-height: 100%;
+  max-width: var(--shell-max-w);
+  margin-inline: auto;
+}
+.pos-shell .cart,
+.pos-shell .product { background: var(--bg-secondary); }
+
+/* The HRMS toolbar is the panel's header strip, not a card inside a card. */
+.hrms-main .topbar {
+  position: sticky;
+  top: calc(var(--shell-pad) * -1);
+  z-index: 15;
+  display: flex;
+  min-height: 0;
+  align-items: center;
+  gap: 12px;
+  margin: calc(var(--shell-pad) * -1) calc(var(--shell-pad) * -1) 24px;
+  padding: 14px var(--shell-pad);
+  border: 0;
+  border-bottom: 1px solid var(--border-primary);
+  border-radius: 0;
+  background: var(--bg-secondary);
+  box-shadow: none;
+  flex-wrap: nowrap;
+}
+.hrms-main .search-trigger {
+  width: min(100%, 460px);
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-primary);
+  border-radius: 11px;
+  background: var(--bg-primary);
+  box-shadow: none;
+  color: var(--fg-secondary);
+}
+.hrms-main .search-trigger:hover { background: var(--bg-tertiary); border-color: var(--border-secondary); }
+.hrms-main .search-trigger kbd { background: var(--bg-secondary); }
+.hrms-main .topbar__actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.hrms-main .icon-btn,
+.hrms-main .topbar__logout { height: 40px; border-radius: 11px; box-shadow: none; }
+.hrms-main .notif-dropdown { border-radius: 16px; box-shadow: var(--shadow-lg); }
+
+/* ════════════════════════════════════════════════════════════════════
+   4 · Page headers
+   ════════════════════════════════════════════════════════════════════ */
+.page-header,
+.pos-header,
+.finance-header,
+.pos-shell .page-header,
+.pos-shell .pos-header,
+.pos-shell .finance-header,
+.hrms-main .page-header,
+.hrms-main .pos-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin: 0 0 22px;
+  flex-wrap: wrap;
+}
+.page-header h1,
+.pos-header h1,
+.finance-header h1,
+.pos-shell .page-header h1,
+.pos-shell .pos-header h1,
+.hrms-main .page-header h1 {
+  margin: 0;
+  color: var(--fg-primary);
+  font-size: clamp(23px, 2vw, 29px);
+  font-weight: 760;
+  letter-spacing: -0.045em;
+  line-height: 1.18;
+  background: none;
+  -webkit-text-fill-color: currentColor;
+}
+.page-header .sub,
+.pos-header .sub,
+.finance-header .sub,
+.pos-shell .pos-header .sub,
+.pos-shell .page-header .sub { margin-top: 5px; color: var(--fg-secondary); font-size: 12.5px; font-weight: 450; }
+.page-header > div:last-child:not(:first-child),
+.pos-header > div:last-child:not(:first-child),
+.finance-header > div:last-child:not(:first-child) { display: flex; align-items: center; gap: 9px; min-width: 0; flex-wrap: wrap; }
+.page-header .back-link,
+.pos-header .back-link { margin-bottom: 6px; }
+.page-enter { animation: pageIn var(--duration-normal) var(--ease-out); }
+
+/* "Amount due" chip on the register's payment screen. */
+.pay-total-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 9px 15px;
+  border: 1px solid var(--border-primary);
+  border-radius: 999px;
+  background: var(--bg-primary);
+}
+.pay-total-chip span { color: var(--fg-secondary); font-size: 11px; font-weight: 650; letter-spacing: 0.06em; text-transform: uppercase; }
+.pay-total-chip strong { color: var(--primary); font-size: 18px; font-weight: 760; letter-spacing: -0.02em; }
+
+/* Section headings inside a page */
+.hrms-page h2,
+.dashboard-section h2 { letter-spacing: -0.02em; }
+
+/* ════════════════════════════════════════════════════════════════════
+   5 · Sign-in surfaces (POS auth pages + HRMS login)
+   ════════════════════════════════════════════════════════════════════ */
+.auth-page,
+.login-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 24px;
+  position: relative;
+  overflow: auto;
+  background:
+    radial-gradient(1100px 540px at 50% -10%, rgba(99, 102, 241, 0.2), transparent 60%),
+    radial-gradient(900px 460px at 105% 110%, rgba(14, 165, 233, 0.12), transparent 55%),
+    linear-gradient(180deg, var(--color-primary-50) 0%, var(--bg-primary) 58%);
+}
+[data-theme='dark'] .auth-page,
+[data-theme='dark'] .login-page {
+  background:
+    radial-gradient(1100px 540px at 50% -10%, rgba(99, 102, 241, 0.22), transparent 60%),
+    var(--bg-primary);
+}
+.auth-bg { display: none; }
+
+.auth-shell { width: 100%; max-width: 420px; display: flex; flex-direction: column; gap: 18px; }
+.auth-card,
+.login-card {
+  width: 100%;
+  /* The HRMS login renders .login-card directly, without the .auth-shell
+     wrapper — a card with no cap stretched to 1380px on a desktop screen. */
+  max-width: 420px;
+  margin-inline: auto;
+  padding: 30px;
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-2xl);
+  background: var(--bg-secondary);
+  box-shadow: var(--shadow-xl);
+  animation: auth-card-enter var(--duration-normal) var(--ease-out);
+}
+.auth-lockup { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 10px; }
+.auth-lockup .brand-mark { width: 52px; height: 52px; flex-basis: 52px; border-radius: 16px; }
+.auth-lockup h1,
+.auth-lockup .auth-title {
+  margin: 0;
+  color: var(--fg-primary);
+  font-size: 21px;
+  font-weight: 750;
+  letter-spacing: -0.03em;
+}
+.auth-lockup p { margin: 0; color: var(--fg-secondary); font-size: 13px; }
+
+.auth-title {
+  margin: 0 0 6px;
+  color: var(--fg-primary);
+  font-size: 21px;
+  font-weight: 750;
+  letter-spacing: -0.03em;
+  text-align: center;
+}
+.auth-card > .text-muted,
+.login-card > .text-muted { font-size: 13px; }
+.login-brand,
+.login-header { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 10px; margin-bottom: 22px; }
+.login-brand h1,
+.login-header h1 { margin: 0; color: var(--fg-primary); font-size: 21px; font-weight: 750; letter-spacing: -0.03em; }
+.login-brand p,
+.login-header p { margin: 0; color: var(--fg-secondary); font-size: 13px; line-height: 1.55; }
+.login-logo-wrap,
+.login-logo {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  color: #fff;
+  background: linear-gradient(135deg, #4f46e5, #818cf8);
+  box-shadow: 0 10px 26px rgba(79, 70, 229, 0.34);
+}
+.login-logo-wrap svg,
+.login-logo svg { width: 28px; height: 28px; }
+.login-form { display: flex; flex-direction: column; gap: 14px; }
+.login-form .btn { margin-top: 4px; }
+.auth-submit { margin-top: 6px; }
+
+/* ════════════════════════════════════════════════════════════════════
+   5b · Modal + confirmation dialog chrome
+   The two apps ship their own Modal implementations (BEM `.modal__*` in the
+   POS, `.modal-header`-style in HRMS). The markup differs; the *look* must
+   not, so both class families are defined once, identically, here.
+   ════════════════════════════════════════════════════════════════════ */
+.modal {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-2xl);
+  max-height: min(85vh, 920px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.modal--full { border-radius: 0; }
+.modal-wide { max-width: 900px; }
+.modal__header,
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--border-primary);
+  flex-shrink: 0;
+}
+.modal__title,
+.modal-header h3 {
+  margin: 0;
+  color: var(--fg-primary);
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.3;
+}
+.modal__close,
+.modal-close {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 11px;
+  background: var(--bg-tertiary);
+  color: var(--fg-secondary);
+  cursor: pointer;
+  transition: background 150ms ease, color 150ms ease, transform 150ms ease;
+}
+.modal__close:hover,
+.modal-close:hover { background: var(--border-primary); color: var(--fg-primary); transform: none; }
+.modal__close svg,
+.modal-close svg { width: 20px; height: 20px; }
+.modal__body,
+.modal-body { flex: 1; min-height: 0; overflow-y: auto; padding: 24px; }
+.modal__footer,
+.modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 16px 24px;
+  border-top: 1px solid var(--border-primary);
+  flex-shrink: 0;
+}
+
+/* Confirmation prompt — always the same, whichever Modal variant wraps it. */
+.modal .confirm-dialog {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  text-align: center;
+}
+.confirm-dialog__message {
+  margin: 0 0 20px;
+  color: var(--fg-secondary);
+  font-size: 14px;
+  line-height: 1.6;
+  white-space: pre-line;
+}
+.confirm-dialog__actions { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; }
+
+/* ════════════════════════════════════════════════════════════════════
+   6 · Status, error & notice surfaces
+   ════════════════════════════════════════════════════════════════════ */
+/* Wrapper every page uses for a failed fetch. It was referenced ~40 times in
+   both apps and defined in neither, so a broken screen collapsed to the top
+   of the page with no rhythm. */
+.page-error-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: min(60vh, 460px);
+  padding: 8px;
+}
+.page-error-wrap > .error-state {
+  width: 100%;
+  max-width: 520px;
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-2xl);
+  background: var(--bg-secondary);
+  box-shadow: var(--shadow-xs);
+}
+
+.pay-status-wrap { display: flex; align-items: flex-start; justify-content: center; padding: clamp(8px, 4vh, 48px) 0; }
+.pay-status-card,
+.status-card {
+  width: 100%;
+  max-width: 520px;
+  padding: 30px;
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-2xl);
+  background: var(--bg-secondary);
+  box-shadow: var(--shadow-sm);
+  text-align: center;
+}
+.pay-status-icon {
+  display: grid;
+  place-items: center;
+  width: 62px;
+  height: 62px;
+  margin: 0 auto 16px;
+  border-radius: 20px;
+  color: var(--primary);
+  background: var(--primary-light);
+}
+.pay-status-icon .spinner { width: 26px; height: 26px; border-width: 3px; }
+.pay-status-icon--warn { color: var(--warning); background: var(--warning-light); }
+.pay-status-icon--neutral { color: var(--fg-tertiary); background: var(--bg-tertiary); }
+.pay-status-eyebrow {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--fg-tertiary);
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.pay-status-title { margin: 0 0 10px; color: var(--fg-primary); font-size: 21px; font-weight: 750; letter-spacing: -0.03em; }
+.pay-status-text { margin: 0 auto; max-width: 44ch; color: var(--fg-secondary); font-size: 13.5px; line-height: 1.6; }
+.pay-status-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+  margin: 20px 0;
+  padding: 14px;
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-lg);
+  background: var(--bg-primary);
+  text-align: left;
+}
+.pay-status-facts > div { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.pay-status-facts dt { color: var(--fg-tertiary); font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+.pay-status-facts dd { margin: 0; overflow: hidden; color: var(--fg-primary); font-size: 14px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.pay-status-hint { margin: 14px 0 0; color: var(--fg-secondary); font-size: 12.5px; line-height: 1.6; }
+.pay-status-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 20px; }
+.pay-status-progress { margin-top: 18px; }
+.pay-status-bar {
+  display: block;
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--color-primary-200), var(--color-primary-500), var(--color-primary-200));
+  background-size: 200% 100%;
+  animation: pay-status-sweep 1.4s linear infinite;
+}
+.pay-status-timer { display: block; margin-top: 8px; color: var(--fg-tertiary); font-size: 12px; font-variant-numeric: tabular-nums; }
+@keyframes pay-status-sweep {
+  from { background-position: 0% 0; }
+  to { background-position: -200% 0; }
+}
+.pay-status-override {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  margin-top: 20px;
+  padding: 14px 16px;
+  border: 1px dashed var(--border-secondary);
+  border-radius: var(--radius-lg);
+  background: var(--bg-primary);
+  text-align: left;
+}
+/* 404 — same card in both apps (see pages/NotFound.jsx). */
+/* .brand-lockup is a full-width flex row, so the mark itself has to be the
+   thing that centres — margin:auto on the wrapper does nothing. */
+.notfound-mark { justify-content: center; margin: 0 0 16px; }
+.notfound-code {
+  color: var(--fg-tertiary);
+  font-size: 44px;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1;
+}
+.notfound-title { margin: 6px 0 8px; color: var(--fg-primary); font-size: 20px; font-weight: 750; letter-spacing: -0.02em; }
+
+.pay-status-override > div { flex: 1 1 220px; min-width: 0; }
+.pay-status-override strong { color: var(--fg-primary); font-size: 13px; }
+.pay-status-override p { margin: 3px 0 0; color: var(--fg-secondary); font-size: 12.5px; line-height: 1.5; }
+
+.pay-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  padding: 13px 15px;
+  border: 1px solid var(--border-primary);
+  border-left-width: 3px;
+  border-radius: var(--radius-lg);
+  background: var(--bg-primary);
+}
+.pay-notice-icon { display: inline-flex; margin-top: 1px; color: var(--fg-secondary); }
+.pay-notice strong { display: block; color: var(--fg-primary); font-size: 13px; }
+.pay-notice p { margin: 4px 0 0; color: var(--fg-secondary); font-size: 12.5px; line-height: 1.55; }
+.pay-notice code {
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: var(--bg-tertiary);
+  color: var(--fg-primary);
+  font-size: 11.5px;
+}
+.pay-notice--warn { border-left-color: var(--warning); background: var(--warning-light); }
+.pay-notice--warn .pay-notice-icon { color: var(--warning); }
+
+/* Wallet picker used by the online-checkout step */
+.wallet-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.wallet-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 14px;
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-lg);
+  background: var(--bg-secondary);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+}
+.wallet-card:hover { border-color: var(--primary); box-shadow: var(--shadow-sm); transform: translateY(-1px); }
+.wallet-card-copy { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.wallet-card-copy strong { color: var(--fg-primary); font-size: 13.5px; font-weight: 700; }
+.wallet-card-copy span { color: var(--fg-tertiary); font-size: 10.5px; }
+.wallet-card-dot {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  border-radius: 11px;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 800;
+}
+.wallet-card-dot--gcash { background: linear-gradient(135deg, #0284c7, #0ea5e9); }
+.wallet-card-dot--maya { background: linear-gradient(135deg, #16a34a, #4ade80); }
+
+.pay-ewallet-info { padding: 18px; border: 1px solid var(--border-primary); border-radius: var(--radius-xl); background: var(--bg-primary); }
+.pay-ewallet-head { display: flex; align-items: flex-start; gap: 11px; margin-bottom: 14px; }
+.pay-ewallet-title { margin: 0 0 3px; color: var(--fg-primary); font-size: 15px; font-weight: 700; }
+.pay-steps { margin: 0 0 14px; padding-left: 20px; color: var(--fg-secondary); font-size: 12.5px; line-height: 1.65; }
+.pay-steps li { margin-bottom: 4px; }
+.pay-steps strong { color: var(--fg-primary); }
+
+/* ════════════════════════════════════════════════════════════════════
+   7 · Responsive — one breakpoint behaviour for both apps
+   ════════════════════════════════════════════════════════════════════ */
+@media (max-width: 1100px) {
+  :root { --shell-rail-w: 218px; }
+  .pos-shell .cart { width: 310px; }
+  .hrms-main .search-trigger { width: min(100%, 320px); }
+}
+
+@media (max-width: 900px) {
+  .pos-shell { height: 100dvh; }
+  .pos-shell .pos-body { gap: 0; padding: 0; }
+
+  .pos-shell .mobile-menu-btn,
+  .mobile-menu-btn {
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    position: fixed;
+    top: 15px;
+    left: 15px;
+    z-index: 430;
+    width: 42px;
+    height: 42px;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 12px;
+    color: #fff;
+    background: #4f46e5;
+    box-shadow: 0 6px 18px rgba(79, 70, 229, 0.28);
+  }
+
+  .pos-shell .sidebar,
+  .hrms-sidebar {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 420;
+    width: min(286px, 88vw);
+    max-width: 88vw;
+    height: 100%;
+    flex: none;
+    padding: 18px 12px 12px;
+    border-radius: 0 var(--rail-radius) var(--rail-radius) 0;
+    transform: translateX(-105%);
+    transition: transform 220ms cubic-bezier(0.2, 0.75, 0.25, 1);
+  }
+  .pos-shell .sidebar.open,
+  .hrms-sidebar.open { transform: translateX(0); box-shadow: 8px 0 40px rgba(0, 0, 0, 0.35); }
+
+  .pos-shell .main,
+  .hrms-main {
+    width: 100%;
+    min-height: 0;
+    padding: 66px 16px 18px;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .hrms-shell {
+    padding: 0;
+    gap: 0;
+    height: 100dvh;
+  }
+
+  .hrms-main .topbar {
+    top: -66px;
+    margin: -66px -16px 20px;
+    padding: 12px 16px 12px 68px;
+    min-height: 0;
+  }
+
+  .page-header,
+  .pos-header,
+  .finance-header,
+  .pos-shell .page-header,
+  .pos-shell .pos-header,
+  .pos-shell .finance-header,
+  .hrms-main .page-header,
+  .hrms-main .pos-header { align-items: flex-start; flex-direction: column; gap: 12px; }
+  .page-header > div:last-child:not(:first-child),
+  .pos-header > div:last-child:not(:first-child),
+  .finance-header > div:last-child:not(:first-child) { width: 100%; }
+  .wallet-grid { grid-template-columns: 1fr; }
+  .pay-status-card { padding: 22px 18px; }
+}
+
+@media (max-width: 560px) {
+  .pos-shell .main,
+  .hrms-main { padding-right: 12px; padding-left: 12px; }
+  .page-header h1,
+  .pos-header h1 { font-size: 21px; }
+  .hrms-main .search-trigger__label { display: none; }
+}
