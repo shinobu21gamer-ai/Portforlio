@@ -8,6 +8,7 @@ import Button from '../components/Button';
 import Avatar from '../components/Avatar';
 import AssetImage from '../components/AssetImage';
 import ShiftWidget from '../components/ShiftWidget';
+import BrandMark from '../components/BrandMark';
 
 const HRMS_ORIGIN = import.meta.env.VITE_HRMS_URL
   ? (() => { try { return new URL(import.meta.env.VITE_HRMS_URL).origin; } catch { return window.location.origin; } })()
@@ -108,11 +109,7 @@ export default function PosLayout({ children, active, showCart = false, cartFoot
         <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
           <div className="sidebar-top">
             <div className="sidebar-brand">
-              <div className="sidebar-logo">M</div>
-              <div className="sidebar-brand-copy">
-                <strong>MiniMart</strong>
-                <span>Retail operations</span>
-              </div>
+              <BrandMark caption="Retail operations" />
             </div>
             <div className="sidebar-section-label">Workspace</div>
             <nav className="sidebar-menu" aria-label="Retail workspace">

@@ -5,6 +5,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import App from './App';
 import './index.css';
 import './ui-polish.css';
+// Shared shell (identical file in frontend) — must stay last so it wins.
+import './app-shell.css';
 import 'leaflet/dist/leaflet.css';
 
 const queryClient = new QueryClient({

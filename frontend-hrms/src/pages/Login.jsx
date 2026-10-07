@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import useAuthStore from '../store/authStore';
+import BrandMark from '../components/BrandMark';
 import { useToast } from '../components/Toast';
 import api from '../api/client';
 import Input from '../components/Input';
@@ -115,16 +116,8 @@ export default function Login() {
     <div className="login-page">
       <div className="login-card">
         <div className="login-brand">
-          <div className="login-logo-wrap">
-            <svg width="44" height="44" viewBox="0 0 44 44" fill="none">
-              <rect width="44" height="44" rx="14" fill="var(--primary)"/>
-              <circle cx="16" cy="16" r="4" stroke="#fff" strokeWidth="2"/>
-              <circle cx="28" cy="16" r="4" stroke="#fff" strokeWidth="2"/>
-              <circle cx="22" cy="28" r="4" stroke="#fff" strokeWidth="2"/>
-              <path d="M16 16l6 12M28 16l-6 12" stroke="#fff" strokeWidth="1.5" strokeLinecap="round"/>
-            </svg>
-          </div>
-          <h1>{storeName} HRMS</h1>
+          <BrandMark size="lg" showCopy={false} />
+          <h1>{storeName}</h1>
           <p>Sign in to your staff account</p>
         </div>
         <form onSubmit={handleSubmit} className="login-form">
