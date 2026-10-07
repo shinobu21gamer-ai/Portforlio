@@ -144,8 +144,13 @@ export default function Payment({ success: successProp, cancel: cancelProp }) {
     }
   }, [items.length, showSuccess, successProp, cancelProp, navigate]);
 
+  // Finalise an online payment exactly once (toast + auto-print), however many
+  // times this effect re-runs.
+  const onlineSuccessHandledRef = useRef(null);
   useEffect(() => {
     if (successProp && saleIdParam && verifyData?.verified) {
+      if (onlineSuccessHandledRef.current === saleIdParam) return;
+      onlineSuccessHandledRef.current = saleIdParam;
       setSaleResult(verifyData);
       clearCart();
       sessionStorage.removeItem(PENDING_KEY);

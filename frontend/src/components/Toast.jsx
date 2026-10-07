@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, useEffect, useId } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect, useId, useMemo } from 'react';
 import './Toast.css';
 
 const ToastContext = createContext(null);
@@ -45,14 +45,17 @@ export function ToastProvider({ children, maxToasts = 5, defaultDuration = 5000 
     setToasts([]);
   }, []);
 
-  const toast = {
+  // Memoised: consumers list `toast` in effect dependency arrays. A fresh
+  // object on every render made those effects re-run each time a toast was
+  // added (e.g. the payment-success effect re-toasting and re-printing forever).
+  const toast = useMemo(() => ({
     success: (message, options) => addToast(message, { ...options, type: 'success' }),
     error: (message, options) => addToast(message, { ...options, type: 'error' }),
     warning: (message, options) => addToast(message, { ...options, type: 'warning' }),
     info: (message, options) => addToast(message, { ...options, type: 'info' }),
     dismiss: removeToast,
     clear: clearToasts
-  };
+  }), [addToast, removeToast, clearToasts]);
 
   return (
     <ToastContext.Provider value={toast}>
