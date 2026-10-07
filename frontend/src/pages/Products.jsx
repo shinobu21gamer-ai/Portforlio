@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import PosLayout from '../layouts/PosLayout';
 import { useProducts, useCategories, useCreateProduct, useUpdateProduct, useDeleteProduct } from '../hooks/useApi';
 import useAuthStore from '../store/authStore';
@@ -25,6 +26,13 @@ const columns = [
 export default function Products() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
+  // The ⌘K palette deep-links here with ?search=<term>; seed the box from it and
+  // re-seed on every navigation so a second pick while already on the page works.
+  const [searchParams] = useSearchParams();
+  useEffect(() => {
+    const seeded = searchParams.get('search');
+    if (seeded) { setSearch(seeded); setPage(1); }
+  }, [searchParams]);
   const [catFilter, setCatFilter] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editItem, setEditItem] = useState(null);
@@ -42,7 +50,7 @@ export default function Products() {
   const toast = useToast();
   const debouncedSearch = useDebounce(search, 300);
   const { data, isLoading } = useProducts({ page, limit: 15, search: debouncedSearch || undefined, categoryId: catFilter || undefined, sortBy, sortOrder });
-  const { data: catData } = useCategories();
+  const { data: catData } = useCategories({ limit: 100 });
   const createMut = useCreateProduct();
   const updateMut = useUpdateProduct();
   const deleteMut = useDeleteProduct();

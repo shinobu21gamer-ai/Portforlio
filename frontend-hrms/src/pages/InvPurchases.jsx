@@ -9,10 +9,10 @@ import { formatDate, peso } from '../utils/helpers';
 const columns = [
   { key: 'orderNo', label: 'PO #', sortable: true },
   { key: 'supplier', label: 'Supplier', sortable: false },
-  { key: 'createdAt', label: 'Date', sortable: true },
+  { key: 'orderDate', label: 'Date', sortable: true },
   { key: 'total', label: 'Total', sortable: true },
   { key: 'status', label: 'Status', sortable: true },
-  { key: 'paymentMethod', label: 'Payment', sortable: false },
+  { key: 'paymentStatus', label: 'Payment', sortable: false },
 ];
 
 const STATUS_COLORS = { pending: 'warning', ordered: 'info', partial: 'warning', received: 'success', cancelled: 'error' };
@@ -20,13 +20,24 @@ const PAYMENT_COLORS = { pending: 'warning', partial: 'info', paid: 'success' };
 
 export default function InvPurchases() {
   const [page, setPage] = useState(1);
+  const [sortBy, setSortBy] = useState('createdAt');
+  const [sortOrder, setSortOrder] = useState('DESC');
+  // Clicking a header toggles the direction on the same column and jumps back to
+  // the first page. The sort runs on the API (each service whitelists the columns
+  // it accepts), so the whole list stays ordered rather than just the loaded page.
+  const handleSort = (field) => {
+    if (sortBy === field) setSortOrder((o) => (o === 'ASC' ? 'DESC' : 'ASC'));
+    else { setSortBy(field); setSortOrder('ASC'); }
+    setPage(1);
+  };
+
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const debouncedSearch = useDebounce(search);
 
   const { data, isLoading, isError, error, refetch } = useQuery({
-    queryKey: ['inv-purchases', page, debouncedSearch, statusFilter],
-    queryFn: () => posApi.get('/purchases', { params: { page, limit: 15, search: debouncedSearch || undefined, status: statusFilter || undefined } }).then(r => r.data.data),
+    queryKey: ['inv-purchases', page, debouncedSearch, statusFilter, sortBy, sortOrder],
+    queryFn: () => posApi.get('/purchases', { params: { page, limit: 15, search: debouncedSearch || undefined, status: statusFilter || undefined, sortBy, sortOrder } }).then(r => r.data.data),
   });
 
   const purchases = data?.purchases || [];
@@ -59,15 +70,15 @@ export default function InvPurchases() {
           {search && <button onClick={() => { setSearch(''); setPage(1); }} className="search-clear" style={{ right: 6 }}>&times;</button>}
         </div>
       </div>
-      <DataTable columns={columns} data={purchases} pagination={pagination} onPageChange={setPage} isLoading={isLoading} emptyMessage="No purchases found"
+      <DataTable columns={columns} data={purchases} pagination={pagination} onPageChange={setPage} sortBy={sortBy} sortOrder={sortOrder} onSort={handleSort} isLoading={isLoading} emptyMessage="No purchases found"
         renderRow={(p, _idx, visHeaders) => {
           const cellMap = {
             orderNo: <td className="mono">{p.orderNo}</td>,
             supplier: <td>{p.supplier?.name || '—'}</td>,
-            date: <td>{formatDate(p.orderDate)}</td>,
+            orderDate: <td>{formatDate(p.orderDate || p.createdAt)}</td>,
             total: <td className="total-amount">{peso(p.total)}</td>,
             status: <td><span className={`badge ${STATUS_COLORS[p.status] || 'info'}`}>{p.status}</span></td>,
-            payment: <td><span className={`badge ${PAYMENT_COLORS[p.paymentStatus] || 'info'}`}>{p.paymentStatus}</span></td>,
+            paymentStatus: <td><span className={`badge ${PAYMENT_COLORS[p.paymentStatus] || 'info'}`}>{p.paymentStatus}</span></td>,
           };
           return <tr key={p.id}>{visHeaders.map(c => cellMap[c.key])}</tr>;
         }}

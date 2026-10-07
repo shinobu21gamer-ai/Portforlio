@@ -30,12 +30,20 @@ export default function GlobalSearch({ isOpen, onClose, onSelect }) {
   const employees = employeesData?.data?.employees || employeesData?.employees || [];
   const sales = salesData?.data?.sales || salesData?.sales || [];
 
+  // Each section navigates to a management screen, and those screens are
+  // role-gated (ProtectedRoute bounces an unauthorised role to "/"). Offering a
+  // result the user cannot open looked like a dead click, so the palette now
+  // mirrors the route guards.
+  const SECTIONS_BY_ROLE = ['admin', 'manager', 'inventory_staff'];
+  const canViewProducts = SECTIONS_BY_ROLE.includes(roleSlug);
+  const canViewCustomers = roleSlug === 'admin' || roleSlug === 'manager';
+
   const sections = useMemo(() => [
-    { key: 'products', label: 'Products', icon: '📦', items: products, getLabel: p => p.name, getSub: p => p.sku ? `#${p.sku}` : null, getAction: p => ({ type: 'product', id: p.id }) },
-    { key: 'customers', label: 'Customers', icon: '👤', items: customers, getLabel: c => `${c.firstName} ${c.lastName}`, getSub: c => c.email, getAction: c => ({ type: 'customer', id: c.id }) },
-    { key: 'employees', label: 'Employees', icon: '👨‍💼', items: employees, getLabel: e => `${e.firstName} ${e.lastName}`, getSub: e => e.email || e.role?.name, getAction: e => ({ type: 'employee', id: e.id }) },
-    { key: 'sales', label: 'Sales', icon: '🧾', items: sales, getLabel: s => s.invoiceNo, getSub: s => s.customerName ? `${s.customerName} • ${s.total}` : String(s.total), getAction: s => ({ type: 'sale', id: s.id }) }
-  ].filter(s => s.items.length > 0), [products, customers, employees, sales]);
+    { key: 'products', label: 'Products', enabled: canViewProducts, icon: '📦', items: products, getLabel: p => p.name, getSub: p => p.sku ? `#${p.sku}` : null, getAction: p => ({ type: 'product', id: p.id, query: p.name }) },
+    { key: 'customers', label: 'Customers', enabled: canViewCustomers, icon: '👤', items: customers, getLabel: c => `${c.firstName} ${c.lastName}`, getSub: c => c.email, getAction: c => ({ type: 'customer', id: c.id, query: `${c.firstName} ${c.lastName}`.trim() }) },
+    { key: 'employees', label: 'Employees', enabled: canViewUsers, icon: '👨‍💼', items: employees, getLabel: e => `${e.firstName} ${e.lastName}`, getSub: e => e.email || e.role?.name, getAction: e => ({ type: 'employee', id: e.id, query: `${e.firstName} ${e.lastName}`.trim() }) },
+    { key: 'sales', label: 'Sales', enabled: canViewCustomers, icon: '🧾', items: sales, getLabel: s => s.invoiceNo, getSub: s => s.customerName ? `${s.customerName} • ${s.total}` : String(s.total), getAction: s => ({ type: 'sale', id: s.id, query: s.invoiceNo || '' }) }
+  ].filter(s => s.enabled !== false && s.items.length > 0), [products, customers, employees, sales, canViewProducts, canViewCustomers, canViewUsers]);
 
   const flatItems = useMemo(() => sections.flatMap((section, si) =>
     section.items.map((item, ii) => ({ sectionIndex: si, itemIndex: ii, section, item }))

@@ -91,7 +91,7 @@ export default function Payment({ success: successProp, cancel: cancelProp }) {
   const canManualDiscount = user?.role?.slug === 'admin' || user?.role?.slug === 'manager';
 
   const debouncedCustomerSearch = useDebounce(customerSearch, 300);
-  const { data: customersData } = useCustomers({ search: debouncedCustomerSearch || undefined });
+  const { data: customersData } = useCustomers({ limit: 100, search: debouncedCustomerSearch || undefined });
   const customerList = customersData?.data?.customers || customersData?.customers || [];
 
   const createSale = useCreateSale();

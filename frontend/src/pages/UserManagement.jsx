@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import PosLayout from '../layouts/PosLayout';
 import useAuthStore from '../store/authStore';
@@ -25,6 +26,13 @@ export default function UserManagement() {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
+  // The ⌘K palette deep-links here with ?search=<term>; seed the box from it and
+  // re-seed on every navigation so a second pick while already on the page works.
+  const [searchParams] = useSearchParams();
+  useEffect(() => {
+    const seeded = searchParams.get('search');
+    if (seeded) { setSearch(seeded); setPage(1); }
+  }, [searchParams]);
   const debouncedSearch = useDebounce(search);
   const [showModal, setShowModal] = useState(false);
   const [editItem, setEditItem] = useState(null);

@@ -290,13 +290,30 @@ function countWorkingDays(startDate, endDate) {
   return totalWorkingDays;
 }
 
-function computePayslipForEmployee(emp, empAtt, periodSalary, periodWorkingDays, totalWorkingDays, isSemiMonthly, is13thMonthPeriod, totalBasicYTD, bonusAmount = 0, year = new Date().getFullYear()) {
-  const basicSalary = parseFloat(emp.salary);
-  const hourlyRate = periodSalary / (isSemiMonthly ? Math.ceil(periodWorkingDays) : totalWorkingDays) / 8;
+// Shared money rounding (two decimals, NaN-safe) for every payslip amount.
+function round2(n) {
+  const v = Number(n);
+  return Number.isFinite(v) ? parseFloat(v.toFixed(2)) : 0;
+}
 
-  // Absent deduction
-  const absentDays = Math.max(0, periodWorkingDays - empAtt.daysWorked);
-  const absentDeduction = parseFloat(((absentDays / periodWorkingDays) * periodSalary).toFixed(2));
+function computePayslipForEmployee(emp, empAtt, periodSalary, periodWorkingDays, totalWorkingDays, isSemiMonthly, is13thMonthPeriod, totalBasicYTD, bonusAmount = 0, year = new Date().getFullYear()) {
+  // A period can legitimately contain no working days at all (a stretch of
+  // Sundays and holidays), so every divisor below is floored at 1 — otherwise
+  // the hourly rate and the absence proration become NaN/Infinity and poison the
+  // whole run (NaN pays are stored, and the totals exported to CSV/email).
+  const workDays = Math.max(1, Number(periodWorkingDays) || 1);
+  const totalDays = Math.max(1, Number(totalWorkingDays) || 1);
+  const hourlyRate = periodSalary / (isSemiMonthly ? Math.max(1, Math.ceil(Number(periodWorkingDays) || 1)) : totalDays) / 8;
+
+  // Absences. A day with no attendance row is treated as unworked, matching the
+  // statutory "paid for days worked" rule.
+  const absentDays = Math.max(0, workDays - (Number(empAtt.daysWorked) || 0));
+  const absentDeduction = round2((absentDays / workDays) * periodSalary);
+
+  // Earnings actually made in this period. The absence penalty is taken out of
+  // the *gross* — it must not also be listed as a deduction, and statutory
+  // contributions must never be assessed on salary that was not earned.
+  const earnedSalary = Math.max(0, round2(periodSalary - absentDeduction));
 
   // Overtime (use approved OT only)
   const otHours = empAtt.overtime || 0;
@@ -323,19 +340,43 @@ function computePayslipForEmployee(emp, empAtt, periodSalary, periodWorkingDays,
   // Bonus
   const bonusPay = parseFloat(bonusAmount) || 0;
 
-  // Government deductions (use full monthly salary for SSS/PhilHealth/Pag-IBIG)
-  const sss = computeSSS(basicSalary, year);
-  const philhealth = computePhilHealth(basicSalary);
-  const pagibig = computePagIBIG(basicSalary);
+  // Government deductions. SSS/PhilHealth/Pag-IBIG are assessed on the monthly
+  // compensation credit, so the period's earned pay is grossed back up to a
+  // month and then split across the payslips of that month — a semi-monthly
+  // employee used to be charged the *full* monthly premium twice (once per
+  // payslip), which alone could exceed the period salary.
+  const monthlyEarned = Math.max(0, isSemiMonthly ? earnedSalary * 2 : earnedSalary);
+  const periodsPerMonth = isSemiMonthly ? 2 : 1;
+  let sss = round2(computeSSS(monthlyEarned, year) / periodsPerMonth);
+  let philhealth = round2(computePhilHealth(monthlyEarned) / periodsPerMonth);
+  let pagibig = round2(computePagIBIG(monthlyEarned) / periodsPerMonth);
 
   // Taxable income: gross - statutory deductions - 13th month (tax-exempt up to ₱90,000)
-  const grossPay = periodSalary + overtimePay + nightDiffPay + holidayPay + restDayPay + thirteenthMonthPay + bonusPay;
+  const grossPay = earnedSalary + overtimePay + nightDiffPay + holidayPay + restDayPay + thirteenthMonthPay + bonusPay;
   const thirteenthMonthExempt = Math.min(thirteenthMonthPay, 90000);
-  const taxableIncome = grossPay - sss - philhealth - pagibig - thirteenthMonthExempt;
-  const tax = computeTax(taxableIncome, isSemiMonthly);
+  const taxableIncome = Math.max(0, grossPay - sss - philhealth - pagibig - thirteenthMonthExempt);
+  let tax = computeTax(taxableIncome, isSemiMonthly);
 
-  const totalDed = sss + philhealth + pagibig + tax + absentDeduction;
-  const netPay = parseFloat((grossPay - totalDed).toFixed(2));
+  // With no compensation earned in the period there is nothing to base the
+  // contributions on — the statutory tables all start from a positive monthly
+  // credit, so an employee absent for the entire period must come out at zero
+  // rather than at the cheapest bracket.
+  if (earnedSalary <= 0) {
+    sss = 0; philhealth = 0; pagibig = 0; tax = 0;
+  }
+  let totalDed = sss + philhealth + pagibig + tax;
+  // Net pay can never be negative. If the contributions still exceed what was
+  // earned, they are scaled back proportionally so the payslip keeps adding up
+  // (a clamped total next to unclamped line items would not).
+  if (totalDed > grossPay && totalDed > 0) {
+    const scale = grossPay / totalDed;
+    sss = round2(sss * scale);
+    philhealth = round2(philhealth * scale);
+    pagibig = round2(pagibig * scale);
+    tax = round2(Math.max(0, grossPay - sss - philhealth - pagibig));
+    totalDed = sss + philhealth + pagibig + tax;
+  }
+  const netPay = round2(Math.max(0, grossPay - totalDed));
 
   return {
     basicSalary: periodSalary,
@@ -493,15 +534,25 @@ class PayrollService {
 
       for (const emp of employees) {
         const basicSalary = parseFloat(emp.salary);
-        const isSemiMonth = emp.paymentFrequency === 'semi-monthly';
-        const periodSalary = isSemiMonth ? basicSalary / 2 : basicSalary;
+        // The share of a month this run covers is decided by the *period being
+        // run*, not by the employee's pay frequency: a 1st–15th run pays half a
+        // month and a 1st–31st run pays a full month. Keying it off
+        // paymentFrequency meant a monthly run paid a semi-monthly employee half
+        // their month, and each semi-monthly run paid everyone else a whole month.
+        const isSemiMonth = periodType === 'semi-monthly';
+        const periodSalary = round2(basicSalary * (isSemiMonth ? 0.5 : 1));
         const empAtt = attendanceByEmployee[emp.id] || {
           daysWorked: 0, totalHours: 0, overtime: 0,
           nightShiftHours: 0, holidayPay: 0, restDayPay: 0,
           avgHolidayType: 'none', hasRestDay: false,
         };
 
-        const pwd = isSemiMonth ? Math.ceil(totalWorkingDays / 2) : totalWorkingDays;
+        // Count the working days inside the actual period instead of halving the
+        // month's total — the two halves of a month are rarely equal (a 31-day
+        // month, a holiday, a weekend-heavy 16th–end).
+        const pwd = countWorkingDays(startDate, endDate);
+        // 13th month is an annual benefit paid with the December run; a
+        // semi-monthly December run would otherwise double it.
         const is13thMonthPeriod = isDecember && !isSemiMonth;
 
         // Calculate YTD basic salary for 13th month computation
@@ -675,15 +726,16 @@ class PayrollService {
 
     for (const emp of employees) {
       const basicSalary = parseFloat(emp.salary);
-      const isSemiMonth = emp.paymentFrequency === 'semi-monthly';
-      const periodSalary = isSemiMonth ? basicSalary / 2 : basicSalary;
+      // Same rule as generate(): the period being run decides the fraction.
+      const isSemiMonth = periodType === 'semi-monthly';
+      const periodSalary = round2(basicSalary * (isSemiMonth ? 0.5 : 1));
       const empAtt = attendanceByEmployee[emp.id] || {
         daysWorked: 0, totalHours: 0, overtime: 0,
         nightShiftHours: 0, holidayPay: 0, restDayPay: 0,
         avgHolidayType: 'none', hasRestDay: false,
       };
 
-      const pwd = isSemiMonth ? Math.ceil(totalWorkingDays / 2) : totalWorkingDays;
+      const pwd = countWorkingDays(startDate, endDate);
       const is13thMonthPeriod = isDecember && !isSemiMonth;
 
       const p = computePayslipForEmployee(
@@ -740,5 +792,7 @@ payrollService._math = {
   compute13thMonth,
   countWorkingDays,
   getHolidayType,
+  computePayslipForEmployee,
+  round2,
 };
 module.exports = payrollService;

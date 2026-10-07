@@ -199,23 +199,27 @@ function GlobalSearchProvider({ children }) {
   const navigate = useNavigate();
   const isAuthenticated = useAuthStore(s => s.isAuthenticated);
 
+  // Every result lands on the list screen that can actually show it, with the
+  // picked record pre-filled in that screen's search box. There are no
+  // /products/:id | /customers/:id | /users/:id | /sales/:id detail routes in
+  // this app, so the old id-based links all fell through to <NotFound/>.
+  const SEARCH_TARGETS = {
+    product: '/products',
+    customer: '/customers',
+    employee: '/users',
+    sale: '/finance',
+  };
+
   const handleSearchSelect = useCallback((action) => {
     if (!action) return;
-    const { type, id } = action;
-    switch (type) {
-      case 'product':
-        navigate(`/products/${id}`);
-        break;
-      case 'customer':
-        navigate(`/customers/${id}`);
-        break;
-      case 'employee':
-        navigate(`/users/${id}`);
-        break;
-      case 'sale':
-        navigate(`/sales/${id}`);
-        break;
-    }
+    const { type, query } = action;
+    const base = SEARCH_TARGETS[type];
+    if (!base) return;
+    const params = new URLSearchParams();
+    if (type === 'sale') params.set('tab', 'reports');
+    if (query) params.set('search', query);
+    const qs = params.toString();
+    navigate(qs ? `${base}?${qs}` : base);
   }, [navigate]);
 
   const handleKeyDown = useCallback((e) => {

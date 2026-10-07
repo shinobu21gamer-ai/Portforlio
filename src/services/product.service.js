@@ -78,7 +78,11 @@ class ProductService {
       ];
     }
 
-    const sortBy = ['price', 'sellingPrice', 'name', 'createdAt', 'stockQuantity', 'categoryId', 'sku', 'isActive'].includes(query.sortBy) ? query.sortBy : 'createdAt';
+    // `buyingPrice` and `expiryDate` are real Product columns that the product
+    // tables offer as sort headers; leaving them out of the whitelist made those
+    // headers silently sort by createdAt instead.
+    const allowedSort = ['price', 'sellingPrice', 'buyingPrice', 'expiryDate', 'name', 'createdAt', 'stockQuantity', 'minStockLevel', 'categoryId', 'sku', 'isActive'];
+    const sortBy = allowedSort.includes(query.sortBy) ? query.sortBy : 'createdAt';
     const sortOrder = query.sortOrder === 'ASC' ? 'ASC' : 'DESC';
 
     const { rows, count } = await Product.findAndCountAll({

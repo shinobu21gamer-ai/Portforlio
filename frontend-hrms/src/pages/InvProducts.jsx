@@ -18,12 +18,23 @@ const columns = [
 
 export default function InvProducts() {
   const [page, setPage] = useState(1);
+  const [sortBy, setSortBy] = useState('createdAt');
+  const [sortOrder, setSortOrder] = useState('DESC');
+  // Clicking a header toggles the direction on the same column and jumps back to
+  // the first page. The sort runs on the API (each service whitelists the columns
+  // it accepts), so the whole list stays ordered rather than just the loaded page.
+  const handleSort = (field) => {
+    if (sortBy === field) setSortOrder((o) => (o === 'ASC' ? 'DESC' : 'ASC'));
+    else { setSortBy(field); setSortOrder('ASC'); }
+    setPage(1);
+  };
+
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search);
 
   const { data, isLoading, isError, error, refetch } = useQuery({
-    queryKey: ['inv-products', page, debouncedSearch],
-    queryFn: () => posApi.get('/products', { params: { page, limit: 15, search: debouncedSearch || undefined } }).then(r => r.data.data),
+    queryKey: ['inv-products', page, debouncedSearch, sortBy, sortOrder],
+    queryFn: () => posApi.get('/products', { params: { page, limit: 15, search: debouncedSearch || undefined, sortBy, sortOrder } }).then(r => r.data.data),
   });
 
   const products = data?.products || [];
@@ -48,7 +59,7 @@ export default function InvProducts() {
           {search && <button onClick={() => { setSearch(''); setPage(1); }} className="search-clear" style={{ right: 6 }}>&times;</button>}
         </div>
       </div>
-      <DataTable columns={columns} data={products} pagination={pagination} onPageChange={setPage} isLoading={isLoading} emptyMessage="No products found"
+      <DataTable columns={columns} data={products} pagination={pagination} onPageChange={setPage} sortBy={sortBy} sortOrder={sortOrder} onSort={handleSort} isLoading={isLoading} emptyMessage="No products found"
         renderRow={(p, _idx, visHeaders) => {
           const cellMap = {
             sku: <td className="mono">{p.sku}</td>,

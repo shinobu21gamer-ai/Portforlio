@@ -121,7 +121,7 @@ class AttendanceService {
     return emp?.schedule || null;
   }
 
-  async clockIn(data) {
+  async clockIn(data, { skipGeofence = false } = {}) {
     const t = await sequelize.transaction({ isolationLevel: 'REPEATABLE READ' });
     try {
       const emp = await Employee.findByPk(data.employeeId, { transaction: t, lock: t.LOCK.UPDATE });
@@ -176,7 +176,14 @@ class AttendanceService {
         const radius = branch ? parseInt(branch.geofenceRadiusMeters, 10) : null;
         const enforcing = Boolean(branch && branch.enforceGeofence && radius > 0 && branch.latitude != null && branch.longitude != null);
 
-        if (enforcing) {
+        if (enforcing && skipGeofence) {
+          // HR entered the clock-in on the employee's behalf: the fence cannot be
+          // checked because the person at the keyboard is not necessarily at the
+          // branch, so the record is stamped as explicitly *not* verified instead
+          // of rejecting the whole batch (which used to make bulk clock-in
+          // impossible for every geofenced branch).
+          geo = { lat: null, lng: null, distance: null, verified: false };
+        } else if (enforcing) {
           if (!hasCoords) {
             throw ApiError.badRequest(
               `Clock-in requires location for ${branch.name}. Enable location on this device and try again.`
@@ -234,7 +241,7 @@ class AttendanceService {
 
     for (const employeeId of employeeIds) {
       try {
-        await this.clockIn({ employeeId });
+        await this.clockIn({ employeeId, notes: 'Clocked in by HR — geofence not verified' }, { skipGeofence: true });
         succeeded.push(employeeId);
       } catch (error) {
         const emp = await Employee.findByPk(employeeId, { attributes: ['firstName', 'lastName', 'employeeNo'] });

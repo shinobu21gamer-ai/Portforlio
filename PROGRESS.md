@@ -362,6 +362,24 @@ line commented out), but the failure was invisible because every caller ignores
 not block sending. Set `SMTP_HOST/PORT/USER/PASS` + `EMAIL_FROM` and remove the
 commented block in `render.yaml`, then check the Settings page.
 
+## Phase 9 — Re-audit: whole-system bug hunt (2026-10-07)
+
+- [x] **R1–R19 delivered** — 19 findings from a fresh pass over the backend + both frontends, listed in chat *before* any fix, then all fixed except the one withdrawn item. Full table in `AUDIT.md` → "Re-audit — 2026-10-07".
+- [x] **Crash-class fixes** — `GET /hrms/shifts/summary` 500ed on every call (snake_case aggregate aliases read as camelCase); shift list ignored `page`/`limit`; payroll could produce a **negative net pay** from double-counted absences (now clamped + proportionally scaled down).
+- [x] **Payroll period semantics** — the semi-monthly half-pay split keyed off the *employee's* `paymentFrequency` instead of the *run's* `periodType`: monthly runs underpaid semi-monthly staff by half, semi-monthly runs paid monthly staff twice. Now derived from the period, and the two halves are asserted to sum to one monthly run. December 13th-month logic only applies to whole-month periods.
+- [x] **Dead controls** — categories `sortBy` was validated then dropped; the four HRMS `Inv*` screens drew sort arrows with no `onSort` wiring; POS global search routed to three nonexistent detail pages (NotFound); HRMS `DataTable` claimed a 10-row page size. All wired; sort state is now part of the react-query key everywhere it changes the response.
+- [x] **Blank table cells** — `renderRow` `cellMap` keys had drifted from `columns` keys on POS Purchases and HRMS InvPurchases; guarded statically by a new test so a copy-paste edit can't reintroduce the class.
+- [x] **Auth** — `changePassword` accepted the current password, so the forced first-login change could be a no-op (seeded `admin123` stays live). Reuse now rejected in `changePassword` **and** `resetPassword`, with a confirm field in both UIs; a test drives the whole rotate-then-relogin loop.
+- [x] **Settings email** — the public payload reads `email`, the UI wrote the legacy `storeEmail`, and `updateSettings` never declared `email` while `validate` runs `stripUnknown: true` → the write disappeared silently. Schema key added, legacy aliases normalised both ways (an explicitly sent alias wins on write), `receiptHeader` gets its missing input.
+- [x] **Routing** — HRMS `/` `RoleRedirect` bounced `manager`/`inventory_staff` to routes the HRMS router doesn't define (manager could never reach the dashboard). `manager` now falls through, `cashier → /pos`, `inventory_staff → /inventory-dashboard`; `tests/e2e/specs/roles.spec.ts` expectations re-read first and preserved (its POS-landing assertions are driven by `Login.jsx ROLE_REDIRECTS`, which is untouched).
+- [x] **List/picker completeness** — `getPagination` defaults to 10, so dropdowns could never show the 11th supplier/customer/branch/department: explicit `limit: 100` at every dropdown call site in both apps, and the shared `DataTable` client-side filter is now only suppressed when the table is genuinely server-paginated.
+- [x] **Stale cache** — schedule mutations skipped `['permanent-assignments']`; all schedule mutations go through `invalidateScheduleViews()`.
+- [x] **Withheld as not-a-bug** — geofence clock-in *does* send coordinates (`useMyClockIn`); only the HR bulk-import path skips validation, which is intended. Pinned by a test (self without coords → 400, HR bulk → 200 + `isGeofenceVerified=false`).
+- [x] **Tests** — new `tests/integration/audit-fixes.routes.integration.test.ts` (15 cases, one per fixable finding, real HTTP against an ephemeral app on in-memory SQLite) + `tests/unit/frontend.table-contract.test.ts` (5 source-level guards, both verified to fail on a reintroduced bug).
+- [x] **While testing:** fixed a harness bug of my own before blaming the code twice over — the shift list returns `{ rows, meta }`, not `{ shifts, pagination }`, and a scratch probe had written `email` into `data/settings.json` (restored from `data/settings.defaults.json`).
+
+**Gate 9 result:** `npx vitest run` **857/857** (37 files) = 837 baseline + 20 new, **0 failed**; `npm run lint` 0 problems (`--max-warnings 0`); POS build ✓, HRMS build ✓. Playwright still can't run here (no browser binary in the sandbox), so `tests/e2e` remains user-gated.
+
 ## Destructive-op log
 | When | Op | Why |
 |------|----|-----|

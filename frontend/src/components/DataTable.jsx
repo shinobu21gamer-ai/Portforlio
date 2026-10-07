@@ -18,7 +18,9 @@ export default function DataTable({
   headerRight,
   pageSize: pageSizeProp,
   onPageSizeChange,
-  filterable = true,
+  // See the HRMS DataTable: a client filter cannot search rows the server has
+  // not sent, so it is only shown for tables that are not server-paginated.
+  filterable = !pagination,
 }) {
   const [visibleCols, setVisibleCols] = useState(() => columns.map(c => c.key));
   const [showColToggle, setShowColToggle] = useState(false);

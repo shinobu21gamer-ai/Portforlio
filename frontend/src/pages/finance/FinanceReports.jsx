@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useSalesReport, useSales, useExpenseReport } from '../../hooks/useApi';
 import LoadingSkeleton from '../../components/LoadingSkeleton';
 import Pagination from '../../components/Pagination';
@@ -23,6 +24,13 @@ export default function FinanceReports() {
   const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
   const [salesPage, setSalesPage] = useState(1);
   const [search, setSearch] = useState('');
+  // The ⌘K palette deep-links here with ?search=<term>; seed the box from it and
+  // re-seed on every navigation so a second pick while already on the page works.
+  const [searchParams] = useSearchParams();
+  useEffect(() => {
+    const seeded = searchParams.get('search');
+    if (seeded) { setSearch(seeded); setSalesPage(1); }
+  }, [searchParams]);
 
   const debouncedSearch = useDebounce(search, 300);
   const { data: salesReport, isLoading: salesLoading } = useSalesReport({ startDate, endDate });

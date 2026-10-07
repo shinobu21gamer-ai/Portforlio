@@ -68,7 +68,7 @@ export default function Pos() {
 
   const debouncedQuery = useDebounce(query, 300);
 
-  const { data: catData } = useCategories();
+  const { data: catData } = useCategories({ limit: 100 });
   const categories = catData?.categories || catData?.data?.categories || [];
 
   const { data: custData } = useCustomers({ limit: 200 });

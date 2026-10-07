@@ -23,7 +23,7 @@ export default function Categories() {
   const toast = useToast();
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search);
-  const { data, isLoading, isError, error, refetch } = useCategories({ search: debouncedSearch || undefined });
+  const { data, isLoading, isError, error, refetch } = useCategories({ search: debouncedSearch || undefined, limit: 100 });
   const categories = data?.categories || data?.data?.categories || [];
 
   const [showAddModal, setShowAddModal] = useState(false);

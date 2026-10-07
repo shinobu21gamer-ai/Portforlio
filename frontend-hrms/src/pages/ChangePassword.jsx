@@ -31,6 +31,9 @@ export default function ChangePassword() {
       toast.error('Password must contain at least one uppercase letter, one lowercase letter, and one number.', { title: 'Weak password' });
       return;
     }
+    if (newPassword === currentPassword) {
+      return toast.error('New password must be different from your current password');
+    }
     if (newPassword !== confirm) {
       toast.error('New passwords do not match.', { title: 'Mismatch' });
       return;

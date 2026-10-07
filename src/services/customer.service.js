@@ -20,7 +20,7 @@ class CustomerService {
     if (query.isActive !== undefined) where.isActive = query.isActive === 'true';
     if (query.city) where.city = { [Op.like]: `%${escapeLike(query.city)}%` };
 
-    const allowedSort = ['name', 'createdAt', 'totalPurchases', 'visitCount'];
+    const allowedSort = ['name', 'createdAt', 'totalPurchases', 'visitCount','loyaltyPoints'];
     const sortBy = allowedSort.includes(query.sortBy) ? query.sortBy : 'createdAt';
     const sortOrder = query.sortOrder === 'ASC' ? 'ASC' : 'DESC';
 

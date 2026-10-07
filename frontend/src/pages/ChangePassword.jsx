@@ -33,6 +33,9 @@ export default function ChangePassword() {
     if (!/[A-Z]/.test(newPassword) || !/[a-z]/.test(newPassword) || !/\d/.test(newPassword)) {
       return toast.error('Password needs an uppercase letter, a lowercase letter and a number');
     }
+    if (newPassword === currentPassword) {
+      return toast.error('New password must be different from your current password');
+    }
     if (newPassword !== confirm) {
       return toast.error('New passwords do not match');
     }

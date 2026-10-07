@@ -24,8 +24,34 @@ const SETTINGS_DEFAULTS_FILE = path.resolve(__dirname, '../../data/settings.defa
 const DEFAULT_KEYS = ['storeName', 'storeAddress', 'storePhone', 'storeEmail', 'taxRate', 'currency', 'lowStockThreshold', 'receiptHeader', 'receiptFooter'];
 const ALLOWED_KEYS = new Set([...DEFAULT_KEYS, 'address', 'phone', 'email', 'gcashNumber', 'mayaNumber', 'allowPublicRegistration', 'onboardingDismissedAt']);
 
+// The UI historically wrote `storeAddress` / `storePhone` / `storeEmail` while
+// every consumer (public landing payload, receipt model, HRMS notices) reads
+// `address` / `phone` / `email`. Those alias keys are kept in the allowed list
+// for stored files and older clients, but are normalised onto the canonical keys
+// on read and on write so a saved value can never be stranded.
+const KEY_ALIASES = { storeAddress: 'address', storePhone: 'phone', storeEmail: 'email' };
+
+const normaliseKeys = (obj, { preferCanonical = true } = {}) => {
+  const out = { ...obj };
+  for (const [alias, canonical] of Object.entries(KEY_ALIASES)) {
+    if (out[alias] === undefined) continue;
+    // On a read, an empty canonical value falls back to the stored alias. On a
+    // write, the payload's alias must win over whatever is already stored — the
+    // sender never sees the current value, so "only fill when missing" would
+    // silently discard an update to an already-populated field.
+    const canonicalSent = out[canonical] !== undefined;
+    const canonicalFilled = canonicalSent && String(out[canonical]).trim() !== '';
+    if (preferCanonical ? !canonicalFilled : !canonicalSent) {
+      if (String(out[alias] ?? '').trim() !== '' || !canonicalSent) out[canonical] = out[alias];
+    }
+    delete out[alias];
+  }
+  return out;
+};
+
 const DEFAULTS = {
   storeName: config.app.name || 'My Store',
+  receiptHeader: '',
   address: '',
   phone: '',
   email: '',
@@ -54,7 +80,7 @@ const loadFromFile = () => {
     for (const file of [SETTINGS_FILE, SETTINGS_DEFAULTS_FILE]) {
       if (!fs.existsSync(file)) continue;
       const saved = JSON.parse(fs.readFileSync(file, 'utf8'));
-      settings = { ...DEFAULTS, ...filterAllowed(saved) };
+      settings = normaliseKeys({ ...DEFAULTS, ...filterAllowed(saved) });
       return;
     }
   } catch {
@@ -78,14 +104,17 @@ loadFromFile();
 
 class SettingService {
   async get() {
+    // normaliseKeys is idempotent and cheap; it also repairs a file that was
+    // written by an older build using only the alias keys.
     // `publicRegistrationEffective` is what actually gates the register API
     // (env override + setting + environment default), so the UI can display
     // the true state even when env forces it.
-    return { ...settings, publicRegistrationEffective: this.isPublicRegistrationAllowed() };
+    return normaliseKeys({ ...settings, publicRegistrationEffective: this.isPublicRegistrationAllowed() });
   }
 
   async update(data) {
-    const filtered = filterAllowed(data);
+    // preferCanonical=false: an alias the client sent is an update, not a fallback.
+    const filtered = normaliseKeys(filterAllowed(data), { preferCanonical: false });
 
     if ('taxRate' in filtered) {
       const taxRate = Number(filtered.taxRate);
