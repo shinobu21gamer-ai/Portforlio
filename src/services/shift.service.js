@@ -132,7 +132,10 @@ class ShiftService {
   }
 
   async list(query, user) {
-    const { page, pageSize, offset } = getPagination(query);
+    // getPagination(page, limit) — passing the whole query object made `page`
+    // unparseable (always page 1) and the `pageSize` destructure below left
+    // `limit` undefined, so the endpoint ignored pagination entirely.
+    const { page, limit, offset } = getPagination(query.page, query.limit);
     const where = {};
     const isPrivileged = ['admin', 'manager'].includes(user?.role?.slug);
 
@@ -153,10 +156,10 @@ class ShiftService {
       where,
       include: [{ association: 'user', attributes: ['id', 'firstName', 'lastName'] }],
       order: [['openedAt', 'DESC'], ['id', 'DESC']],
-      limit: pageSize,
+      limit,
       offset,
     });
-    return { rows, meta: getPaginationMeta(count, page, pageSize) };
+    return { rows, meta: getPaginationMeta(count, page, limit) };
   }
 
   async summaryForPeriod(user) {
@@ -164,17 +167,28 @@ class ShiftService {
     const isPrivileged = ['admin', 'manager'].includes(user?.role?.slug);
     const where = { status: 'closed' };
     if (!isPrivileged) where.userId = user.id;
+    // The Shift model maps its attributes onto snake_case columns
+    // (`underscored: true` + explicit `field:`), so `col()` — which is raw SQL —
+    // must use the *column* names, not the camelCase attribute names. Using
+    // attribute names made this aggregate reference unknown columns and blow up
+    // with a 500 on every call.
     const rows = await Shift.findAll({
       where,
       attributes: [
         [fn('COUNT', col('id')), 'closedShifts'],
-        [fn('COALESCE', fn('SUM', col('cashSalesTotal')), 0), 'cashSales'],
-        [fn('COALESCE', fn('SUM', col('voidedTotal')), 0), 'voided'],
-        [fn('COALESCE', fn('SUM', col('cashDifference')), 0), 'difference'],
+        [fn('COALESCE', fn('SUM', col('cash_sales_total')), 0), 'cashSales'],
+        [fn('COALESCE', fn('SUM', col('voided_total')), 0), 'voided'],
+        [fn('COALESCE', fn('SUM', col('cash_difference')), 0), 'difference'],
       ],
       raw: true,
     });
-    return rows[0] || { closedShifts: 0, cashSales: 0, voided: 0, difference: 0 };
+    const row = rows[0] || {};
+    return {
+      closedShifts: Number(row.closedShifts || 0),
+      cashSales: Number(row.cashSales || 0),
+      voided: Number(row.voided || 0),
+      difference: Number(row.difference || 0),
+    };
   }
 }
 

@@ -11,7 +11,7 @@ import { formatDate } from '../utils/helpers';
 import { useEmployees, useDepartments, usePositions, useSchedules } from '../hooks/useApi';
 
 function useBranches() {
-  return useQuery({ queryKey: ['branches'], queryFn: () => api.get('/branches', { baseURL: '/api/v1' }).then(r => r.data.data?.branches || r.data.data || []) });
+  return useQuery({ queryKey: ['branches'], queryFn: () => api.get('/branches', { baseURL: '/api/v1', params: { limit: 100 } }).then(r => r.data.data?.branches || r.data.data || []) });
 }
 import { useIsAdmin, useIsAdminOrHR } from '../hooks/useRole';
 import useConfirm from '../hooks/useConfirm.jsx';

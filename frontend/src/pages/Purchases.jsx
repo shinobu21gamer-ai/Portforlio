@@ -51,10 +51,10 @@ export default function Purchases() {
   const toast = useToast();
   const debouncedSearch = useDebounce(search, 300);
   const { data, isLoading } = usePurchases({ page, limit: 15, search: debouncedSearch || undefined, sortBy, sortOrder });
-  const { data: supData } = useSuppliers();
+  const { data: supData } = useSuppliers({ limit: 100 });
   const { data: prodData } = useProducts({ limit: 100 });
   const { data: fundsData } = usePettyCashFunds();
-  const { data: catData } = useCategories();
+  const { data: catData } = useCategories({ limit: 100 });
   const createMut = useCreatePurchase();
   const createProductMut = useCreateProduct();
   const receiveMut = useReceivePurchase();
@@ -187,7 +187,7 @@ export default function Purchases() {
           const cellMap = {
             orderNo: <td><strong>{p.orderNo}</strong></td>,
             supplier: <td>{p.supplier?.name || '—'}</td>,
-            totalAmount: <td>{peso(p.total)}</td>,
+            total: <td>{peso(p.total)}</td>,
             paid: <td className={p.paymentStatus === 'paid' ? 'text-success' : 'text-warning'}>{peso(p.paidAmount || 0)}</td>,
             status: <td>{statusBadge(p.status)}</td>,
             paymentStatus: <td>{statusBadge(p.paymentStatus)}</td>,

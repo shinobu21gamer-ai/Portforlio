@@ -15,12 +15,19 @@ class CategoryService {
     }
     if (query.isActive !== undefined) where.isActive = query.isActive === 'true';
 
+    // Sorting is opt-in via ?sortBy=&sortOrder=. The category screens expose
+    // sortable Name/Slug headers, so ignoring the params here left those
+    // headers doing nothing.
+    const allowedSort = ['name', 'slug', 'createdAt', 'id'];
+    const sortBy = allowedSort.includes(query.sortBy) ? query.sortBy : 'name';
+    const sortOrder = query.sortOrder === 'DESC' ? 'DESC' : 'ASC';
+
     const { rows, count } = await Category.findAndCountAll({
       where,
       include: [{ association: 'parent', attributes: ['id', 'name'] }],
       offset,
       limit,
-      order: [['name', 'ASC']],
+      order: [[sortBy, sortOrder]],
     });
 
     return { categories: rows, pagination: getPaginationMeta(count, page, limit) };

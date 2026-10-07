@@ -7,7 +7,7 @@ import useDebounce from '../hooks/useDebounce';
 import { formatDate } from '../utils/helpers';
 
 const columns = [
-  { key: 'date', label: 'Date', sortable: true },
+  { key: 'date', label: 'Date', sortable: true, sortKey: 'createdAt' },
   { key: 'product', label: 'Product', sortable: false },
   { key: 'type', label: 'Type', sortable: true },
   { key: 'quantity', label: 'Qty', sortable: true },
@@ -20,13 +20,24 @@ const TYPE_COLORS = { in: 'success', out: 'error', adjustment: 'warning' };
 
 export default function InvInventory() {
   const [page, setPage] = useState(1);
+  const [sortBy, setSortBy] = useState('createdAt');
+  const [sortOrder, setSortOrder] = useState('DESC');
+  // Clicking a header toggles the direction on the same column and jumps back to
+  // the first page. The sort runs on the API (each service whitelists the columns
+  // it accepts), so the whole list stays ordered rather than just the loaded page.
+  const handleSort = (field) => {
+    if (sortBy === field) setSortOrder((o) => (o === 'ASC' ? 'DESC' : 'ASC'));
+    else { setSortBy(field); setSortOrder('ASC'); }
+    setPage(1);
+  };
+
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const debouncedSearch = useDebounce(search);
 
   const { data, isLoading, isError, error, refetch } = useQuery({
-    queryKey: ['inv-movements', page, debouncedSearch, typeFilter],
-    queryFn: () => posApi.get('/inventory/movements', { params: { page, limit: 15, search: debouncedSearch || undefined, type: typeFilter || undefined } }).then(r => r.data.data),
+    queryKey: ['inv-movements', page, debouncedSearch, typeFilter, sortBy, sortOrder],
+    queryFn: () => posApi.get('/inventory/movements', { params: { page, limit: 15, search: debouncedSearch || undefined, type: typeFilter || undefined, sortBy, sortOrder } }).then(r => r.data.data),
   });
 
   const movements = data?.movements || [];
@@ -57,7 +68,7 @@ export default function InvInventory() {
           {search && <button onClick={() => { setSearch(''); setPage(1); }} className="search-clear" style={{ right: 6 }}>&times;</button>}
         </div>
       </div>
-      <DataTable columns={columns} data={movements} pagination={pagination} onPageChange={setPage} isLoading={isLoading} emptyMessage="No movements found"
+      <DataTable columns={columns} data={movements} pagination={pagination} onPageChange={setPage} sortBy={sortBy} sortOrder={sortOrder} onSort={handleSort} isLoading={isLoading} emptyMessage="No movements found"
         renderRow={(m, _idx, visHeaders) => {
           const cellMap = {
             date: <td>{formatDate(m.createdAt)}</td>,

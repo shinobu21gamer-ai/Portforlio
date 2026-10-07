@@ -158,21 +158,32 @@ export function useClockOut() {
 export function useSchedules(params = {}) {
   return useQuery({ queryKey: ['schedules', params], queryFn: () => api.get('/schedules', { params }).then(r => r.data.data) });
 }
+// A schedule change moves both the weekly grid and the per-day/employee views
+// that read it (permanent assignments, the attendance sheet's shift column), so
+// all three keys are invalidated — invalidating only ['schedules'] left the
+// assignment panel stale until a full reload.
+const invalidateScheduleViews = (qc) => {
+  qc.invalidateQueries({ queryKey: ['schedules'] });
+  qc.invalidateQueries({ queryKey: ['permanent-assignments'] });
+  qc.invalidateQueries({ queryKey: ['shift-assignments'] });
+  qc.invalidateQueries({ queryKey: ['attendance'] });
+};
+
 export function useCreateSchedule() {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: (data) => api.post('/schedules', data).then(r => r.data.data), onSuccess: () => qc.invalidateQueries({ queryKey: ['schedules'] }) });
+  return useMutation({ mutationFn: (data) => api.post('/schedules', data).then(r => r.data.data), onSuccess: () => invalidateScheduleViews(qc) });
 }
 export function useUpdateSchedule() {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: ({ id, ...data }) => api.put(`/schedules/${id}`, data).then(r => r.data.data), onSuccess: () => qc.invalidateQueries({ queryKey: ['schedules'] }) });
+  return useMutation({ mutationFn: ({ id, ...data }) => api.put(`/schedules/${id}`, data).then(r => r.data.data), onSuccess: () => invalidateScheduleViews(qc) });
 }
 export function useDeleteSchedule() {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: (id) => api.delete(`/schedules/${id}`).then(r => r.data.data), onSuccess: () => qc.invalidateQueries({ queryKey: ['schedules'] }) });
+  return useMutation({ mutationFn: (id) => api.delete(`/schedules/${id}`).then(r => r.data.data), onSuccess: () => invalidateScheduleViews(qc) });
 }
 export function useAssignShift() {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: (data) => api.post('/schedules/assign', data).then(r => r.data.data), onSuccess: () => qc.invalidateQueries({ queryKey: ['schedules'] }) });
+  return useMutation({ mutationFn: (data) => api.post('/schedules/assign', data).then(r => r.data.data), onSuccess: () => invalidateScheduleViews(qc) });
 }
 export function useShiftAssignments(params = {}) {
   return useQuery({ queryKey: ['shift-assignments', params], queryFn: () => api.get('/schedules/assignments/list', { params }).then(r => r.data.data), enabled: !!params.date || !!params.startDate });
@@ -182,7 +193,7 @@ export function usePermanentAssignments() {
 }
 export function useRemovePermanentAssignment() {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: (empId) => api.delete(`/schedules/permanent/${empId}`).then(r => r.data.data), onSuccess: () => { qc.invalidateQueries({ queryKey: ['permanent-assignments'] }); qc.invalidateQueries({ queryKey: ['employees'] }); } });
+  return useMutation({ mutationFn: (empId) => api.delete(`/schedules/permanent/${empId}`).then(r => r.data.data), onSuccess: () => invalidateScheduleViews(qc) });
 }
 
 // ─── Payroll ─────────────────────────────────────────────

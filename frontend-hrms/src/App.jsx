@@ -53,10 +53,19 @@ const PageLoader = () => (
 function RoleRedirect() {
   const user = useAuthStore(s => s.user);
   const slug = user?.role?.slug;
-  // POS roles: cashier, manager, inventory_staff -> POS
-  // HRMS roles: admin, hr, employee -> HRMS Dashboard
-  if (slug === 'cashier' || slug === 'manager' || slug === 'inventory_staff') {
+  // Cashier has no HRMS screens at all, so POS is the only place to land.
+  // Manager and inventory_staff are different: both own HRMS routes
+  // (the HR layout is gated to admin/manager/hr, the inventory workspace to
+  // inventory_staff), so bouncing them to /pos here made those pages
+  // unreachable — and un-reachable twice over, because /pos's "Back to HRMS"
+  // button returns to "/" and this redirect sent them straight back. Landing
+  // them on their own workspace keeps that button working; the post-login
+  // redirect in Login.jsx still takes them to POS first.
+  if (slug === 'cashier') {
     return <Navigate to="/pos" replace />;
+  }
+  if (slug === 'inventory_staff') {
+    return <Navigate to="/inventory-dashboard" replace />;
   }
   // The HR layout and every route inside it is gated to admin/hr/manager, and
   // /my-profile is gated to employee/cashier/inventory_staff. So an employee —

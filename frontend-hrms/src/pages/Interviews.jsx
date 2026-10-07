@@ -19,7 +19,7 @@ function useInterviewers() {
   return useQuery({ queryKey: ['interviewers'], queryFn: () => api.get('/interviewers').then(r => r.data.data) });
 }
 function useBranches() {
-  return useQuery({ queryKey: ['branches'], queryFn: () => api.get('/branches', { baseURL: '/api/v1' }).then(r => r.data.data?.branches || r.data.data || []) });
+  return useQuery({ queryKey: ['branches'], queryFn: () => api.get('/branches', { baseURL: '/api/v1', params: { limit: 100 } }).then(r => r.data.data?.branches || r.data.data || []) });
 }
 function useUpdateResult() {
   const qc = useQueryClient();

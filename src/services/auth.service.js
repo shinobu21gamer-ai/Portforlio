@@ -202,6 +202,13 @@ class AuthService {
     const isMatch = await bcrypt.compare(currentPassword, user.password);
     if (!isMatch) throw ApiError.badRequest('Current password is incorrect');
 
+    // Picking the *same* password must not count as a change: accounts created
+    // by HR approval carry mustChangePassword=true with a one-time password, and
+    // without this guard "changing" it back to the same value cleared the flag
+    // while leaving the shared/temporary password in place.
+    const isSame = await bcrypt.compare(newPassword, user.password);
+    if (isSame) throw ApiError.badRequest('New password must be different from the current password');
+
     await user.update({
       password: newPassword,
       passwordChangedAt: new Date(),
@@ -278,6 +285,9 @@ class AuthService {
     });
 
     if (!user) throw ApiError.badRequest('Invalid or expired reset token');
+
+    const sameAsCurrent = await bcrypt.compare(newPassword, user.password);
+    if (sameAsCurrent) throw ApiError.badRequest('New password must be different from your current password');
 
     await user.update({
       password: newPassword,

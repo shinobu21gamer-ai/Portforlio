@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import PosLayout from '../layouts/PosLayout';
 import FinanceOverview from './finance/FinanceOverview';
 import FinancePnL from './finance/FinancePnL';
@@ -15,7 +16,14 @@ const TABS = [
 ];
 
 export default function Finance() {
-  const [activeTab, setActiveTab] = useState('overview');
+  const [searchParams] = useSearchParams();
+  const tabParam = searchParams.get('tab');
+  const [activeTab, setActiveTab] = useState(TABS.some(t => t.key === tabParam) ? tabParam : 'overview');
+  // Deep links (e.g. the ⌘K palette sending an invoice to the Reports tab) must
+  // still land on the right tab when the page is already mounted.
+  useEffect(() => {
+    if (TABS.some(t => t.key === tabParam)) setActiveTab(tabParam);
+  }, [tabParam]);
 
   return (
     <PosLayout active="finance">

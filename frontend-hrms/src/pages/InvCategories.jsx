@@ -14,12 +14,23 @@ const columns = [
 
 export default function InvCategories() {
   const [page, setPage] = useState(1);
+  const [sortBy, setSortBy] = useState('name');
+  const [sortOrder, setSortOrder] = useState('ASC');
+  // Clicking a header toggles the direction on the same column and jumps back to
+  // the first page. The sort runs on the API (each service whitelists the columns
+  // it accepts), so the whole list stays ordered rather than just the loaded page.
+  const handleSort = (field) => {
+    if (sortBy === field) setSortOrder((o) => (o === 'ASC' ? 'DESC' : 'ASC'));
+    else { setSortBy(field); setSortOrder('ASC'); }
+    setPage(1);
+  };
+
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search);
 
   const { data, isLoading, isError, error, refetch } = useQuery({
-    queryKey: ['inv-categories', page, debouncedSearch],
-    queryFn: () => posApi.get('/categories', { params: { page, limit: 15, search: debouncedSearch || undefined } }).then(r => r.data.data),
+    queryKey: ['inv-categories', page, debouncedSearch, sortBy, sortOrder],
+    queryFn: () => posApi.get('/categories', { params: { page, limit: 100, search: debouncedSearch || undefined, sortBy, sortOrder } }).then(r => r.data.data),
   });
 
   const categories = data?.categories || [];
@@ -44,7 +55,7 @@ export default function InvCategories() {
           {search && <button onClick={() => { setSearch(''); setPage(1); }} className="search-clear" style={{ right: 6 }}>&times;</button>}
         </div>
       </div>
-      <DataTable columns={columns} data={categories} pagination={pagination} onPageChange={setPage} isLoading={isLoading} emptyMessage="No categories found"
+      <DataTable columns={columns} data={categories} pagination={pagination} onPageChange={setPage} sortBy={sortBy} sortOrder={sortOrder} onSort={handleSort} isLoading={isLoading} emptyMessage="No categories found"
         renderRow={(c, _idx, visHeaders) => {
           const cellMap = {
             name: <td><strong>{c.name}</strong></td>,

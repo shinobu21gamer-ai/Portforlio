@@ -508,6 +508,10 @@ const schemas = {
     storePhone: Joi.string().max(20).optional().allow(''),
     allowPublicRegistration: Joi.boolean().optional(),
     onboardingDismissedAt: Joi.string().isoDate().allow('', null).optional(),
+    // `email` is the canonical key every consumer reads (public landing payload,
+    // receipts, HRMS notices); `storeEmail` is the legacy alias the UI used while
+    // `email` was missing from this schema and got stripped as an unknown key.
+    email: Joi.string().email().max(150).optional().allow(''),
     storeEmail: Joi.string().email().max(150).optional().allow(''),
     taxRate: Joi.number().min(0).max(100).optional().messages({
       'number.max': 'taxRate must be a percentage between 0 and 100',

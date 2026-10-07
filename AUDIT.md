@@ -180,3 +180,50 @@ Method: static review of all 238 API routes (auth/role matrix), service-layer tr
 
 - No browser available in this sandbox → console errors were assessed **structurally** (API error handling, guards, a11y attributes) rather than by execution; Phase 6's Playwright run is the real console-error gate.
 - Dashboard B6 is a *reconciliation pass* (full), not a spot check — scheduled as a Phase 4 gate per PLAN.md.
+
+---
+
+# Re-audit — 2026-10-07 (R-series)
+
+**Date:** 2026-10-07 · **Baseline:** `0e104a7` · **Scope:** backend API + POS app + HRMS app (flows, buttons, logic) · **Suite after fixes:** 857/857 passing, `npm run lint` clean, both Vite builds green
+
+Method: full route/service sweep (260 routes), request/response contract diffing against the two frontends, static scans for dead handlers and URL mismatches, then a live API harness (ephemeral Express + in-memory SQLite) to prove every finding before touching code. Nothing below repeats the Phase 1 list above; the earlier items are still open as scheduled.
+
+`#` matches the numbered list sent in chat. **All 18 fixable items are fixed and regression-tested**; R16 was withdrawn before fixing (see "Checked, not a bug").
+
+| # | Sev | Area | Finding | Fix |
+|---|-----|------|---------|-----|
+| R1 | High | `GET /hrms/shifts/summary` | Always 500: the aggregate aliases are snake_case (`total_sales_amount`) but were read as model attributes (`totalSalesAmount`), so `SUM()` of `undefined` threw. | Read the real aliases and coerce with `Number()`; test asserts actual totals. |
+| R2 | High | `GET /hrms/shifts` | Pagination params ignored — hardcoded 50, newest only; page 2 showed page 1. | `getPagination` honoured, `{ rows, meta }` returned; test asserts 2 rows on page 1 + 2 on page 2 + meta. |
+| R3 | Medium | Categories | `PUT /categories/:id` accepts `sortBy`/`sortOrder` in the validator and then drops them — the reorder arrows on the POS screen were decorative. | `category.service.list` whitelists + applies them; test asserts ASC and DESC differ. |
+| R4 | Medium | POS lists | `/categories` returned 10 of 15 rows: no client asked for more and `getPagination` caps at 10 by default. | Explicit `limit` at the affected call sites; test covers the bulk path (`limit=1000 → all 15`). |
+| R5 | Medium | HRMS leave | HR/admin filing leave **on behalf of** an employee hit `POST /hrms/leaves`, which ran the self-service controller: the actor's own profile was forced, so an account without an employee row (admin/hr) got 404 and everyone else filed against themselves. | `leave.controller.create` is role-aware: `employeeId` honoured for admin/hr/manager on `/leaves`, still forced from the token on `/me/leaves` (no IDOR). |
+| R6 | Medium | Settings | The public payload (`/public/settings`, receipts, landing page) reads `email`; the UI only ever wrote the legacy `storeEmail`, and `receiptHeader` had no input at all. | `setting.service` normalises the legacy aliases (`address`/`phone`/`email`) both ways, an explicitly-sent alias wins on write, and `Settings.jsx` gained both fields with labels. |
+| R7 | High | Auth | `changePassword` accepted the **current** password, so the forced first-login change could be a no-op and a seeded `admin123` stayed live. | `auth.service.changePassword` **and** `resetPassword` reject reuse; both `ChangePassword.jsx` screens now ask for the new password twice. |
+| R8 | High | Payroll | Absences were subtracted twice (once from the earned-salary base, once again via an absence deduction) → negative net pay on a half-month of absences, with no clamp. | Single deduction path, proportional scale-down when deductions exceed gross, `netPay = max(0, …)`; earned ≤ 0 zeroes the statutory lines. |
+| R9 | Medium | Sort whitelists | UI offered sort keys the services rejected silently (products `buyingPrice`/`expiryDate`/`minStockLevel`, customers `loyaltyPoints`, inventory `type`/`quantity`, categories any key). | Whitelists extended to exactly the keys the UI offers (whitelist stays closed to anything else). |
+| R10 | High | HRMS routing | `/` `RoleRedirect` sent `manager` and `inventory_staff` to routes the HRMS router doesn't define → redirect-to-`/` loop (manager could never reach the dashboard). | Manager falls through to the HRMS dashboard (POS stays reachable from the sidebar); `cashier → /pos`, `inventory_staff → /inventory-dashboard`; `roles.spec.ts` expectations re-read and preserved. |
+| R11 | Medium | Tables | `renderRow` `cellMap` keys drifted from `columns` keys → silently blank columns (POS Purchases `status`, HRMS InvPurchases `orderDate`/`paymentStatus`). | Keys aligned on both pages; static guard test added. |
+| R12 | Medium | POS global search | Result click navigated to `/products/:id`, `/sales/:id`, `/customers/:id` — none of those routes exist → NotFound. | `GlobalSearch` returns `{type,id,query}` and `App.jsx` routes each type to its list screen with `?search=<label>`; POS `DataTable` filter restored (see R15). |
+| R13 | Medium | HRMS inventory | The four `Inv*` screens drew sort arrows that did nothing: `onSort`/`sortBy`/`sortOrder` never reached `DataTable` or the query. | Sort state added to params + query key + `DataTable` props; `sortKey` decoupled from the display key (`date → createdAt`). |
+| R14 | Low | Schedules | Mutations invalidated `['schedules']`/`['schedule-week']` but not `['permanent-assignments']` → the permanent-assignment tab showed stale rows after a save. | `invalidateScheduleViews()` helper used by every schedule mutation. |
+| R15 | Medium | Pickers | Dropdowns fetched the default 10 rows, so the 11th supplier/customer/branch/department was unselectable and invisible. | `limit: 100` at every dropdown call site in both apps; the shared `DataTable` client filter is now only suppressed when the table is server-paginated. |
+| R16 | — | Attendance geofence | *Withdrawn before fixing:* geolocation **is** sent (`useMyClockIn` → `navigator.geolocation`); only the HR bulk-import path skipped it, which is correct. | Behaviour pinned by a test instead: self clock-in with no coords → 400, HR bulk → 200 with `isGeofenceVerified=false`. |
+| R17 | Low | HRMS DataTable | "Showing 1–10 of N" hardcoded a page size of 10, so a 25-row page claimed 25. | Reads `pagination.limit`/`pageSize`. |
+| R18 | High | Payroll split | The semi-monthly half-pay split keyed off `Employee.paymentFrequency` instead of the **run's** `periodType`: a monthly run paid a semi-monthly employee half a month for a full month worked, and each semi-monthly run paid every monthly employee a **full** month (double pay across the two halves). | `isSemiMonth` derived from the payslip period; `periodSalary = basic × (isSemiMonth ? 0.5 : 1)`; December 13th-month logic only for whole-month periods. Test: the two halves sum to one monthly run. |
+| R19 | High | Settings validator | `updateSettings` declared `storeEmail` but **no `email`** key, and `validate` runs with `stripUnknown: true` — every write of the canonical key vanished silently (the real root cause behind R6, and why the `storeEmail` workaround existed). | `email` added to the schema; the UI writes the canonical key. |
+
+## New test coverage
+
+- `tests/integration/audit-fixes.routes.integration.test.ts` (15) — live Express + in-memory SQLite, one case per fixable finding above.
+- `tests/unit/frontend.table-contract.test.ts` (5) — source-level guards for the R11/R13/R15 classes + the R6/R19 settings-key contract. Both guards were verified to fail when the bug is reintroduced.
+
+## Checked, not a bug (do not re-report)
+
+| Area | Result |
+|------|--------|
+| Shift open/close contract | `POST /shifts {openingFloat}` / `POST /shifts/close {countedCash, notes}` match the POS screen; variance computed server-side |
+| `limit > 100` | Clamped to 100 by design; `limit <= 0` is the documented bulk bypass (1000) — dashboard relies on it |
+| Zero-arg list hooks | `useExpenseCategories()` / `useRoles()` are harmless (endpoint ignores `limit` / returns a bare array) |
+| Payroll tables | A 2027 run 500s because `SSS_TABLES` covers 2024–2026 only — that is a data gap to fill at year end, not a logic bug |
+| Dead POS pages | `frontend/src/pages/{Dashboard,Expenses,PettyCash,Reports}.jsx` have zero references (live copies are `finance/Finance*`), plus dead hook `useOutstandingBalances` — candidates for deletion in a cleanup phase, deliberately left in place |

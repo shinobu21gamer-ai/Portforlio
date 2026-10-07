@@ -16,7 +16,11 @@ export default function DataTable({
   headerRight,
   pageSize: pageSizeProp,
   onPageSizeChange,
-  filterable = true,
+  // A client-side filter over a server-paginated table only ever searches the
+  // rows of the current page, which reads as "my search is broken" — so it is
+  // only offered when the table is not server-paginated (the pages with a server
+  // search all pass their own search box in the header).
+  filterable = !pagination,
 }) {
   const [visibleCols, setVisibleCols] = useState(() => columns.map(c => c.key));
   const [showColToggle, setShowColToggle] = useState(false);
@@ -97,7 +101,11 @@ export default function DataTable({
   const total = pagination?.total || pagination?.totalItems || filteredData.length;
   const page = pagination?.page || 1;
   const totalPages = pagination?.totalPages || 1;
-  const startIdx = (page - 1) * (pageSizeProp || 10);
+  // The page size actually in effect: the server tells us via pagination.limit
+  // (most screens fetch 15/20 per page), so assuming 10 made the "Showing X–Y"
+  // range drift from page 2 onwards.
+  const effectivePageSize = pagination?.limit || pageSizeProp || 10;
+  const startIdx = (page - 1) * effectivePageSize;
   const endIdx = Math.min(startIdx + filteredData.length, total);
 
   if (isLoading) {
@@ -244,7 +252,7 @@ export default function DataTable({
             {onPageSizeChange && (
               <select
                 className="dt-page-size"
-                value={pageSizeProp || 10}
+                value={pageSizeProp || effectivePageSize}
                 onChange={e => onPageSizeChange(Number(e.target.value))}
               >
                 {[10, 25, 50, 100].map(n => (

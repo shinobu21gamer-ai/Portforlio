@@ -87,7 +87,7 @@ export default function Payroll() {
   const [selectedPayslip, setSelectedPayslip] = useState(null);
   const [selectedEmp, setSelectedEmp] = useState(null);
   const [genForm, setGenForm] = useState({ month: new Date().getMonth() + 1, year: new Date().getFullYear(), periodType: 'monthly', half: 1, departmentId: null });
-  const { data: departments } = useDepartments();
+  const { data: departments } = useDepartments({ limit: 100 });
   const [bonuses, setBonuses] = useState({});
   const toast = useToast();
   const isAdmin = useIsAdmin();

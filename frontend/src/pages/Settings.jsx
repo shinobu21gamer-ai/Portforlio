@@ -14,7 +14,8 @@ export default function Settings() {
     storeName: '',
     address: '',
     phone: '',
-    storeEmail: '',
+    email: '',
+    receiptHeader: '',
     taxRate: 12,
     lowStockThreshold: 10,
     currency: 'PHP',
@@ -31,7 +32,12 @@ export default function Settings() {
         storeName: serverSettings.storeName || '',
         address: serverSettings.address || '',
         phone: serverSettings.phone || '',
-        storeEmail: serverSettings.storeEmail || serverSettings.email || '',
+        // `email` is the canonical settings key (setting.service DEFAULTS, the
+        // public landing payload and the receipt all read it). `storeEmail` is a
+        // legacy alias kept for stored files — saving it alone never showed up
+        // anywhere, so the form now writes/reads `email`.
+        email: serverSettings.email || serverSettings.storeEmail || '',
+        receiptHeader: serverSettings.receiptHeader || '',
         taxRate: serverSettings.taxRate ?? 12,
         lowStockThreshold: serverSettings.lowStockThreshold ?? 10,
         currency: serverSettings.currency || 'PHP',
@@ -84,15 +90,15 @@ export default function Settings() {
           <h2 style={{ marginBottom: 16 }}>Store Information</h2>
           <div className="two-col">
             <div className="field"><label>Store Name</label><input className="input-block" value={form.storeName} onChange={e => update('storeName', e.target.value)} required /></div>
-            <div className="field"><label>Email</label><input className="input-block" type="email" value={form.storeEmail} onChange={e => update('storeEmail', e.target.value)} /></div>
+            <div className="field"><label htmlFor="set-email">Email</label><input id="set-email" className="input-block" type="email" value={form.email} onChange={e => update('email', e.target.value)} /></div>
           </div>
           <div className="two-col">
-            <div className="field"><label>Phone</label><input className="input-block" value={form.phone} onChange={e => update('phone', e.target.value)} /></div>
+            <div className="field"><label htmlFor="set-phone">Phone</label><input id="set-phone" className="input-block" value={form.phone} onChange={e => update('phone', e.target.value)} /></div>
             <div className="field"><label>Currency</label>
               <input className="input-block" value="PHP — Philippine Peso" disabled />
             </div>
           </div>
-          <div className="field"><label>Address</label><textarea className="input-block" value={form.address} onChange={e => update('address', e.target.value)} rows={2} /></div>
+          <div className="field"><label htmlFor="set-address">Address</label><textarea id="set-address" className="input-block" value={form.address} onChange={e => update('address', e.target.value)} rows={2} /></div>
         </div>
 
         <div className="dashboard-section">
@@ -105,7 +111,8 @@ export default function Settings() {
 
         <div className="dashboard-section">
           <h2 style={{ marginBottom: 16 }}>Receipt</h2>
-          <div className="field"><label>Footer Message</label><textarea className="input-block" value={form.receiptFooter} onChange={e => update('receiptFooter', e.target.value)} rows={2} placeholder="Thank you for your purchase!" /></div>
+          <div className="field"><label htmlFor="set-receipt-header">Header Message</label><textarea id="set-receipt-header" className="input-block" value={form.receiptHeader} onChange={e => update('receiptHeader', e.target.value)} rows={2} placeholder="Optional line printed above the store name on every receipt" /></div>
+          <div className="field"><label htmlFor="set-receipt-footer">Footer Message</label><textarea id="set-receipt-footer" className="input-block" value={form.receiptFooter} onChange={e => update('receiptFooter', e.target.value)} rows={2} placeholder="Thank you for your purchase!" /></div>
         </div>
 
         <div className="dashboard-section">
