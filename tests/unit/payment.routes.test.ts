@@ -19,8 +19,8 @@ const paymentRoutes = require('../../src/routes/payment');
 const { resolvePublicOrigin } = paymentRoutes;
 
 // Minimal stand-in for the bits of an Express request the helper reads.
-const makeReq = (protocol: string, host: string) =>
-  ({ protocol, get: (h: string) => (h === 'host' ? host : undefined) }) as any;
+const makeReq = (protocol: string, host: string, headers: Record<string, string> = {}) =>
+  ({ protocol, headers, get: (h: string) => (h === 'host' ? host : undefined) }) as any;
 
 describe('payment routes - resolvePublicOrigin', () => {
   it('falls back to the request origin when nothing is configured', () => {
@@ -55,6 +55,40 @@ describe('payment routes - resolvePublicOrigin', () => {
       .toBe('https://pos.example.com');
     expect(resolvePublicOrigin(makeReq('https', 'x.example.com'), 'https://pos.example.com///'))
       .toBe('https://pos.example.com');
+  });
+
+  // Behind any reverse proxy (nginx, Render, the dev server, a preview sandbox)
+  // the request Host is the *API* host while the browser's Origin is the host
+  // the cashier is actually looking at. Building the redirect from Host sent
+  // the customer to the API origin — a page with no POS on it at all.
+  it('prefers the browser Origin over the proxied request host', () => {
+    const origin = resolvePublicOrigin(
+      makeReq('http', 'localhost:5000', { origin: 'https://5173-abc.e2b.app' }),
+      null
+    );
+    expect(origin).toBe('https://5173-abc.e2b.app');
+  });
+
+  it('ignores a localhost Origin so a local dev redirect cannot leak outward', () => {
+    const origin = resolvePublicOrigin(
+      makeReq('https', 'portforlio-1cqq.onrender.com', { origin: 'http://localhost:5173' }),
+      null
+    );
+    expect(origin).toBe('https://portforlio-1cqq.onrender.com');
+  });
+
+  it('falls back to Referer when there is no Origin header', () => {
+    expect(resolvePublicOrigin(
+      makeReq('http', 'localhost:5000', { referer: 'https://shop.example.com/payment' }),
+      null
+    )).toBe('https://shop.example.com');
+  });
+
+  it('honours X-Forwarded-Host', () => {
+    expect(resolvePublicOrigin(
+      makeReq('http', 'localhost:5000', { 'x-forwarded-host': 'shop.example.com', 'x-forwarded-proto': 'https' }),
+      null
+    )).toBe('https://shop.example.com');
   });
 
   it('builds a usable success URL', () => {

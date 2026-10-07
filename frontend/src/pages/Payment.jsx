@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import PosLayout from '../layouts/PosLayout';
 import useCartStore from '../store/cartStore';
 import useAuthStore from '../store/authStore';
-import { useCreateSale, useCreatePendingSale, useCreateCheckout, useVerifyPayment, useCancelPendingSale, useCustomers, useSettings, useValidateDiscount, useDiscounts } from '../hooks/useApi';
+import { useCreateSale, useCreatePendingSale, useCreateCheckout, useVerifyPayment, useCancelPendingSale, useCustomers, useSettings, useValidateDiscount, useDiscounts, usePaymentConfig } from '../hooks/useApi';
 import { useToast } from '../components/Toast';
 import { peso, useDebounce } from '../utils/helpers';
 import { computeCartTotal } from '../utils/pricing';
@@ -24,6 +24,16 @@ import {
 const PENDING_KEY = 'pendingOnlineSale';
 const readPendingSnapshot = () => {
   try { return JSON.parse(sessionStorage.getItem(PENDING_KEY) || '{}') || {}; } catch { return {}; }
+};
+
+// "gcash" / "maya" → the label a cashier recognises on the status screen.
+const onlineWalletLabel = (method) => {
+  if (!method) return null;
+  const key = String(method).toLowerCase();
+  if (key === 'gcash') return 'GCash';
+  if (key === 'maya' || key === 'paymaya') return 'Maya';
+  if (key === 'card' || key === 'credit_card' || key === 'debit_card') return 'Card';
+  return null;
 };
 
 export default function Payment({ success: successProp, cancel: cancelProp }) {
@@ -89,6 +99,10 @@ export default function Payment({ success: successProp, cancel: cancelProp }) {
   const createCheckout = useCreateCheckout();
   const cancelPendingSale = useCancelPendingSale();
   const { data: settings } = useSettings();
+  const { data: paymentConfig, isLoading: paymentConfigLoading } = usePaymentConfig();
+  // undefined while loading (or if the probe fails) — only a definitive "false"
+  // blocks the online path, so a flaky probe never removes a working feature.
+  const onlinePaymentsEnabled = paymentConfig?.onlinePaymentsEnabled !== false;
   const validateDiscount = useValidateDiscount();
   const { data: discountsData } = useDiscounts({ limit: 100, isActive: true });
   const availableDiscounts = discountsData?.data?.discounts || [];
@@ -99,10 +113,14 @@ export default function Payment({ success: successProp, cancel: cancelProp }) {
   // racing a completed cash sale and sending the cashier back to the POS.
   const completedSaleRef = useRef(false);
 
-  const { data: verifyData, isLoading: verifyLoading, error: verifyError } = useVerifyPayment(saleIdParam, sessionIdParam, {
-    enabled: !!successProp && !!saleIdParam && !!sessionIdParam && !showSuccess,
+  // Poll PayMongo (through our API) until the sale is confirmed. Bounded, so a
+  // register left on this screen doesn't hammer the API forever.
+  const verifyDeadlineRef = useRef(Date.now() + 5 * 60 * 1000);
+  const { data: verifyData, refetch: verifyRefetch } = useVerifyPayment(saleIdParam, sessionIdParam, {
+    enabled: !!successProp && !!saleIdParam && !showSuccess,
     refetchInterval: (query) => {
       if (query.state.data?.verified) return false;
+      if (Date.now() > verifyDeadlineRef.current) return false;
       if (query.state.error) return 5000;
       return 3000;
     },
@@ -252,61 +270,95 @@ export default function Payment({ success: successProp, cancel: cancelProp }) {
     }
   };
 
-  const WAIT_TIMEOUT_MS = 20000;
+  // Two thresholds, because "slow" and "failed" are not the same thing:
+  //   • SOFT — the countdown ends but we keep polling and say so, instead of
+  //     pretending a payment that is merely slow has failed.
+  //   • HARD — after this we surface the "not confirmed yet" screen, which
+  //     still offers a re-check (the webhook may land later) rather than a
+  //     dead end.
+  const WAIT_SOFT_TIMEOUT_MS = 20000;
+  const WAIT_HARD_TIMEOUT_MS = 180000;
+  const [waitSlow, setWaitSlow] = useState(false);
+  const [waitElapsed, setWaitElapsed] = useState(0);
+
   useEffect(() => {
     if (!successProp || !saleIdParam || showSuccess) {
-      setWaitSecondsLeft(WAIT_TIMEOUT_MS / 1000);
+      setWaitSecondsLeft(WAIT_SOFT_TIMEOUT_MS / 1000);
+      setWaitSlow(false);
+      setWaitElapsed(0);
       return undefined;
     }
     const startedAt = Date.now();
-    setWaitSecondsLeft(WAIT_TIMEOUT_MS / 1000);
-    const timer = setTimeout(() => {
-      if (!verifyDataRef.current?.verified) {
-        setShowFailure(true);
-      }
-    }, WAIT_TIMEOUT_MS);
+    setWaitSecondsLeft(WAIT_SOFT_TIMEOUT_MS / 1000);
+    setWaitSlow(false);
+    setWaitElapsed(0);
+    setShowFailure(false);
+
+    const soft = setTimeout(() => setWaitSlow(true), WAIT_SOFT_TIMEOUT_MS);
+    const hard = setTimeout(() => {
+      if (!verifyDataRef.current?.verified) setShowFailure(true);
+    }, WAIT_HARD_TIMEOUT_MS);
     const tick = setInterval(() => {
-      const left = Math.max(0, Math.ceil((WAIT_TIMEOUT_MS - (Date.now() - startedAt)) / 1000));
-      setWaitSecondsLeft(left);
+      const elapsed = Date.now() - startedAt;
+      setWaitElapsed(Math.floor(elapsed / 1000));
+      setWaitSecondsLeft(Math.max(0, Math.ceil((WAIT_SOFT_TIMEOUT_MS - elapsed) / 1000)));
     }, 250);
-    return () => { clearTimeout(timer); clearInterval(tick); };
+    return () => { clearTimeout(soft); clearTimeout(hard); clearInterval(tick); };
   }, [successProp, saleIdParam, showSuccess]);
 
+  // The customer backed out of PayMongo's checkout. Run once: `mutate` objects
+  // get a fresh identity on every render, so an unguarded effect cancelled the
+  // sale and re-added every cart line again and again.
+  const cancelHandledRef = useRef(false);
+  const [cancelInfo, setCancelInfo] = useState(null);
   useEffect(() => {
-    if (cancelProp && saleIdParam) {
-      const stored = snapshotRef.current || readPendingSnapshot();
-      cancelPendingSale.mutate(saleIdParam, { onSettled: () => {} });
-      if (Array.isArray(stored.cartItems) && stored.cartItems.length > 0) {
-        stored.cartItems.forEach(ci => addItem(ci, ci.quantity || 1));
-        toast.info('Cart restored.');
-      }
-      sessionStorage.removeItem(PENDING_KEY);
-      toast.info('Payment was cancelled. Returning...');
-      setTimeout(() => {
-        if (window.top !== window) {
-          window.top.location.href = import.meta.env.VITE_HRMS_URL || `${window.location.origin}/hrms`;
-        } else {
-          navigate('/');
+    if (!cancelProp || !saleIdParam || cancelHandledRef.current) return;
+    cancelHandledRef.current = true;
+    const stored = snapshotRef.current || readPendingSnapshot();
+    cancelPendingSale.mutate(saleIdParam, {
+      onSettled: () => {
+        if (Array.isArray(stored.cartItems) && stored.cartItems.length > 0) {
+          stored.cartItems.forEach(ci => addItem(ci, ci.quantity || 1));
+          toast.info('Cart restored — nothing was charged.');
         }
-      }, 2000);
-    }
-  }, [cancelProp, saleIdParam, navigate, toast, cancelPendingSale, addItem]);
+      },
+    });
+    sessionStorage.removeItem(PENDING_KEY);
+    setCancelInfo({
+      orderNo: stored.invoiceNo || `#${saleIdParam}`,
+      restored: Array.isArray(stored.cartItems) ? stored.cartItems.length : 0,
+    });
+  }, [cancelProp, saleIdParam, toast, cancelPendingSale, addItem]);
 
-  if (items.length === 0 && !showSuccess && !successProp && !cancelProp) {
-    return null;
-  }
-
-  if (successProp && saleIdParam && showFailure && !showSuccess) {
+  if (cancelProp && saleIdParam) {
     return (
       <PosLayout active="home">
-        <div className="flex-center" style={{ minHeight: '60vh' }}>
-          <div className="text-center" style={{ maxWidth: 440 }}>
-            <div style={{ fontSize: 48, marginBottom: 12 }}>⚠️</div>
-            <p className="font-bold mb-sm" style={{ fontSize: 18 }}>We couldn't confirm your payment yet.</p>
-            <p className="text-sm text-muted mb-md">Check your email for the receipt, or try again.</p>
-            <div className="flex-gap justify-center">
-              <button className="btn btn-primary" onClick={() => setShowFailure(false)}>Try Again</button>
-              <button className="btn btn-outline" onClick={() => navigate('/')}>Back to POS</button>
+        <div className="pay-status-wrap">
+          <div className="pay-status-card">
+            <span className="pay-status-icon pay-status-icon--neutral" aria-hidden="true">
+              <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" /><path d="M15 9l-6 6" /><path d="M9 9l6 6" />
+              </svg>
+            </span>
+            <span className="pay-status-eyebrow">Online payment</span>
+            <h1 className="pay-status-title">Payment was cancelled</h1>
+            <p className="pay-status-text">
+              Nothing was charged and the pending order {cancelInfo?.orderNo || ''} has been released, so the
+              stock is back on the shelf.
+              {cancelInfo?.restored
+                ? ` The ${cancelInfo.restored} item${cancelInfo.restored === 1 ? '' : 's'} from this order are back in the cart —`
+                : ' —'} you can take another payment method or try the online checkout again.
+            </p>
+            <div className="pay-status-actions">
+              <button className="btn btn-primary" onClick={() => navigate('/')}>Back to register</button>
+              {window.top !== window && (
+                <button
+                  className="btn btn-outline"
+                  onClick={() => { window.top.location.href = import.meta.env.VITE_HRMS_URL || `${window.location.origin}/hrms`; }}
+                >
+                  Back to HRMS
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -314,35 +366,110 @@ export default function Payment({ success: successProp, cancel: cancelProp }) {
     );
   }
 
+  if (items.length === 0 && !showSuccess && !successProp && !cancelProp) {
+    return null;
+  }
+
   if (successProp && saleIdParam && !showSuccess) {
+    // The customer has just been handed back from PayMongo's checkout. Two
+    // possible situations, and the screen must be honest about which one it is:
+    // still confirming (normal), or not confirmed yet (slow/failed/waiting on
+    // the webhook) — never "your payment failed", because we simply don't know.
+    const orderNo = saleResult?.invoiceNo || snapshot?.invoiceNo || `#${saleIdParam}`;
+    const amount = saleResult?.total ?? snapshot?.total ?? null;
+    const wrapper = onlineWalletLabel(saleResult?.paymentMethod || snapshot?.paymentMethod);
+
+    const cashOverride = canManualDiscount ? (
+      <div className="pay-status-override">
+        <div>
+          <strong>Manager override</strong>
+          <p>
+            If the customer is paying at the counter instead, complete this order as a <strong>cash</strong> sale.
+            It is recorded against your open shift's till.
+          </p>
+        </div>
+        <button
+          className="btn btn-warning"
+          data-testid="cash-override"
+          disabled={cashOverrideLoading}
+          onClick={handleCashOverride}
+        >
+          {cashOverrideLoading && <span className="btn-spinner" />}
+          {cashOverrideLoading ? 'Completing…' : 'Record cash & complete sale'}
+        </button>
+      </div>
+    ) : null;
+
     return (
       <PosLayout active="home">
-        <div className="flex-center" style={{ minHeight: '60vh' }}>
-          <div className="text-center" style={{ maxWidth: 420, padding: '0 16px' }}>
-            <div className="spinner" style={{ width: 40, height: 40, margin: '0 auto 16px' }} />
-            <p className="font-bold mb-sm" style={{ fontSize: 16 }}>Waiting for payment confirmation...</p>
-            <p className="text-sm text-muted">
-              This may take a few seconds. Please do not close this page.
-              <br />
-              <span style={{ fontVariantNumeric: 'tabular-nums', color: waitSecondsLeft <= 5 ? 'var(--danger)' : undefined }}>
-                {waitSecondsLeft}s remaining before this times out.
-              </span>
-            </p>
-            {canManualDiscount && (
-              <div style={{ marginTop: 20, padding: 14, background: 'var(--bg-tertiary)', border: '1px dashed var(--border)', borderRadius: 'var(--radius-md)' }}>
-                <p className="text-sm mb-sm" style={{ margin: 0 }}>
-                  <strong>Manager override:</strong> the online payment never confirmed. If the customer is paying with cash at the counter, complete the sale as cash — it will be recorded as a CASH sale.
+        <div className="pay-status-wrap">
+          <div className="pay-status-card">
+            {showFailure ? (
+              <>
+                <span className="pay-status-icon pay-status-icon--warn" aria-hidden="true">
+                  <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10" /><path d="M12 8v5" /><path d="M12 16.5h.01" />
+                  </svg>
+                </span>
+                <span className="pay-status-eyebrow">Online payment</span>
+                <h1 className="pay-status-title">We haven't confirmed this payment yet</h1>
+                <p className="pay-status-text">
+                  PayMongo hasn't told us this order is paid — it may still be processing, or the payment was
+                  left unfinished. Nothing has been marked as paid, and no e-receipt has been sent.
                 </p>
-                <button
-                  className="btn btn-warning"
-                  data-testid="cash-override"
-                  disabled={cashOverrideLoading}
-                  onClick={handleCashOverride}
-                >
-                  {cashOverrideLoading && <span className="btn-spinner" />}
-                  {cashOverrideLoading ? 'Completing…' : 'Record cash & complete sale'}
-                </button>
-              </div>
+                <dl className="pay-status-facts">
+                  <div><dt>Order</dt><dd>{orderNo}</dd></div>
+                  {amount != null && <div><dt>Amount</dt><dd>{peso(amount)}</dd></div>}
+                  {wrapper && <div><dt>Wallet</dt><dd>{wrapper}</dd></div>}
+                </dl>
+                <p className="pay-status-hint">
+                  If the customer's wallet shows the payment as successful, press <strong>Check again</strong> — as soon
+                  as PayMongo confirms it, this order completes and prints its receipt automatically.
+                </p>
+                <div className="pay-status-actions">
+                  <button className="btn btn-primary" onClick={() => { setShowFailure(false); verifyRefetch?.(); }}>
+                    Check again
+                  </button>
+                  <button className="btn btn-outline" onClick={() => navigate('/')}>Back to register</button>
+                </div>
+                {cashOverride}
+              </>
+            ) : (
+              <>
+                <span className="pay-status-icon" aria-hidden="true"><span className="spinner" /></span>
+                <span className="pay-status-eyebrow">Online payment · PayMongo</span>
+                <h1 className="pay-status-title">
+                  {waitSlow ? 'Still confirming your payment…' : 'Confirming your payment'}
+                </h1>
+                <p className="pay-status-text">
+                  You're back from PayMongo's secure checkout. We're asking PayMongo whether the payment went
+                  through — this normally takes a few seconds.
+                </p>
+                <dl className="pay-status-facts">
+                  <div><dt>Order</dt><dd>{orderNo}</dd></div>
+                  {amount != null && <div><dt>Amount</dt><dd>{peso(amount)}</dd></div>}
+                  {wrapper && <div><dt>Wallet</dt><dd>{wrapper}</dd></div>}
+                </dl>
+                <div className="pay-status-progress" role="status" aria-live="polite">
+                  <span className="pay-status-bar" />
+                  <span className="pay-status-timer">
+                    {waitSlow
+                      ? `Taking longer than usual — ${waitElapsed}s elapsed, still checking every few seconds.`
+                      : `Checking… ${waitSecondsLeft}s`}
+                  </span>
+                </div>
+                {waitSlow && (
+                  <p className="pay-status-hint">
+                    Please keep this page open. If the wallet already shows the payment as successful, you can
+                    safely wait — the order completes as soon as PayMongo confirms it.
+                  </p>
+                )}
+                <div className="pay-status-actions">
+                  <button className="btn btn-outline" onClick={() => verifyRefetch?.()}>Check now</button>
+                  <button className="btn btn-ghost" onClick={() => setShowFailure(true)}>Stop waiting</button>
+                </div>
+                {cashOverride}
+              </>
             )}
           </div>
         </div>
@@ -415,6 +542,10 @@ export default function Payment({ success: successProp, cancel: cancelProp }) {
 
   const handleOnlinePayment = async () => {
     if (items.length === 0) { toast.error('Cart is empty'); return; }
+    if (!onlinePaymentsEnabled) {
+      toast.error('Online payment is not connected. Ask an admin to set the PayMongo keys, or take Cash / Split.');
+      return;
+    }
     setOnlineLoading(true);
     try {
       const paymentMethod = selectedWallet === 'GCash' ? 'gcash' : 'maya';
@@ -484,13 +615,22 @@ export default function Payment({ success: successProp, cancel: cancelProp }) {
         toast.error('Failed to create checkout session');
       }
     } catch (err) {
+      // The pending sale exists only to hold stock while the customer pays on
+      // PayMongo. If we never got a checkout URL, release it immediately.
       if (pendingSaleRef.current) {
         cancelPendingSale.mutate(pendingSaleRef.current, { onSettled: () => {} });
         pendingSaleRef.current = null;
         sessionStorage.removeItem(PENDING_KEY);
-        toast.info('Pending order cancelled.');
+        toast.info('Pending order released.');
       }
-      toast.error(err.response?.data?.message || err.message || 'Online payment failed');
+      const status = err.response?.status;
+      const message = err.response?.data?.message
+        || (status === 503
+          ? 'Online payment is not connected. Ask an admin to set the PayMongo keys, or take Cash / Split.'
+          : null)
+        || err.message
+        || 'Could not start the online payment.';
+      toast.error(message);
     } finally {
       setOnlineLoading(false);
     }
@@ -672,11 +812,24 @@ export default function Payment({ success: successProp, cancel: cancelProp }) {
 
   return (
     <PosLayout active="home">
-      <span className="back-link" onClick={() => navigate('/')}>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
-        Back
-      </span>
-      <h1 className="text-sm" style={{ fontSize: 28, fontWeight: 800, margin: '0 0 24px' }}>Payment</h1>
+      <header className="page-header">
+        <div>
+          <span className="back-link" onClick={() => navigate('/')}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+            Back to register
+          </span>
+          <h1>Payment</h1>
+          <div className="sub">
+            {items.length} item{items.length === 1 ? '' : 's'} · take a payment for this order
+          </div>
+        </div>
+        <div>
+          <span className="pay-total-chip">
+            <span>Amount due</span>
+            <strong>{peso(total)}</strong>
+          </span>
+        </div>
+      </header>
 
       <div className="pay-section">
         <div className="pay-section-title">Customer</div>
@@ -929,36 +1082,81 @@ export default function Payment({ success: successProp, cancel: cancelProp }) {
         </div>
       )}
 
-      {method === 'ewallet' && !selectedWallet && (
-        <div className="wallet-grid max-w-md">
-          <button className="wallet cashg" onClick={() => setSelectedWallet('GCash')}>GCash</button>
-          <button className="wallet paymaya" onClick={() => setSelectedWallet('Maya')}>Maya</button>
-        </div>
-      )}
-
-      {method === 'ewallet' && selectedWallet && (
+      {method === 'ewallet' && (
         <div className="max-w-md">
-          <div className="pay-ewallet-info">
-            <div className="pay-ewallet-icon">
-              {selectedWallet === 'GCash' ? '🟢' : '💜'}
+          {!paymentConfigLoading && !onlinePaymentsEnabled ? (
+            <div className="pay-notice pay-notice--warn" role="alert">
+              <span className="pay-notice-icon" aria-hidden="true">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                  <path d="M12 9v4" /><path d="M12 17h.01" />
+                </svg>
+              </span>
+              <div>
+                <strong>Online payment isn't connected yet</strong>
+                <p>
+                  The store has no PayMongo API keys, so GCash, Maya and card checkout can't be started.
+                  An admin can add <code>PAYMONGO_SECRET_KEY</code> (and <code>PAYMONGO_WEBHOOK_SECRET</code>)
+                  to enable it. Collect this order as Cash, Split or at the counter meanwhile.
+                </p>
+              </div>
             </div>
-            <p className="font-bold" style={{ fontSize: 16, marginBottom: 4 }}>Pay via {selectedWallet}</p>
-            <p className="text-sm text-muted" style={{ marginBottom: 12 }}>
-              You'll be redirected to PayMongo's secure checkout to complete your {selectedWallet} payment.
-            </p>
-            <p className="font-bold" style={{ fontSize: 18, margin: '8px 0' }}>{peso(total)}</p>
-          </div>
+          ) : !selectedWallet ? (
+            <>
+              <div className="pay-section-title">Choose a wallet</div>
+              <div className="wallet-grid">
+                <button type="button" className="wallet-card" onClick={() => setSelectedWallet('GCash')}>
+                  <span className="wallet-card-dot wallet-card-dot--gcash" aria-hidden="true">G</span>
+                  <span className="wallet-card-copy">
+                    <strong>GCash</strong>
+                    <span>Redirects to PayMongo</span>
+                  </span>
+                </button>
+                <button type="button" className="wallet-card" onClick={() => setSelectedWallet('Maya')}>
+                  <span className="wallet-card-dot wallet-card-dot--maya" aria-hidden="true">M</span>
+                  <span className="wallet-card-copy">
+                    <strong>Maya</strong>
+                    <span>Redirects to PayMongo</span>
+                  </span>
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="pay-ewallet-info">
+              <div className="pay-ewallet-head">
+                <span className={`wallet-card-dot ${selectedWallet === 'GCash' ? 'wallet-card-dot--gcash' : 'wallet-card-dot--maya'}`} aria-hidden="true">
+                  {selectedWallet === 'GCash' ? 'G' : 'M'}
+                </span>
+                <div>
+                  <p className="pay-ewallet-title">Pay {peso(total)} with {selectedWallet}</p>
+                  <p className="text-sm text-muted">Powered by PayMongo — the customer pays on PayMongo's secure page.</p>
+                </div>
+              </div>
+              <ol className="pay-steps">
+                <li>You'll be sent to <strong>PayMongo's secure checkout</strong> and this sale is saved as <strong>pending</strong>.</li>
+                <li>The customer pays with {selectedWallet} on their own phone (or scans the QR on the next screen).</li>
+                <li>PayMongo sends the customer straight back here and we confirm the payment, complete the sale and print the receipt.</li>
+              </ol>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSelectedWallet(null)}>
+                Choose a different wallet
+              </button>
+            </div>
+          )}
         </div>
       )}
 
       <div className="pay-actions">
-        {method === 'ewallet' && !selectedWallet ? (
+        {method === 'ewallet' && !onlinePaymentsEnabled ? (
+          <button className="btn btn-primary btn-lg" disabled title="PayMongo keys are not configured">
+            Online payment unavailable
+          </button>
+        ) : method === 'ewallet' && !selectedWallet ? (
           <button className="btn btn-primary btn-lg" disabled>
             Select a wallet to continue
           </button>
         ) : method === 'ewallet' && selectedWallet ? (
-          <button className="btn btn-primary btn-lg" disabled={onlineLoading || createPendingSale.isPending || createCheckout.isPending} onClick={handleOnlinePayment}>
-            {(onlineLoading || createPendingSale.isPending || createCheckout.isPending) && <span className="btn-spinner" />}{onlineLoading || createPendingSale.isPending || createCheckout.isPending ? 'Redirecting to PayMongo...' : `Pay ${peso(total)} via ${selectedWallet}`}
+          <button className="btn btn-primary btn-lg" data-testid="complete-payment-online" disabled={onlineLoading || createPendingSale.isPending || createCheckout.isPending} onClick={handleOnlinePayment}>
+            {(onlineLoading || createPendingSale.isPending || createCheckout.isPending) && <span className="btn-spinner" />}{onlineLoading || createPendingSale.isPending || createCheckout.isPending ? 'Opening PayMongo…' : `Pay ${peso(total)} via ${selectedWallet}`}
           </button>
         ) : (
           <button
